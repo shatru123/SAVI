@@ -185,8 +185,11 @@ public class IntentDetector
             return new DetectedIntent("chitchat", "greeting", new Dictionary<string, string>(), 0.95);
         }
 
-        // 11. Knowledge vs Web Search
-        if (lower.StartsWith("who is ") || lower.StartsWith("what is ") || lower.StartsWith("define ") || lower.StartsWith("explain "))
+        // 11. Knowledge & Reasoning vs Web Search
+        if (lower.StartsWith("who is ") || lower.StartsWith("what is ") || lower.StartsWith("define ") ||
+            lower.StartsWith("explain ") || lower.StartsWith("why ") || lower.StartsWith("how ") ||
+            lower.StartsWith("write ") || lower.StartsWith("code ") || lower.StartsWith("generate ") ||
+            lower.StartsWith("can you ") || lower.StartsWith("tell me ") || lower.StartsWith("solve "))
         {
             var topic = clean.Replace("who is", "", StringComparison.OrdinalIgnoreCase)
                              .Replace("what is", "", StringComparison.OrdinalIgnoreCase)
@@ -195,11 +198,11 @@ public class IntentDetector
                              .Trim(' ', '?', '.');
 
             return new DetectedIntent(SaviConstants.Capabilities.Knowledge, "summary",
-                new Dictionary<string, string> { ["topic"] = topic, ["query"] = clean }, 0.88);
+                new Dictionary<string, string> { ["topic"] = topic, ["query"] = clean }, 0.92);
         }
 
-        // Default: Search provider
+        // Default: Search provider (handled by FreeAiProvider primary, DuckDuckGo fallback)
         return new DetectedIntent(SaviConstants.Capabilities.Search, "web_search",
-            new Dictionary<string, string> { ["query"] = clean }, 0.75);
+            new Dictionary<string, string> { ["query"] = clean }, 0.85);
     }
 }

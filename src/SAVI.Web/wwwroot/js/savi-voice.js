@@ -273,5 +273,49 @@ window.saviVoice = {
         if (window.speechSynthesis) {
             window.speechSynthesis.cancel();
         }
+    },
+
+    autoSpeakGreeting: function (text) {
+        const self = this;
+        let speechTriggered = false;
+
+        const doSpeak = function () {
+            if (speechTriggered) return;
+            try {
+                self.speak(text);
+                speechTriggered = true;
+            } catch (e) {
+                console.warn("SAVI autoSpeakGreeting attempt failed:", e);
+            }
+        };
+
+        // If voices aren't loaded yet, wait for onvoiceschanged
+        if (window.speechSynthesis) {
+            if (window.speechSynthesis.getVoices().length === 0) {
+                const prev = window.speechSynthesis.onvoiceschanged;
+                window.speechSynthesis.onvoiceschanged = function () {
+                    self.loadVoices();
+                    if (prev) prev();
+                    doSpeak();
+                };
+            } else {
+                doSpeak();
+            }
+        }
+
+        // Browser Autoplay Policy unlocker: attaches a 1-time gesture listener
+        // so that if autoplay is paused by the browser, the very first click/tap triggers speech immediately
+        const onUserGesture = function () {
+            if (!speechTriggered || (window.speechSynthesis && !window.speechSynthesis.speaking)) {
+                doSpeak();
+            }
+            ['click', 'touchstart', 'pointerdown', 'keydown'].forEach(evt => {
+                window.removeEventListener(evt, onUserGesture, true);
+            });
+        };
+
+        ['click', 'touchstart', 'pointerdown', 'keydown'].forEach(evt => {
+            window.addEventListener(evt, onUserGesture, { once: true, capture: true });
+        });
     }
 };

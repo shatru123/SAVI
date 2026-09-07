@@ -96,9 +96,16 @@
         <div class="savi-messages-stream" id="messages-container">
             @if (_messages.Count == 0)
             {
-                <div style="text-align: center; color: var(--savi-text-secondary); margin-top: 40px; font-size: 0.9rem;">
-                    <div class="savi-glow-text" style="font-size: 1.1rem; margin-bottom: 8px;">"I'm listening, Shatru."</div>
-                    <div>Ask about weather, currency exchange, GitHub, files, system stats, or tell me something to remember.</div>
+                <div style="text-align: center; color: var(--savi-text-secondary); margin-top: 36px; font-size: 0.9rem; max-width: 540px; margin-left: auto; margin-right: auto;">
+                    <div class="savi-glow-text" style="font-size: 1.25rem; font-weight: 700; margin-bottom: 8px;">"I'm listening, Shatru."</div>
+                    <div style="font-size: 0.85rem; color: var(--savi-text-primary); margin-bottom: 14px;">
+                        SAVI Neural Engine is online. Ask anything, write code, research topics, or issue system commands.
+                    </div>
+                    <div style="display: inline-flex; align-items: center; gap: 8px; padding: 7px 16px; background: rgba(0, 240, 255, 0.09); border: 1px solid var(--savi-border-subtle); border-radius: 20px; font-size: 0.78rem; color: var(--savi-cyan); cursor: pointer; transition: all 0.2s;"
+                         @onclick="PlayVoiceGreeting" title="Play SAVI Voice Greeting">
+                        <span style="font-size: 1rem;">🔊</span>
+                        <span>Tap anywhere or click here to hear SAVI speak</span>
+                    </div>
                 </div>
             }
             else
@@ -269,6 +276,8 @@
             try
             {
                 _voiceSupported = await JS.InvokeAsync<bool>("saviVoice.init", _dotNetRef);
+                var greeting = "Hello Shatru! I am SAVI, your Smart Adaptive Virtual Intelligence, developed by Shatrughna Ambhore. All neural systems are online and ready. How can I help you today?";
+                await JS.InvokeVoidAsync("saviVoice.autoSpeakGreeting", greeting);
             }
             catch
             {
@@ -276,6 +285,12 @@
             }
             StateHasChanged();
         }
+    }
+
+    private async Task PlayVoiceGreeting()
+    {
+        var greeting = "Hello Shatru! I am SAVI, your Smart Adaptive Virtual Intelligence, developed by Shatrughna Ambhore. All neural systems are online and ready. How can I help you today?";
+        await JS.InvokeVoidAsync("saviVoice.speak", greeting);
     }
 
     private async Task LoadConversations()

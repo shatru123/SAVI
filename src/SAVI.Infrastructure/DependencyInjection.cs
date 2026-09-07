@@ -60,6 +60,7 @@ public static class DependencyInjection
         services.AddSingleton<ICapabilityProvider, GitHubPublicProvider>();
         services.AddSingleton<ICapabilityProvider, SystemInfoProvider>();
         services.AddSingleton<ICapabilityProvider, CalculatorProvider>();
+        services.AddSingleton<ICapabilityProvider, FreeAiProvider>();
         services.AddSingleton<ICapabilityProvider, OptionalOllamaProvider>();
 
         services.AddSingleton<IProviderRegistry, ProviderRegistry>();

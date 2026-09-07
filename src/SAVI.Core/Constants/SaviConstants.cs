@@ -37,5 +37,6 @@ public static class SaviConstants
         public const string LocalCalculator = "provider-local-calc";
         public const string GenericHttp = "provider-generic-http";
         public const string Ollama = "provider-ollama";
+        public const string FreeAi = "provider-free-ai";
     }
 }

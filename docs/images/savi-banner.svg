@@ -1,0 +1,137 @@
+<svg width="960" height="340" viewBox="0 0 960 340" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#050811" />
+      <stop offset="50%" stop-color="#0a1224" />
+      <stop offset="100%" stop-color="#060913" />
+    </linearGradient>
+
+    <!-- Neon Glow Gradients -->
+    <linearGradient id="cyanPurpleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f0ff" />
+      <stop offset="60%" stop-color="#0077fe" />
+      <stop offset="100%" stop-color="#8a2be2" />
+    </linearGradient>
+
+    <linearGradient id="coreRadial" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.95" />
+      <stop offset="40%" stop-color="#0088ff" stop-opacity="0.6" />
+      <stop offset="85%" stop-color="#7928ca" stop-opacity="0.15" />
+      <stop offset="100%" stop-color="#070b14" stop-opacity="0" />
+    </linearGradient>
+
+    <filter id="neonGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3.5" result="coloredBlur" />
+      <feMerge>
+        <feMergeNode in="coloredBlur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <pattern id="hudGrid" width="30" height="30" patternUnits="userSpaceOnUse">
+      <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(0, 240, 255, 0.04)" stroke-width="1" />
+    </pattern>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="960" height="340" rx="14" fill="url(#bgGrad)" />
+  <rect width="960" height="340" rx="14" fill="url(#hudGrid)" />
+
+  <!-- Cybernetic Corner Frame Brackets -->
+  <path d="M 20 50 L 20 20 L 50 20" stroke="#00f0ff" stroke-width="2.5" fill="none" opacity="0.8" />
+  <path d="M 940 50 L 940 20 L 910 20" stroke="#00f0ff" stroke-width="2.5" fill="none" opacity="0.8" />
+  <path d="M 20 290 L 20 320 L 50 320" stroke="#00f0ff" stroke-width="2.5" fill="none" opacity="0.8" />
+  <path d="M 940 290 L 940 320 L 910 320" stroke="#00f0ff" stroke-width="2.5" fill="none" opacity="0.8" />
+
+  <!-- Ambient Light Orbs -->
+  <circle cx="160" cy="170" r="140" fill="#00f0ff" opacity="0.06" filter="blur(40px)" />
+  <circle cx="800" cy="120" r="120" fill="#7928ca" opacity="0.08" filter="blur(50px)" />
+
+  <!-- Left Side: Hexagonal SAVI Core Logo -->
+  <g transform="translate(60, 55)">
+    <!-- Outer Hex Shield -->
+    <polygon points="115,10 205,62 205,168 115,220 25,168 25,62" 
+             stroke="url(#cyanPurpleGrad)" stroke-width="3" 
+             fill="rgba(10, 18, 36, 0.85)" 
+             filter="url(#neonGlow)" />
+
+    <!-- Hex Corner Ticks -->
+    <line x1="115" y1="10" x2="115" y2="30" stroke="#00f0ff" stroke-width="2.5" stroke-linecap="round" />
+    <line x1="205" y1="62" x2="188" y2="72" stroke="#00f0ff" stroke-width="2.5" stroke-linecap="round" />
+    <line x1="205" y1="168" x2="188" y2="158" stroke="#00f0ff" stroke-width="2.5" stroke-linecap="round" />
+    <line x1="115" y1="220" x2="115" y2="200" stroke="#00f0ff" stroke-width="2.5" stroke-linecap="round" />
+    <line x1="25" y1="168" x2="42" y2="158" stroke="#00f0ff" stroke-width="2.5" stroke-linecap="round" />
+    <line x1="25" y1="62" x2="42" y2="72" stroke="#00f0ff" stroke-width="2.5" stroke-linecap="round" />
+
+    <!-- Orbital Tracks -->
+    <circle cx="115" cy="115" r="64" stroke="rgba(0, 240, 255, 0.35)" stroke-width="1.8" stroke-dasharray="14 7 3 7" />
+    <circle cx="115" cy="115" r="48" stroke="rgba(121, 40, 202, 0.45)" stroke-width="1.4" stroke-dasharray="8 5" />
+
+    <!-- Core Radial Pulse -->
+    <circle cx="115" cy="115" r="38" fill="url(#coreRadial)" filter="url(#neonGlow)" />
+
+    <!-- Hologram S Monogram -->
+    <path d="M130 90 C130 81, 100 80, 100 98 C100 117, 130 113, 130 132 C130 150, 100 149, 100 140" 
+          stroke="#ffffff" stroke-width="5" stroke-linecap="round" fill="none" 
+          filter="url(#neonGlow)" />
+
+    <!-- Quantum Orbit Nodes -->
+    <circle cx="115" cy="51" r="5" fill="#00ffaa" filter="url(#neonGlow)" />
+    <circle cx="168" cy="148" r="4.5" fill="#00f0ff" filter="url(#neonGlow)" />
+    <circle cx="62" cy="148" r="4.5" fill="#a855f7" filter="url(#neonGlow)" />
+  </g>
+
+  <!-- Right Side: Typography & Metadata -->
+  <g transform="translate(320, 50)">
+    <!-- System Status Pill -->
+    <rect x="0" y="8" width="170" height="24" rx="12" fill="rgba(0, 240, 255, 0.12)" stroke="rgba(0, 240, 255, 0.4)" stroke-width="1" />
+    <circle cx="14" cy="20" r="4" fill="#00ffaa" filter="url(#neonGlow)" />
+    <text x="26" y="24" fill="#00f0ff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" letter-spacing="1">SYSTEM ONLINE</text>
+
+    <!-- Main Title: SAVI -->
+    <text x="0" y="82" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="52" font-weight="900" letter-spacing="4">
+      SAVI<tspan fill="#00f0ff">.CORE</tspan>
+    </text>
+
+    <!-- Subtitle -->
+    <text x="2" y="112" fill="#a0aec0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="600" letter-spacing="1.5">
+      SHATRU'S ADAPTIVE VIRTUAL INTELLIGENCE
+    </text>
+
+    <!-- Tagline -->
+    <text x="2" y="138" fill="rgba(255, 255, 255, 0.85)" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-style="italic">
+      "Personal AI Companion • Zero-Cost Sovereign Architecture • Bidirectional Voice"
+    </text>
+
+    <!-- Badges Row 1: Deployment & Neural Engine -->
+    <g transform="translate(0, 162)">
+      <!-- Render Live Link Badge -->
+      <rect x="0" y="0" width="265" height="30" rx="6" fill="rgba(0, 240, 255, 0.15)" stroke="#00f0ff" stroke-width="1.2" />
+      <text x="12" y="19" fill="#00f0ff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11.5" font-weight="700">
+        🌐 LIVE: https://savi-4grt.onrender.com
+      </text>
+
+      <!-- Free AI Model Badge -->
+      <rect x="275" y="0" width="280" height="30" rx="6" fill="rgba(121, 40, 202, 0.18)" stroke="#a855f7" stroke-width="1.2" />
+      <text x="287" y="19" fill="#d8b4fe" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11.5" font-weight="600">
+        🧠 Free Neural Engine (Mistral / Llama)
+      </text>
+    </g>
+
+    <!-- Badges Row 2: Creator & Voice -->
+    <g transform="translate(0, 202)">
+      <!-- Creator Badge -->
+      <rect x="0" y="0" width="370" height="28" rx="6" fill="rgba(255, 255, 255, 0.06)" stroke="rgba(255, 255, 255, 0.2)" stroke-width="1" />
+      <text x="12" y="18" fill="#e2e8f0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11">
+        👤 Architect: <tspan fill="#ffffff" font-weight="700">Shatrughna Ambhore</tspan> (+91 9604466334)
+      </text>
+
+      <!-- Autoplay Voice Badge -->
+      <rect x="380" y="0" width="175" height="28" rx="6" fill="rgba(0, 255, 170, 0.1)" stroke="#00ffaa" stroke-width="1" />
+      <text x="392" y="18" fill="#00ffaa" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600">
+        🎙️ Auto-Voice Speaking
+      </text>
+    </g>
+  </g>
+</svg>
