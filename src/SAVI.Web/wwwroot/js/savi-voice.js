@@ -34,6 +34,8 @@ class AudioPlaybackController {
         this.lastSpokenTimestamp = 0;
         this.lastStopLatencyMs = 0;
         this.recentSpokenSentences = []; // Rolling buffer of recent chunks with timestamps
+        this.resumeHeartbeat = null;
+        this.pendingSpeakTimeout = null;
 
         this.loadVoices();
         if (typeof window !== 'undefined' && window.speechSynthesis) {
@@ -43,16 +45,62 @@ class AudioPlaybackController {
 
     loadVoices() {
         if (typeof window !== 'undefined' && window.speechSynthesis) {
-            this.availableVoices = window.speechSynthesis.getVoices();
+            const voices = window.speechSynthesis.getVoices();
+            if (voices && voices.length > 0) {
+                this.availableVoices = voices;
+            }
+        }
+    }
+
+    ensureSpeechActive() {
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+            try {
+                if (window.speechSynthesis.paused) {
+                    window.speechSynthesis.resume();
+                }
+            } catch (_) {}
+        }
+    }
+
+    startResumeWatchdog() {
+        if (!this.resumeHeartbeat) {
+            this.resumeHeartbeat = setInterval(() => {
+                if (this.isSpeaking && typeof window !== 'undefined' && window.speechSynthesis) {
+                    try {
+                        if (window.speechSynthesis.paused) {
+                            window.speechSynthesis.resume();
+                        }
+                    } catch (_) {}
+                } else if (!this.isSpeaking) {
+                    this.stopResumeWatchdog();
+                }
+            }, 2000);
+        }
+    }
+
+    stopResumeWatchdog() {
+        if (this.resumeHeartbeat) {
+            clearInterval(this.resumeHeartbeat);
+            this.resumeHeartbeat = null;
         }
     }
 
     speak(text, rate = 1.0, turnId = null) {
-        if (!window.speechSynthesis) return;
+        if (typeof window === 'undefined' || !window.speechSynthesis) return;
 
         try {
+            if (this.pendingSpeakTimeout) {
+                clearTimeout(this.pendingSpeakTimeout);
+                this.pendingSpeakTimeout = null;
+            }
+
             // Duck and halt any prior speech immediately
-            this.duckAndStop(false);
+            const wasSpeaking = this.isSpeaking || window.speechSynthesis.speaking;
+            if (wasSpeaking) {
+                this.duckAndStop(false);
+            }
+
+            this.ensureSpeechActive();
 
             // Strip code blocks, markdown tables, and markdown formatting for natural voice output
             let cleanText = text.replace(/```[\s\S]*?```/g, ' The code solution is displayed on screen. ')
@@ -72,21 +120,46 @@ class AudioPlaybackController {
             this.recentSpokenSentences.push({ text: cleanText, timestamp: performance.now() });
             if (this.recentSpokenSentences.length > 10) this.recentSpokenSentences.shift();
 
-            // Split into natural sentences for streaming audio chunking
-            const chunks = cleanText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [cleanText];
-            this.chunkQueue = chunks.map(c => c.trim()).filter(c => c.length > 0);
+            // Split into natural sentences for streaming audio chunking (< 160 chars to avoid browser TTS timeouts)
+            const rawSentences = cleanText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [cleanText];
+            const chunks = [];
+            for (const s of rawSentences) {
+                const trimmed = s.trim();
+                if (trimmed.length > 160) {
+                    const subParts = trimmed.match(/[^,;]+[,;]+|[^,;]+$/g) || [trimmed];
+                    for (const sp of subParts) {
+                        const subTrimmed = sp.trim();
+                        if (subTrimmed.length > 0) chunks.push(subTrimmed);
+                    }
+                } else if (trimmed.length > 0) {
+                    chunks.push(trimmed);
+                }
+            }
+            this.chunkQueue = chunks;
 
             if (this.chunkQueue.length === 0) return;
 
             this.isSpeaking = true;
+            this.startResumeWatchdog();
+
             if (this.saviVoice.dotNetRef) {
                 this.saviVoice.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 5); // 5 = Speaking
             }
 
-            this.playNextChunk(rate);
+            // If we previously called duckAndStop/cancel, give the browser speech daemon 25ms to settle IPC
+            const delayMs = wasSpeaking ? 25 : 0;
+            const self = this;
+            this.pendingSpeakTimeout = setTimeout(() => {
+                self.pendingSpeakTimeout = null;
+                if (self.isSpeaking) {
+                    self.playNextChunk(rate);
+                }
+            }, delayMs);
+
         } catch (e) {
             console.error("SAVI playback error:", e);
             this.isSpeaking = false;
+            this.stopResumeWatchdog();
             this.currentSpokenText = '';
             this.currentTtsTurnId = null;
             this.lastSpokenTimestamp = performance.now();
@@ -102,6 +175,7 @@ class AudioPlaybackController {
         if (this.chunkQueue.length === 0) {
             this.isSpeaking = false;
             this.isChunkSpeaking = false;
+            this.stopResumeWatchdog();
             this.currentSpokenText = '';
             this.lastSpokenTimestamp = performance.now();
             if (this.saviVoice.dotNetRef) {
@@ -119,6 +193,7 @@ class AudioPlaybackController {
         const utterance = new SpeechSynthesisUtterance(chunk);
         utterance.rate = rate || 1.0;
         utterance.pitch = 1.0;
+        utterance.volume = 1.0; // Guaranteed full audio volume
 
         if (!this.availableVoices || this.availableVoices.length === 0) {
             this.loadVoices();
@@ -126,37 +201,80 @@ class AudioPlaybackController {
 
         const preferredVoice = this.availableVoices.find(v =>
             v.lang.startsWith('en') &&
-            (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Daniel') || v.name.includes('Samantha') || v.name.includes('Karen') || v.name.includes('Siri'))
+            (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Daniel') || v.name.includes('Samantha') || v.name.includes('Karen') || v.name.includes('Siri') || v.name.includes('Arthur'))
         ) || this.availableVoices.find(v => v.lang.startsWith('en'));
 
-        if (preferredVoice) utterance.voice = preferredVoice;
+        if (preferredVoice) {
+            utterance.voice = preferredVoice;
+            utterance.lang = preferredVoice.lang;
+        } else {
+            utterance.lang = (navigator.language && navigator.language.startsWith('en')) ? navigator.language : 'en-US';
+        }
 
         this.currentUtterance = utterance;
         this.isChunkSpeaking = true;
 
+        // Prevent Chromium / WebKit garbage collection bug
+        window._saviActiveUtterances = window._saviActiveUtterances || new Set();
+        window._saviActiveUtterances.add(utterance);
+
         const self = this;
+        let chunkHandled = false;
+
+        // Safety watchdog: if synthesis engine hangs, advance chunk after calculated timeout
+        const wordCount = chunk.split(/\s+/).length;
+        const maxExpectedDurationMs = Math.max(4000, (wordCount / 2.0) * 1000 + 4000);
+        const watchdog = setTimeout(() => {
+            if (!chunkHandled && self.isSpeaking && self.isChunkSpeaking) {
+                console.warn("SAVI: Utterance completion watchdog fired, advancing chunk queue.");
+                chunkHandled = true;
+                window._saviActiveUtterances.delete(utterance);
+                self.isChunkSpeaking = false;
+                self.ensureSpeechActive();
+                self.playNextChunk(rate);
+            }
+        }, maxExpectedDurationMs);
+
         utterance.onend = function () {
+            if (chunkHandled) return;
+            chunkHandled = true;
+            clearTimeout(watchdog);
+            window._saviActiveUtterances.delete(utterance);
             self.isChunkSpeaking = false;
             self.lastSpokenTimestamp = performance.now();
             self.playNextChunk(rate);
         };
 
-        utterance.onerror = function () {
+        utterance.onerror = function (err) {
+            if (chunkHandled) return;
+            chunkHandled = true;
+            clearTimeout(watchdog);
+            window._saviActiveUtterances.delete(utterance);
             self.isChunkSpeaking = false;
             self.lastSpokenTimestamp = performance.now();
+            console.warn("SAVI: Utterance error, resuming synthesis and playing next chunk:", err?.error || err);
+            self.ensureSpeechActive();
             self.playNextChunk(rate);
         };
 
+        // Resume if paused and speak
+        this.ensureSpeechActive();
         window.speechSynthesis.speak(utterance);
     }
 
     // Instant acoustic ducking (<5ms) & playback halt
     duckAndStop(notifyDotNet = true) {
+        if (this.pendingSpeakTimeout) {
+            clearTimeout(this.pendingSpeakTimeout);
+            this.pendingSpeakTimeout = null;
+        }
+
         if (!this.isSpeaking && !window.speechSynthesis?.speaking) return;
 
         const stopStartTime = performance.now();
         this.isSpeaking = false;
         this.isChunkSpeaking = false;
+        this.stopResumeWatchdog();
         this.currentSpokenText = '';
         this.currentTtsTurnId = null;
         this.lastSpokenTimestamp = performance.now();
@@ -166,8 +284,13 @@ class AudioPlaybackController {
         if (this.currentUtterance) {
             try { this.currentUtterance.volume = 0; } catch (_) {}
         }
+        if (window._saviActiveUtterances) {
+            window._saviActiveUtterances.clear();
+        }
         if (window.speechSynthesis) {
-            window.speechSynthesis.cancel();
+            try {
+                window.speechSynthesis.cancel();
+            } catch (_) {}
         }
 
         const stopLatencyMs = Math.round(performance.now() - stopStartTime);
@@ -836,6 +959,9 @@ window.saviVoice = {
         const doSpeak = function () {
             if (speechTriggered) return;
             try {
+                if (window.speechSynthesis && window.speechSynthesis.paused) {
+                    window.speechSynthesis.resume();
+                }
                 self.speak(text);
                 speechTriggered = true;
             } catch (e) {
@@ -868,5 +994,43 @@ window.saviVoice = {
         ['click', 'touchstart', 'pointerdown', 'keydown'].forEach(evt => {
             window.addEventListener(evt, onUserGesture, { once: true, capture: true });
         });
+    },
+
+    testAudio: function () {
+        if (this.playbackController) {
+            this.speak("Audio output is loud and clear, Shatru. All neural speech channels are active.");
+        }
     }
 };
+
+// Global Mobile Audio Unlocking: iOS Safari & Android Chrome require user touch/click gesture to activate audio output
+(function () {
+    if (typeof window === 'undefined') return;
+
+    function unlockMobileAudio() {
+        if (window.speechSynthesis) {
+            try {
+                if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+            } catch (_) {}
+        }
+
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx && window.saviVoice?.captureController?.audioContext) {
+            const ctx = window.saviVoice.captureController.audioContext;
+            if (ctx.state === 'suspended') {
+                try { ctx.resume(); } catch (_) {}
+            }
+            try {
+                const buf = ctx.createBuffer(1, 1, 22050);
+                const src = ctx.createBufferSource();
+                src.buffer = buf;
+                src.connect(ctx.destination);
+                src.start(0);
+            } catch (_) {}
+        }
+    }
+
+    ['click', 'touchstart', 'touchend', 'pointerdown', 'keydown'].forEach(evt => {
+        window.addEventListener(evt, unlockMobileAudio, { capture: true, passive: true });
+    });
+})();

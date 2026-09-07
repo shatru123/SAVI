@@ -15,6 +15,13 @@
             </span>
         </div>
 
+        <!-- Mobile Quick Voice Action in Header -->
+        <div class="savi-mobile-only" style="display: flex; align-items: center; gap: 6px;">
+            <a href="voice" class="savi-btn" style="padding: 4px 10px; font-size: 0.76rem; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; border-color: rgba(0, 240, 255, 0.6); color: #00f0ff; background: rgba(0, 240, 255, 0.18); font-weight: 700; border-radius: 6px; box-shadow: 0 0 10px rgba(0, 240, 255, 0.25);" title="Open Real-Time Voice Screen">
+                <span>🎙️ Voice</span>
+            </a>
+        </div>
+
         <!-- Desktop Telemetry Badges -->
         <div class="savi-desktop-only" style="align-items: center; gap: 16px; font-size: 0.75rem; color: var(--savi-text-secondary);">
             <span>HOST: <strong>@Environment.MachineName</strong></span>
@@ -42,8 +49,14 @@
     <!-- Cybernetic Mobile Bottom Navigation Bar (Docked Native App Bar) -->
     <nav class="savi-bottom-nav">
         <NavLink class="savi-bottom-nav-item" href="" Match="NavLinkMatch.All">
-            <span class="nav-icon">◈</span>
-            <span>Deck</span>
+            <span class="nav-icon">💬</span>
+            <span>Chat</span>
+        </NavLink>
+        <NavLink class="savi-bottom-nav-item savi-bottom-voice-item" href="voice">
+            <div class="savi-voice-bottom-orb">
+                <span class="nav-icon" style="font-size: 1.25rem;">🎙</span>
+            </div>
+            <span style="font-weight: 700;">Voice</span>
         </NavLink>
         <NavLink class="savi-bottom-nav-item" href="memory">
             <span class="nav-icon">🧠</span>
@@ -52,10 +65,6 @@
         <NavLink class="savi-bottom-nav-item" href="tasks">
             <span class="nav-icon">⚙</span>
             <span>Tasks</span>
-        </NavLink>
-        <NavLink class="savi-bottom-nav-item" href="providers">
-            <span class="nav-icon">📡</span>
-            <span>Providers</span>
         </NavLink>
         <NavLink class="savi-bottom-nav-item" href="settings">
             <span class="nav-icon">⚙</span>

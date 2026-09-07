@@ -525,6 +525,29 @@ body {
     box-shadow: 0 0 6px var(--savi-cyan);
     margin-top: 1px;
   }
+
+  .savi-bottom-voice-item {
+    color: #00f0ff !important;
+  }
+  .savi-voice-bottom-orb {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, rgba(0, 240, 255, 0.35) 0%, rgba(59, 130, 246, 0.25) 70%, rgba(3, 7, 18, 0.9) 100%);
+    border: 1.5px solid rgba(0, 240, 255, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+    transition: all 0.2s ease;
+  }
+  .savi-bottom-nav-item:hover .savi-voice-bottom-orb,
+  .savi-bottom-nav-item.active .savi-voice-bottom-orb {
+    transform: scale(1.15);
+    border-color: #00f0ff;
+    box-shadow: 0 0 18px rgba(0, 240, 255, 0.85);
+    background: radial-gradient(circle at 35% 35%, rgba(0, 240, 255, 0.5) 0%, rgba(59, 130, 246, 0.35) 70%, rgba(3, 7, 18, 0.9) 100%);
+  }
 }
 
 /* Smartphone Portrait Breakpoint (< 576px) */

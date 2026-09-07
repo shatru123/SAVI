@@ -85,6 +85,10 @@
             </div>
 
             <div class="savi-top-actions">
+                <!-- Immersive Voice Mode Screen Button (Prominent on Mobile & Desktop) -->
+                <button class="savi-btn active-voice-btn" style="padding: 4px 12px; font-size: 0.75rem; background: linear-gradient(135deg, rgba(0, 240, 255, 0.25) 0%, rgba(59, 130, 246, 0.25) 100%); border-color: rgba(0, 240, 255, 0.6); color: #00f0ff; font-weight: 700;" @onclick="NavigateToVoicePage" title="Open Dedicated Real-Time Voice Screen">
+                    🎙️ Voice Screen
+                </button>
                 <!-- Verification Mode Selector Button -->
                 <button class="savi-btn" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="CycleVerificationPolicy" title="Toggle verification mode (Fast, Balanced, Verified)">
                     @(_activePolicy switch
@@ -94,17 +98,13 @@
                         _ => "⚖ Balanced"
                     })
                 </button>
-                <!-- Voice Talk-Back Toggle Button -->
-                <button class="savi-btn @(_talkBackEnabled ? "active-voice-btn" : "")" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="ToggleTalkBack" title="Toggle Voice Talk-Back (Speech Synthesis)">
+                <!-- Desktop Only: Voice Talk-Back Toggle Button -->
+                <button class="savi-btn savi-desktop-only @(_talkBackEnabled ? "active-voice-btn" : "")" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="ToggleTalkBack" title="Toggle Voice Talk-Back (Speech Synthesis)">
                     @(_talkBackEnabled ? "🔊 Voice: ON" : "🔇 Voice: OFF")
                 </button>
-                <!-- Continuous Conversational Voice Mode Button -->
-                <button class="savi-btn @(_continuousVoiceMode ? "active-voice-btn" : "")" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="ToggleContinuousVoice" title="Toggle Real-Time Conversational Voice Mode (Continuous Full-Duplex)">
+                <!-- Desktop Only: Continuous Conversational Voice Mode Button -->
+                <button class="savi-btn savi-desktop-only @(_continuousVoiceMode ? "active-voice-btn" : "")" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="ToggleContinuousVoice" title="Toggle Real-Time Conversational Voice Mode (Continuous Full-Duplex)">
                     @(_continuousVoiceMode ? "🎙 Mode: Live" : "🎙 Mode: Std")
-                </button>
-                <!-- Immersive Voice Mode Screen Button -->
-                <button class="savi-btn active-voice-btn" style="padding: 4px 12px; font-size: 0.75rem; background: linear-gradient(135deg, rgba(0, 240, 255, 0.25) 0%, rgba(59, 130, 246, 0.25) 100%); border-color: rgba(0, 240, 255, 0.6); color: #00f0ff; font-weight: 700;" @onclick="NavigateToVoicePage" title="Open Dedicated Real-Time Voice Screen">
-                    🎙️ Voice Screen
                 </button>
                 @if (!string.IsNullOrEmpty(_currentConversationId))
                 {
