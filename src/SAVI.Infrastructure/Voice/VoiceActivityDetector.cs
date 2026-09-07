@@ -19,6 +19,7 @@ public class VoiceActivityDetector : IVoiceActivityDetector
     public int SilenceDurationThresholdMs { get; set; } = 800;
 
     public event Action? SpeechStarted;
+    public event Action<double>? SpeechDetected;
     public event Action<double>? SpeechContinued;
     public event Action? SpeechStopped;
 
@@ -27,11 +28,13 @@ public class VoiceActivityDetector : IVoiceActivityDetector
         bool triggerStarted = false;
         bool triggerStopped = false;
         bool triggerContinued = false;
+        bool triggerDetected = false;
 
         lock (_lock)
         {
             if (level >= SpeechStartThreshold)
             {
+                triggerDetected = true;
                 _silenceStopwatch.Reset();
                 if (!_isSpeechActive)
                 {
@@ -59,6 +62,11 @@ public class VoiceActivityDetector : IVoiceActivityDetector
                     }
                 }
             }
+        }
+
+        if (triggerDetected)
+        {
+            SpeechDetected?.Invoke(level);
         }
 
         if (triggerStarted)

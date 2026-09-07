@@ -11,6 +11,7 @@ public interface IVoiceActivityDetector
     void NotifySpeechStopped();
 
     event Action? SpeechStarted;
+    event Action<double>? SpeechDetected;
     event Action<double>? SpeechContinued;
     event Action? SpeechStopped;
 }

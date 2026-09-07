@@ -189,13 +189,16 @@ Answer: Done.";
 
         var started = false;
         var stopped = false;
+        var detected = false;
 
         vad.SpeechStarted += () => started = true;
+        vad.SpeechDetected += _ => detected = true;
         vad.SpeechStopped += () => stopped = true;
 
         // Frame with high level
         vad.ProcessAudioFrame(0.35);
         Assert.True(started);
+        Assert.True(detected);
         Assert.True(vad.IsSpeechActive);
 
         // Silence frames
