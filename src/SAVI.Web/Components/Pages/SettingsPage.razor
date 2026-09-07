@@ -1,0 +1,135 @@
+@page "/settings"
+@rendermode InteractiveServer
+@inject ISettingsService SettingsService
+@inject IMemoryService MemoryService
+@inject IConversationService ConversationService
+
+<PageTitle>SAVI — Configuration & Privacy</PageTitle>
+
+<div class="savi-glass-panel savi-hud-bracket" style="padding: 24px; min-height: calc(100vh - 80px); max-width: 800px; margin: 0 auto;">
+    <h2 class="savi-glow-text" style="margin-top: 0; margin-bottom: 20px; font-size: 1.3rem;">SYSTEM CONFIGURATION & PRIVACY</h2>
+
+    @if (_settings != null)
+    {
+        <!-- Personality Engine -->
+        <div class="savi-glass-panel" style="padding: 18px; margin-bottom: 20px;">
+            <h4 class="savi-glow-text" style="margin-top: 0; font-size: 1rem;">PERSONALITY ENGINE</h4>
+            <div style="font-size: 0.8rem; color: var(--savi-text-secondary); margin-bottom: 14px;">
+                Choose how SAVI speaks and interacts with you. Default is Friendly (warm, intelligent, friend-like).
+            </div>
+
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                @foreach (var mode in Enum.GetValues<PersonalityMode>())
+                {
+                    <button class="savi-btn @(_settings.ActivePersonality == mode ? "active" : "")"
+                            @onclick="() => SetPersonality(mode)">
+                        @mode
+                    </button>
+                }
+            </div>
+        </div>
+
+        <!-- Voice & Audio Interaction -->
+        <div class="savi-glass-panel" style="padding: 18px; margin-bottom: 20px;">
+            <h4 class="savi-glow-text" style="margin-top: 0; font-size: 1rem;">VOICE & AUDIO (ZERO-COST WEB SPEECH)</h4>
+            <div style="font-size: 0.8rem; color: var(--savi-text-secondary); margin-bottom: 14px;">
+                Voice recognition and speech synthesis operate through your browser's local speech engines with no paid API keys required.
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <label style="display: flex; align-items: center; gap: 10px; font-size: 0.85rem; cursor: pointer;">
+                    <input type="checkbox" @bind="_settings.VoiceEnabled" @bind:after="SaveSettings" />
+                    Enable Voice Interactions
+                </label>
+
+                <div style="display: flex; align-items: center; gap: 14px; font-size: 0.85rem;">
+                    <span>Speech Rate: @_settings.SpeechRate.ToString("F1")x</span>
+                    <input type="range" min="0.7" max="1.5" step="0.1" @bind="_settings.SpeechRate" @bind:after="SaveSettings" style="width: 160px;" />
+                </div>
+            </div>
+        </div>
+
+        <!-- Accessibility & Appearance -->
+        <div class="savi-glass-panel" style="padding: 18px; margin-bottom: 20px;">
+            <h4 class="savi-glow-text" style="margin-top: 0; font-size: 1rem;">ACCESSIBILITY & APPEARANCE</h4>
+            <div style="display: flex; flex-direction: column; gap: 12px; font-size: 0.85rem;">
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                    <input type="checkbox" @bind="_settings.ReducedMotion" @bind:after="SaveSettings" />
+                    Reduced Motion (Disables HUD core spinning and pulsing animations)
+                </label>
+
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                    <input type="checkbox" @bind="_settings.DarkMode" @bind:after="SaveSettings" />
+                    Cybernetic Dark Palette (Default)
+                </label>
+            </div>
+        </div>
+
+        <!-- Privacy & Local Data Ownership -->
+        <div class="savi-glass-panel" style="padding: 18px; border-color: var(--savi-danger);">
+            <h4 style="margin-top: 0; color: var(--savi-danger); font-size: 1rem;">DATA OWNERSHIP & PRIVACY</h4>
+            <div style="font-size: 0.8rem; color: var(--savi-text-secondary); margin-bottom: 16px;">
+                All conversations, memories, and task logs are stored in your local SQLite database (<code style="color: var(--savi-cyan);">savi.db</code>). Nothing is transmitted to proprietary cloud analytics.
+            </div>
+
+            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <button class="savi-btn savi-btn-danger" @onclick="ClearConversations">
+                    Clear All Conversations
+                </button>
+                <button class="savi-btn savi-btn-danger" @onclick="ClearMemories">
+                    Wipe All Memory
+                </button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_statusMessage))
+            {
+                <div style="margin-top: 14px; font-size: 0.82rem; color: var(--savi-success);">
+                    ✓ @_statusMessage
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private UserSettingsDto? _settings;
+    private string? _statusMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _settings = await SettingsService.GetSettingsAsync();
+    }
+
+    private async Task SetPersonality(PersonalityMode mode)
+    {
+        if (_settings == null) return;
+        _settings.ActivePersonality = mode;
+        await SaveSettings();
+    }
+
+    private async Task SaveSettings()
+    {
+        if (_settings != null)
+        {
+            await SettingsService.UpdateSettingsAsync(_settings);
+            _statusMessage = "Settings saved successfully.";
+            StateHasChanged();
+        }
+    }
+
+    private async Task ClearConversations()
+    {
+        var summaries = await ConversationService.GetSummariesAsync(true);
+        foreach (var c in summaries)
+        {
+            await ConversationService.DeleteAsync(c.Id);
+        }
+        _statusMessage = "All conversation history has been cleared.";
+    }
+
+    private async Task ClearMemories()
+    {
+        await MemoryService.ClearAllAsync();
+        _statusMessage = "All long-term memories have been permanently cleared.";
+    }
+}

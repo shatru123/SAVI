@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <RootNamespace>SAVI.Web</RootNamespace>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\SAVI.Core\SAVI.Core.csproj" />
+    <ProjectReference Include="..\SAVI.Application\SAVI.Application.csproj" />
+    <ProjectReference Include="..\SAVI.Infrastructure\SAVI.Infrastructure.csproj" />
+    <ProjectReference Include="..\SAVI.Agent\SAVI.Agent.csproj" />
+    <ProjectReference Include="..\SAVI.Tools\SAVI.Tools.csproj" />
+  </ItemGroup>
+</Project>

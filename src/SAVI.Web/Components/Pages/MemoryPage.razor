@@ -1,0 +1,177 @@
+@page "/memory"
+@rendermode InteractiveServer
+@inject IMemoryService MemoryService
+
+<PageTitle>SAVI — Long-Term Memory Deck</PageTitle>
+
+<div class="savi-glass-panel savi-hud-bracket" style="padding: 24px; min-height: calc(100vh - 80px);">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 16px; margin-bottom: 20px;">
+        <div>
+            <h2 class="savi-glow-text" style="margin: 0; font-size: 1.3rem;">LONG-TERM MEMORY ENGINE</h2>
+            <div style="font-size: 0.8rem; color: var(--savi-text-secondary); margin-top: 4px;">
+                Persistent facts, instructions, user preferences, and project context. You maintain full ownership of all stored memories.
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+            <button class="savi-btn" @onclick="() => _showAddModal = true">+ Add Memory</button>
+            <button class="savi-btn savi-btn-danger" @onclick="ClearAll">Clear All Memory</button>
+        </div>
+    </div>
+
+    <!-- Category Filters & Search -->
+    <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+        <input type="text" class="savi-input-field" placeholder="Search memories..."
+               style="padding: 8px 12px; border: 1px solid var(--savi-border-subtle); border-radius: 4px; max-width: 300px;"
+               @bind="_searchQuery" @bind:event="oninput" @bind:after="FilterMemories" />
+
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <button class="savi-btn @(_selectedCategory == null ? "active" : "")" @onclick="() => SelectCategory(null)">All</button>
+            @foreach (var type in Enum.GetValues<MemoryType>())
+            {
+                <button class="savi-btn @(_selectedCategory == type ? "active" : "")" @onclick="() => SelectCategory(type)">
+                    @type
+                </button>
+            }
+        </div>
+    </div>
+
+    <!-- Memories Grid -->
+    @if (_memories.Count == 0)
+    {
+        <div style="text-align: center; color: var(--savi-text-dim); margin-top: 60px;">
+            <div style="font-size: 2rem; margin-bottom: 10px;">🧠</div>
+            <div>No memory items found for the active filter.</div>
+        </div>
+    }
+    else
+    {
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px;">
+            @foreach (var item in _memories)
+            {
+                <div class="savi-glass-panel" style="padding: 14px; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <span class="savi-badge">@item.Type</span>
+                            <span style="font-size: 0.7rem; color: var(--savi-text-dim);">
+                                @item.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd")
+                            </span>
+                        </div>
+                        <div style="font-size: 0.88rem; line-height: 1.4; color: var(--savi-text-primary);">
+                            @item.Content
+                        </div>
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; border-top: 1px dashed var(--savi-border-subtle); padding-top: 8px;">
+                        <button class="savi-btn savi-btn-danger" style="padding: 3px 8px; font-size: 0.75rem;" @onclick="() => DeleteMemory(item.Id)">
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<!-- Add Memory Modal -->
+@if (_showAddModal)
+{
+    <div style="position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 9999;">
+        <div class="savi-glass-panel savi-hud-bracket" style="width: 480px; max-width: 90%; padding: 24px;">
+            <h3 class="savi-glow-text" style="margin-top: 0;">Add New Memory</h3>
+
+            <div style="margin-bottom: 14px;">
+                <label style="font-size: 0.8rem; color: var(--savi-text-secondary); display: block; margin-bottom: 6px;">Category</label>
+                <select class="savi-input-field" style="width: 100%; padding: 8px; background: var(--savi-bg-surface); border: 1px solid var(--savi-border-subtle);" @bind="_newMemoryType">
+                    @foreach (var type in Enum.GetValues<MemoryType>())
+                    {
+                        <option value="@type">@type</option>
+                    }
+                </select>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label style="font-size: 0.8rem; color: var(--savi-text-secondary); display: block; margin-bottom: 6px;">Content</label>
+                <textarea class="savi-input-field" style="width: 100%; height: 80px; padding: 8px; background: var(--savi-bg-surface); border: 1px solid var(--savi-border-subtle);"
+                          @bind="_newMemoryContent" placeholder="e.g. User prefers concise technical explanations."></textarea>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="savi-btn" style="border-color: var(--savi-text-dim); color: var(--savi-text-secondary);" @onclick="() => _showAddModal = false">Cancel</button>
+                <button class="savi-btn" @onclick="SaveNewMemory" disabled="@string.IsNullOrWhiteSpace(_newMemoryContent)">Save Memory</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<MemoryItemDto> _memories = new();
+    private string _searchQuery = string.Empty;
+    private MemoryType? _selectedCategory;
+    private bool _showAddModal = false;
+    private MemoryType _newMemoryType = MemoryType.Preference;
+    private string _newMemoryContent = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadMemories();
+    }
+
+    private async Task LoadMemories()
+    {
+        if (_selectedCategory.HasValue)
+        {
+            _memories = (await MemoryService.GetByCategoryAsync(_selectedCategory.Value)).ToList();
+        }
+        else
+        {
+            _memories = (await MemoryService.GetAllAsync()).ToList();
+        }
+    }
+
+    private async Task SelectCategory(MemoryType? type)
+    {
+        _selectedCategory = type;
+        await LoadMemories();
+    }
+
+    private async Task FilterMemories()
+    {
+        if (string.IsNullOrWhiteSpace(_searchQuery))
+        {
+            await LoadMemories();
+        }
+        else
+        {
+            _memories = (await MemoryService.SearchAsync(_searchQuery)).ToList();
+        }
+    }
+
+    private async Task SaveNewMemory()
+    {
+        if (string.IsNullOrWhiteSpace(_newMemoryContent)) return;
+
+        await MemoryService.AddAsync(new CreateMemoryDto
+        {
+            Type = _newMemoryType,
+            Content = _newMemoryContent.Trim(),
+            Importance = 1.0
+        });
+
+        _newMemoryContent = string.Empty;
+        _showAddModal = false;
+        await LoadMemories();
+    }
+
+    private async Task DeleteMemory(string id)
+    {
+        await MemoryService.DeleteAsync(id);
+        await LoadMemories();
+    }
+
+    private async Task ClearAll()
+    {
+        await MemoryService.ClearAllAsync();
+        await LoadMemories();
+    }
+}

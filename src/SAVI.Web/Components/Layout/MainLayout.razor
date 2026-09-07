@@ -1,0 +1,32 @@
+@inherits LayoutComponentBase
+
+<div style="display: flex; flex-direction: column; min-height: 100vh;">
+    <!-- Top Futuristic Telemetry Banner -->
+    <header style="height: 48px; background: rgba(7, 11, 20, 0.95); border-bottom: 1px solid var(--savi-border-subtle); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; z-index: 100;">
+        <div style="display: flex; align-items: center; gap: 14px;">
+            <span class="savi-glow-text" style="font-weight: bold; font-size: 0.9rem; letter-spacing: 1.5px;">SAVI // HUD INTERFACE</span>
+            <span class="savi-badge" style="color: var(--savi-success); border-color: rgba(0,255,170,0.3);">
+                ● SYSTEM ONLINE
+            </span>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 16px; font-size: 0.75rem; color: var(--savi-text-secondary);">
+            <span>HOST: <strong>@Environment.MachineName</strong></span>
+            <span>MODEL INDEPENDENT</span>
+            <span>ARCH: <strong>.NET 10</strong></span>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div style="display: flex; flex: 1; overflow: hidden;">
+        <!-- Left Sidebar -->
+        <aside style="width: 260px; min-width: 260px; padding: 12px; height: calc(100vh - 48px); box-sizing: border-box;">
+            <NavMenu />
+        </aside>
+
+        <!-- Main Center Stage -->
+        <main style="flex: 1; padding: 12px; height: calc(100vh - 48px); box-sizing: border-box; overflow-y: auto;">
+            @Body
+        </main>
+    </div>
+</div>

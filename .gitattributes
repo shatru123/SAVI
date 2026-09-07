@@ -1,0 +1,13 @@
+# Auto detect text files and perform LF normalization
+* text=auto eol=lf
+
+*.cs text diff=csharp
+*.csproj text
+*.sln text
+*.json text
+*.md text
+*.razor text
+*.css text
+*.html text
+*.js text
+*.sh text eol=lf

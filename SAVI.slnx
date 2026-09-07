@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SAVI.Agent/SAVI.Agent.csproj" />
+    <Project Path="src/SAVI.Api/SAVI.Api.csproj" />
+    <Project Path="src/SAVI.Application/SAVI.Application.csproj" />
+    <Project Path="src/SAVI.Core/SAVI.Core.csproj" />
+    <Project Path="src/SAVI.Desktop/SAVI.Desktop.csproj" />
+    <Project Path="src/SAVI.Infrastructure/SAVI.Infrastructure.csproj" />
+    <Project Path="src/SAVI.Mobile/SAVI.Mobile.csproj" />
+    <Project Path="src/SAVI.Tools/SAVI.Tools.csproj" />
+    <Project Path="src/SAVI.Web/SAVI.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SAVI.Agent.Tests/SAVI.Agent.Tests.csproj" />
+    <Project Path="tests/SAVI.Api.Tests/SAVI.Api.Tests.csproj" />
+    <Project Path="tests/SAVI.Application.Tests/SAVI.Application.Tests.csproj" />
+    <Project Path="tests/SAVI.Core.Tests/SAVI.Core.Tests.csproj" />
+    <Project Path="tests/SAVI.Infrastructure.Tests/SAVI.Infrastructure.Tests.csproj" />
+  </Folder>
+</Solution>

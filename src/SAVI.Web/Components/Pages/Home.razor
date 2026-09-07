@@ -1,0 +1,406 @@
+@page "/"
+@rendermode InteractiveServer
+@inject IAgentOrchestrator Orchestrator
+@inject IConversationService ConversationService
+@inject ISettingsService SettingsService
+@inject IJSRuntime JS
+
+<PageTitle>SAVI — Shatru's Adaptive Virtual Intelligence</PageTitle>
+
+<div style="display: flex; height: 100%; gap: 14px;">
+    <!-- Conversations Sidebar (Within Home) -->
+    <div class="savi-glass-panel savi-hud-bracket" style="width: 240px; min-width: 240px; padding: 12px; display: flex; flex-direction: column; gap: 10px;">
+        <button class="savi-btn" style="width: 100%; justify-content: center;" @onclick="StartNewChat">
+            + New Chat
+        </button>
+
+        <input type="text" class="savi-input-field" placeholder="Search conversations..." 
+               style="padding: 6px 8px; border: 1px solid var(--savi-border-subtle); border-radius: 4px; font-size: 0.8rem;"
+               @bind="_searchQuery" @bind:event="oninput" @bind:after="FilterConversations" />
+
+        <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">
+            @if (_conversations.Count == 0)
+            {
+                <div style="font-size: 0.75rem; color: var(--savi-text-dim); text-align: center; margin-top: 20px;">
+                    No past conversations
+                </div>
+            }
+            else
+            {
+                @foreach (var c in _conversations)
+                {
+                    <div class="conv-item @(c.Id == _currentConversationId ? "active" : "")" @onclick="() => SelectConversation(c.Id)">
+                        <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.82rem;">
+                            @c.Title
+                        </div>
+                        <div style="font-size: 0.68rem; color: var(--savi-text-dim);">
+                            @c.UpdatedAt.ToLocalTime().ToString("MMM dd, HH:mm")
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+    <!-- Central Stage: Core & Chat Stream -->
+    <div class="savi-glass-panel savi-hud-bracket" style="flex: 1; display: flex; flex-direction: column; padding: 16px;">
+        <!-- Top Toolbar -->
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="savi-glow-text" style="font-size: 0.9rem; font-weight: bold;">@_activeTitle</span>
+                @if (_messages.Count > 0)
+                {
+                    <span class="savi-badge">@_messages.Count messages</span>
+                }
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <button class="savi-btn" style="padding: 4px 10px; font-size: 0.78rem;" @onclick="ToggleActivityDrawer">
+                    Telemetry: @(_showActivity ? "Hide" : "Show")
+                </button>
+            </div>
+        </div>
+
+        <!-- Animated SAVI Core (Shrinks when active chat) -->
+        <div style="text-align: center; margin-bottom: @_messages.Count == 0 ? "24px" : "10px";">
+            <SaviCore VoiceState="_voiceState" ReducedMotion="_reducedMotion" />
+        </div>
+
+        <!-- Messages Stream -->
+        <div class="savi-messages-stream" id="messages-container">
+            @if (_messages.Count == 0)
+            {
+                <div style="text-align: center; color: var(--savi-text-secondary); margin-top: 40px; font-size: 0.9rem;">
+                    <div class="savi-glow-text" style="font-size: 1.1rem; margin-bottom: 8px;">"I'm listening, Shatru."</div>
+                    <div>Ask about weather, currency exchange, GitHub, files, system stats, or tell me something to remember.</div>
+                </div>
+            }
+            else
+            {
+                @foreach (var msg in _messages)
+                {
+                    <div class="savi-message @(msg.Role == MessageRole.User ? "savi-message-user" : "savi-message-assistant")">
+                        <div style="font-size: 0.72rem; color: var(--savi-cyan); margin-bottom: 4px; display: flex; justify-content: space-between;">
+                            <span>@(msg.Role == MessageRole.User ? "SHATRU" : "SAVI CORE")</span>
+                            <span style="color: var(--savi-text-dim);">@msg.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                        </div>
+
+                        <div style="white-space: pre-wrap;">@msg.Content</div>
+
+                        @if (msg.Sources != null && msg.Sources.Count > 0)
+                        {
+                            <div style="margin-top: 10px; border-top: 1px dashed var(--savi-border-subtle); padding-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                                @foreach (var src in msg.Sources)
+                                {
+                                    <a href="@src.Url" target="_blank" class="savi-badge" style="text-decoration: none;" title="@src.Snippet">
+                                        ✓ @src.SourceName (@(src.ReliabilityScore * 100)%)
+                                    </a>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            }
+
+            @if (_isProcessing)
+            {
+                <div class="savi-message savi-message-assistant">
+                    <div class="savi-glow-text" style="display: flex; align-items: center; gap: 8px;">
+                        <span style="animation: savi-spin-slow 2s linear infinite; display: inline-block;">◈</span>
+                        SAVI is reasoning...
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Input Deck -->
+        <div class="savi-input-deck" style="margin-top: 12px;">
+            <input type="text" class="savi-input-field" placeholder="Ask SAVI anything or issue a command..."
+                   @bind="_userInput" @bind:event="oninput" @onkeydown="HandleKeyDown" disabled="@_isProcessing" />
+
+            <!-- Microphone Button -->
+            <button class="savi-btn savi-btn-voice @(_isListening ? "listening" : "")" 
+                    title="@(_isListening ? "Stop Listening" : "Voice Input (Web Speech API)")" 
+                    @onclick="ToggleVoiceInput">
+                @(_isListening ? "⏹" : "🎙")
+            </button>
+
+            <!-- Send Button -->
+            <button class="savi-btn" @onclick="SendMessage" disabled="@(string.IsNullOrWhiteSpace(_userInput) || _isProcessing)">
+                Send ↵
+            </button>
+        </div>
+    </div>
+
+    <!-- Telemetry Activity Panel Drawer -->
+    @if (_showActivity)
+    {
+        <div style="width: 280px; min-width: 280px;">
+            <ActivityPanel Logs="_activityLogs" OnClose="() => _showActivity = false" />
+        </div>
+    }
+</div>
+
+<!-- Dangerous Action Approval Modal -->
+<ActionModal ApprovalRequest="_pendingApproval" OnDecision="HandleActionDecision" />
+
+<style>
+.conv-item {
+    padding: 8px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+}
+.conv-item:hover, .conv-item.active {
+    background: rgba(0, 240, 255, 0.08);
+    border-color: var(--savi-border-subtle);
+    color: var(--savi-cyan);
+}
+</style>
+
+@code {
+    private string _userInput = string.Empty;
+    private string _searchQuery = string.Empty;
+    private string? _currentConversationId;
+    private string _activeTitle = "New Conversation";
+    private bool _isProcessing = false;
+    private bool _isListening = false;
+    private bool _showActivity = false;
+    private bool _reducedMotion = false;
+    private VoiceState _voiceState = VoiceState.Idle;
+
+    private List<ConversationSummaryDto> _conversations = new();
+    private List<MessageDto> _messages = new();
+    private List<string> _activityLogs = new();
+    private ActionApprovalRequest? _pendingApproval;
+    private DotNetObjectReference<Home>? _dotNetRef;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var settings = await SettingsService.GetSettingsAsync();
+        _reducedMotion = settings.ReducedMotion;
+        await LoadConversations();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            try
+            {
+                await JS.InvokeVoidAsync("saviVoice.init", _dotNetRef);
+            }
+            catch { }
+        }
+    }
+
+    private async Task LoadConversations()
+    {
+        _conversations = (await ConversationService.GetSummariesAsync()).ToList();
+        if (_conversations.Count > 0 && _currentConversationId == null)
+        {
+            await SelectConversation(_conversations[0].Id);
+        }
+    }
+
+    private async Task SelectConversation(string id)
+    {
+        _currentConversationId = id;
+        var detail = await ConversationService.GetByIdAsync(id);
+        if (detail != null)
+        {
+            _activeTitle = detail.Title;
+            _messages = detail.Messages.ToList();
+        }
+        StateHasChanged();
+    }
+
+    private async Task StartNewChat()
+    {
+        var newConv = await ConversationService.GetOrCreateAsync(null);
+        _currentConversationId = newConv.Id;
+        _activeTitle = newConv.Title;
+        _messages.Clear();
+        await LoadConversations();
+    }
+
+    private async Task FilterConversations()
+    {
+        if (string.IsNullOrWhiteSpace(_searchQuery))
+        {
+            await LoadConversations();
+        }
+        else
+        {
+            _conversations = (await ConversationService.SearchAsync(_searchQuery)).ToList();
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey && !string.IsNullOrWhiteSpace(_userInput) && !_isProcessing)
+        {
+            await SendMessage();
+        }
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(_userInput) || _isProcessing) return;
+
+        var prompt = _userInput.Trim();
+        _userInput = string.Empty;
+        _isProcessing = true;
+        _voiceState = VoiceState.Processing;
+
+        // Immediate user message in UI
+        _messages.Add(new MessageDto
+        {
+            Id = Guid.NewGuid().ToString(),
+            Role = MessageRole.User,
+            Content = prompt,
+            Timestamp = DateTimeOffset.UtcNow
+        });
+
+        StateHasChanged();
+
+        try
+        {
+            var req = new AgentRequest
+            {
+                Message = prompt,
+                ConversationId = _currentConversationId ?? string.Empty,
+                VoiceActive = _isListening
+            };
+
+            var res = await Orchestrator.ProcessAsync(req);
+
+            _currentConversationId = res.ConversationId;
+            _activityLogs = res.ActivityLogs.ToList();
+
+            if (res.RequiresApproval && res.PendingApprovalAction != null)
+            {
+                _pendingApproval = res.PendingApprovalAction;
+            }
+
+            _messages.Add(new MessageDto
+            {
+                Id = Guid.NewGuid().ToString(),
+                Role = MessageRole.Assistant,
+                Content = res.Message,
+                Timestamp = DateTimeOffset.UtcNow,
+                Sources = res.Sources
+            });
+
+            _voiceState = res.ActiveVoiceState;
+
+            // If voice mode active, speak the result
+            if (res.ActiveVoiceState == VoiceState.Speaking)
+            {
+                try
+                {
+                    await JS.InvokeVoidAsync("saviVoice.speak", res.Message);
+                }
+                catch { }
+            }
+
+            await LoadConversations();
+        }
+        catch (Exception ex)
+        {
+            _messages.Add(new MessageDto
+            {
+                Id = Guid.NewGuid().ToString(),
+                Role = MessageRole.Assistant,
+                Content = $"I encountered an unexpected issue: {ex.Message}. I've logged the technical details.",
+                Timestamp = DateTimeOffset.UtcNow
+            });
+            _voiceState = VoiceState.Error;
+        }
+        finally
+        {
+            _isProcessing = false;
+            if (_voiceState != VoiceState.Speaking)
+            {
+                _voiceState = VoiceState.Idle;
+            }
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleVoiceInput()
+    {
+        try
+        {
+            var listening = await JS.InvokeAsync<bool>("saviVoice.toggleListening");
+            _isListening = listening;
+            _voiceState = _isListening ? VoiceState.Listening : VoiceState.Idle;
+        }
+        catch
+        {
+            _isListening = false;
+            _voiceState = VoiceState.Idle;
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnSpeechRecognized(string transcript)
+    {
+        _userInput = transcript;
+        _isListening = false;
+        _voiceState = VoiceState.Processing;
+        StateHasChanged();
+        await SendMessage();
+    }
+
+    [JSInvokable]
+    public void OnVoiceStateChanged(int stateCode)
+    {
+        _voiceState = (VoiceState)stateCode;
+        _isListening = _voiceState == VoiceState.Listening;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void ToggleActivityDrawer()
+    {
+        _showActivity = !_showActivity;
+    }
+
+    private async Task HandleActionDecision(bool approved)
+    {
+        if (_pendingApproval == null) return;
+
+        var actionId = _pendingApproval.ActionId;
+        _pendingApproval = null;
+        _isProcessing = true;
+
+        try
+        {
+            var req = new AgentRequest
+            {
+                Message = approved ? "User approved the requested action." : "User cancelled the requested action.",
+                ConversationId = _currentConversationId ?? string.Empty,
+                ApprovedActionId = actionId,
+                ActionApproved = approved
+            };
+
+            var res = await Orchestrator.ProcessAsync(req);
+            _messages.Add(new MessageDto
+            {
+                Id = Guid.NewGuid().ToString(),
+                Role = MessageRole.Assistant,
+                Content = res.Message,
+                Timestamp = DateTimeOffset.UtcNow,
+                Sources = res.Sources
+            });
+        }
+        finally
+        {
+            _isProcessing = false;
+            _voiceState = VoiceState.Idle;
+            StateHasChanged();
+        }
+    }
+}

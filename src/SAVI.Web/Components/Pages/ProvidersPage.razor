@@ -1,0 +1,165 @@
+@page "/providers"
+@rendermode InteractiveServer
+@inject IProviderRegistry ProviderRegistry
+@inject IProviderDefinitionRepository ProviderDefinitionRepo
+@inject HttpClient HttpClient
+
+<PageTitle>SAVI — Provider Matrix</PageTitle>
+
+<div class="savi-glass-panel savi-hud-bracket" style="padding: 24px; min-height: calc(100vh - 80px);">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 16px; margin-bottom: 20px;">
+        <div>
+            <h2 class="savi-glow-text" style="margin: 0; font-size: 1.3rem;">CAPABILITY PROVIDER REGISTRY</h2>
+            <div style="font-size: 0.8rem; color: var(--savi-text-secondary); margin-top: 4px;">
+                SAVI uses a pluggable, model-independent capability architecture. All built-in providers are 100% free with zero paid dependencies.
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+            <button class="savi-btn" @onclick="RefreshHealth">⟳ Refresh Health</button>
+            <button class="savi-btn" @onclick="() => _showAddModal = true">+ Add Custom API</button>
+        </div>
+    </div>
+
+    <!-- Provider Cards Grid -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px;">
+        @foreach (var p in _providers)
+        {
+            <div class="savi-glass-panel" style="padding: 16px; border-color: @(p.IsHealthy ? "var(--savi-border-subtle)" : "rgba(255, 170, 0, 0.4)");">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                    <div>
+                        <div style="font-weight: bold; font-size: 0.95rem; color: var(--savi-text-primary);">@p.Name</div>
+                        <div style="font-size: 0.75rem; color: var(--savi-text-dim); margin-top: 2px;">ID: @p.Id</div>
+                    </div>
+
+                    <span class="savi-badge" style="color: @(p.IsHealthy ? "var(--savi-success)" : "var(--savi-warning)"); border-color: @(p.IsHealthy ? "rgba(0,255,170,0.3)" : "rgba(255,170,0,0.3)");">
+                        ● @(p.IsHealthy ? "Healthy" : "Offline / Unchecked")
+                    </span>
+                </div>
+
+                <div style="font-size: 0.78rem; color: var(--savi-text-secondary); display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 12px 0; background: rgba(0,0,0,0.25); padding: 10px; border-radius: 4px;">
+                    <div><strong>Capability:</strong> @p.Capability</div>
+                    <div><strong>Priority:</strong> @p.Priority</div>
+                    <div><strong>Latency:</strong> @p.Latency.TotalMilliseconds.ToString("F0") ms</div>
+                    <div><strong>Zero-Cost:</strong> ✓ Free Public</div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                    <button class="savi-btn" style="padding: 3px 10px; font-size: 0.75rem;" @onclick="() => TestProvider(p.Id)">
+                        Test Ping
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Add Generic Provider Modal -->
+@if (_showAddModal)
+{
+    <div style="position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 9999;">
+        <div class="savi-glass-panel savi-hud-bracket" style="width: 520px; max-width: 90%; padding: 24px;">
+            <h3 class="savi-glow-text" style="margin-top: 0;">Register Generic API Provider</h3>
+
+            <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+                <div>
+                    <label style="font-size: 0.8rem; color: var(--savi-text-secondary); display: block; margin-bottom: 4px;">Provider Name</label>
+                    <input type="text" class="savi-input-field" style="width: 100%; padding: 8px; border: 1px solid var(--savi-border-subtle); border-radius: 4px;"
+                           @bind="_newName" placeholder="e.g. Open News Feed" />
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div>
+                        <label style="font-size: 0.8rem; color: var(--savi-text-secondary); display: block; margin-bottom: 4px;">Capability</label>
+                        <input type="text" class="savi-input-field" style="width: 100%; padding: 8px; border: 1px solid var(--savi-border-subtle); border-radius: 4px;"
+                               @bind="_newCapability" placeholder="e.g. news" />
+                    </div>
+                    <div>
+                        <label style="font-size: 0.8rem; color: var(--savi-text-secondary); display: block; margin-bottom: 4px;">Method</label>
+                        <select class="savi-input-field" style="width: 100%; padding: 8px; background: var(--savi-bg-surface); border: 1px solid var(--savi-border-subtle); border-radius: 4px;"
+                                @bind="_newMethod">
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label style="font-size: 0.8rem; color: var(--savi-text-secondary); display: block; margin-bottom: 4px;">Endpoint URL (SSRF Protected)</label>
+                    <input type="text" class="savi-input-field" style="width: 100%; padding: 8px; border: 1px solid var(--savi-border-subtle); border-radius: 4px;"
+                           @bind="_newEndpoint" placeholder="https://api.example.com/data?query={query}" />
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="savi-btn" style="border-color: var(--savi-text-dim); color: var(--savi-text-secondary);" @onclick="() => _showAddModal = false">Cancel</button>
+                <button class="savi-btn" @onclick="SaveGenericProvider" disabled="@(string.IsNullOrWhiteSpace(_newName) || string.IsNullOrWhiteSpace(_newEndpoint))">Save Provider</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ProviderMetadata> _providers = new();
+    private bool _showAddModal = false;
+    private string _newName = string.Empty;
+    private string _newCapability = "generic";
+    private string _newMethod = "GET";
+    private string _newEndpoint = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProviders();
+    }
+
+    private async Task LoadProviders()
+    {
+        _providers = (await ProviderRegistry.GetMetadataAsync()).ToList();
+    }
+
+    private async Task RefreshHealth()
+    {
+        await LoadProviders();
+    }
+
+    private async Task TestProvider(string id)
+    {
+        var provider = ProviderRegistry.GetById(id);
+        if (provider != null)
+        {
+            var isHealthy = await provider.HealthCheckAsync();
+            var meta = _providers.FirstOrDefault(p => p.Id == id);
+            if (meta != null)
+            {
+                var idx = _providers.IndexOf(meta);
+                _providers[idx] = meta with { IsHealthy = isHealthy };
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task SaveGenericProvider()
+    {
+        if (string.IsNullOrWhiteSpace(_newName) || string.IsNullOrWhiteSpace(_newEndpoint)) return;
+
+        var def = new ApiProviderDefinition
+        {
+            Id = Guid.NewGuid().ToString(),
+            Name = _newName.Trim(),
+            Capability = _newCapability.Trim(),
+            Method = _newMethod,
+            Endpoint = _newEndpoint.Trim(),
+            IsEnabled = true,
+            Priority = 100
+        };
+
+        await ProviderDefinitionRepo.AddAsync(def);
+        var genProvider = new SAVI.Infrastructure.Providers.Generic.GenericHttpApiProvider(HttpClient, def);
+        ProviderRegistry.Register(genProvider);
+
+        _showAddModal = false;
+        _newName = string.Empty;
+        _newEndpoint = string.Empty;
+        await LoadProviders();
+    }
+}

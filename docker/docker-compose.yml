@@ -1,0 +1,15 @@
+services:
+  savi:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "5000:8080"
+    volumes:
+      - savi-data:/app/data
+    environment:
+      - ConnectionStrings__DefaultConnection=Data Source=/app/data/savi.db
+    restart: unless-stopped
+
+volumes:
+  savi-data:

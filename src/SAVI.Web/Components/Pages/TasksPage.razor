@@ -1,0 +1,179 @@
+@page "/tasks"
+@rendermode InteractiveServer
+@inject ITaskService TaskService
+
+<PageTitle>SAVI — Task Execution Matrix</PageTitle>
+
+<div class="savi-glass-panel savi-hud-bracket" style="padding: 24px; min-height: calc(100vh - 80px);">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 16px; margin-bottom: 20px;">
+        <div>
+            <h2 class="savi-glow-text" style="margin: 0; font-size: 1.3rem;">TASK EXECUTION MATRIX</h2>
+            <div style="font-size: 0.8rem; color: var(--savi-text-secondary); margin-top: 4px;">
+                State-machine driven execution for complex multi-step workflows. Dangerous steps pause for explicit confirmation.
+            </div>
+        </div>
+
+        <button class="savi-btn" @onclick="() => _showCreateModal = true">+ Create Multi-Step Task</button>
+    </div>
+
+    @if (_tasks.Count == 0)
+    {
+        <div style="text-align: center; color: var(--savi-text-dim); margin-top: 60px;">
+            <div style="font-size: 2rem; margin-bottom: 10px;">⚙</div>
+            <div>No active tasks. You can ask SAVI to execute complex tasks in the chat, or create one here.</div>
+        </div>
+    }
+    else
+    {
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+            @foreach (var t in _tasks)
+            {
+                <div class="savi-glass-panel" style="padding: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                        <div>
+                            <div style="font-weight: bold; font-size: 1.05rem; color: var(--savi-text-primary);">@t.Title</div>
+                            <div style="font-size: 0.8rem; color: var(--savi-text-secondary); margin-top: 2px;">@t.Description</div>
+                        </div>
+
+                        <span class="savi-badge" style="color: @GetStateColor(t.State); border-color: @GetStateColor(t.State);">
+                            ● @t.State
+                        </span>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div style="background: rgba(0,0,0,0.4); border-radius: 4px; height: 8px; overflow: hidden; margin-bottom: 14px; border: 1px solid var(--savi-border-subtle);">
+                        <div style="background: linear-gradient(90deg, var(--savi-cyan), var(--savi-blue)); height: 100%; width: @(t.ProgressPercentage)%; transition: width 0.3s ease;"></div>
+                    </div>
+
+                    <!-- Step Timeline -->
+                    <div style="display: flex; flex-direction: column; gap: 8px; background: rgba(0,0,0,0.2); padding: 12px; border-radius: 4px;">
+                        @foreach (var step in t.Steps)
+                        {
+                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="color: @GetStateColor(step.State);">
+                                        @(step.State == TaskState.Completed ? "✓" : step.State == TaskState.Running ? "●" : "○")
+                                    </span>
+                                    <span>@step.Name</span>
+                                    @if (step.RequiresApproval)
+                                    {
+                                        <span class="savi-badge" style="font-size: 0.65rem; color: var(--savi-warning); border-color: var(--savi-warning);">Approval Needed</span>
+                                    }
+                                </div>
+
+                                <div>
+                                    @if (step.State == TaskState.WaitingForApproval)
+                                    {
+                                        <button class="savi-btn" style="padding: 2px 8px; font-size: 0.72rem;" @onclick="() => ApproveStep(t.Id, step.Id, true)">
+                                            Approve
+                                        </button>
+                                    }
+                                    <span style="color: var(--savi-text-dim); margin-left: 8px;">@step.State</span>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px;">
+                        @if (t.State != TaskState.Completed && t.State != TaskState.Cancelled)
+                        {
+                            <button class="savi-btn savi-btn-danger" style="padding: 4px 10px; font-size: 0.78rem;" @onclick="() => CancelTask(t.Id)">
+                                Cancel Task
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<!-- Create Task Modal -->
+@if (_showCreateModal)
+{
+    <div style="position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 9999;">
+        <div class="savi-glass-panel savi-hud-bracket" style="width: 500px; max-width: 90%; padding: 24px;">
+            <h3 class="savi-glow-text" style="margin-top: 0;">Create Multi-Step Workflow</h3>
+
+            <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+                <div>
+                    <label style="font-size: 0.8rem; color: var(--savi-text-secondary); display: block; margin-bottom: 4px;">Task Title</label>
+                    <input type="text" class="savi-input-field" style="width: 100%; padding: 8px; border: 1px solid var(--savi-border-subtle); border-radius: 4px;"
+                           @bind="_newTaskTitle" placeholder="e.g. Audit Repository and Generate Report" />
+                </div>
+
+                <div>
+                    <label style="font-size: 0.8rem; color: var(--savi-text-secondary); display: block; margin-bottom: 4px;">Description</label>
+                    <input type="text" class="savi-input-field" style="width: 100%; padding: 8px; border: 1px solid var(--savi-border-subtle); border-radius: 4px;"
+                           @bind="_newTaskDesc" placeholder="e.g. Inspects code files, checks references, compiles report" />
+                </div>
+
+                <div>
+                    <label style="font-size: 0.8rem; color: var(--savi-text-secondary); display: block; margin-bottom: 4px;">Steps (comma separated)</label>
+                    <input type="text" class="savi-input-field" style="width: 100%; padding: 8px; border: 1px solid var(--savi-border-subtle); border-radius: 4px;"
+                           @bind="_newTaskSteps" placeholder="Search files, Read documents, Summarize findings, Generate output report" />
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="savi-btn" style="border-color: var(--savi-text-dim); color: var(--savi-text-secondary);" @onclick="() => _showCreateModal = false">Cancel</button>
+                <button class="savi-btn" @onclick="CreateTask" disabled="@string.IsNullOrWhiteSpace(_newTaskTitle)">Create Task</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<TaskItemDto> _tasks = new();
+    private bool _showCreateModal = false;
+    private string _newTaskTitle = string.Empty;
+    private string _newTaskDesc = string.Empty;
+    private string _newTaskSteps = "Search files, Read documents, Summarize findings, Generate report";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTasks();
+    }
+
+    private async Task LoadTasks()
+    {
+        _tasks = (await TaskService.GetAllAsync()).ToList();
+    }
+
+    private async Task CreateTask()
+    {
+        if (string.IsNullOrWhiteSpace(_newTaskTitle)) return;
+
+        var stepList = _newTaskSteps.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        if (stepList.Count == 0) stepList.Add("Execute primary task step");
+
+        await TaskService.CreateTaskAsync(_newTaskTitle.Trim(), _newTaskDesc.Trim(), stepList);
+
+        _showCreateModal = false;
+        _newTaskTitle = string.Empty;
+        _newTaskDesc = string.Empty;
+        await LoadTasks();
+    }
+
+    private async Task ApproveStep(string taskId, string stepId, bool approved)
+    {
+        await TaskService.ApproveStepAsync(taskId, stepId, approved);
+        await LoadTasks();
+    }
+
+    private async Task CancelTask(string taskId)
+    {
+        await TaskService.CancelTaskAsync(taskId);
+        await LoadTasks();
+    }
+
+    private string GetStateColor(TaskState state) => state switch
+    {
+        TaskState.Completed => "var(--savi-success)",
+        TaskState.Running => "var(--savi-cyan)",
+        TaskState.WaitingForApproval => "var(--savi-warning)",
+        TaskState.Failed => "var(--savi-danger)",
+        TaskState.Cancelled => "var(--savi-text-dim)",
+        _ => "var(--savi-blue)"
+    };
+}

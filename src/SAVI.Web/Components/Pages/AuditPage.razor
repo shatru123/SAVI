@@ -1,0 +1,96 @@
+@page "/audit"
+@rendermode InteractiveServer
+@inject IAuditService AuditService
+
+<PageTitle>SAVI — Security Audit Log</PageTitle>
+
+<div class="savi-glass-panel savi-hud-bracket" style="padding: 24px; min-height: calc(100vh - 80px);">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 16px; margin-bottom: 20px;">
+        <div>
+            <h2 class="savi-glow-text" style="margin: 0; font-size: 1.3rem;">SECURITY & TOOL EXECUTION AUDIT TRAIL</h2>
+            <div style="font-size: 0.8rem; color: var(--savi-text-secondary); margin-top: 4px;">
+                Complete transparent record of all tool invocations, permission classifications, and user approvals.
+            </div>
+        </div>
+
+        <button class="savi-btn" @onclick="LoadLogs">⟳ Refresh Trail</button>
+    </div>
+
+    @if (_logs.Count == 0)
+    {
+        <div style="text-align: center; color: var(--savi-text-dim); margin-top: 60px;">
+            <div style="font-size: 2rem; margin-bottom: 10px;">🛡</div>
+            <div>No audit log entries recorded yet.</div>
+        </div>
+    }
+    else
+    {
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
+                <thead>
+                    <tr style="border-bottom: 1px solid var(--savi-border-glow); text-align: left; color: var(--savi-cyan);">
+                        <th style="padding: 10px 8px;">TIMESTAMP</th>
+                        <th style="padding: 10px 8px;">TOOL</th>
+                        <th style="padding: 10px 8px;">ACTION</th>
+                        <th style="padding: 10px 8px;">LEVEL</th>
+                        <th style="padding: 10px 8px;">STATUS</th>
+                        <th style="padding: 10px 8px;">APPROVED</th>
+                        <th style="padding: 10px 8px;">DETAILS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var entry in _logs)
+                    {
+                        <tr style="border-bottom: 1px solid rgba(0, 240, 255, 0.08);">
+                            <td style="padding: 10px 8px; color: var(--savi-text-dim); font-size: 0.75rem;">
+                                @entry.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                            </td>
+                            <td style="padding: 10px 8px; font-weight: bold; color: var(--savi-text-primary);">
+                                @entry.ToolName
+                            </td>
+                            <td style="padding: 10px 8px;">
+                                @entry.Action
+                            </td>
+                            <td style="padding: 10px 8px;">
+                                <span class="savi-badge" style="color: @GetLevelColor(entry.PermissionLevel); border-color: @GetLevelColor(entry.PermissionLevel);">
+                                    @entry.PermissionLevel
+                                </span>
+                            </td>
+                            <td style="padding: 10px 8px; color: @(entry.Status == "Success" ? "var(--savi-success)" : "var(--savi-warning)");">
+                                @entry.Status
+                            </td>
+                            <td style="padding: 10px 8px;">
+                                @(entry.UserApproved ? "✓ Yes" : "—")
+                            </td>
+                            <td style="padding: 10px 8px; color: var(--savi-text-secondary); max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="@entry.Details">
+                                @entry.Details
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private List<AuditLogEntry> _logs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLogs();
+    }
+
+    private async Task LoadLogs()
+    {
+        _logs = (await AuditService.GetRecentLogsAsync(100)).ToList();
+    }
+
+    private string GetLevelColor(PermissionLevel level) => level switch
+    {
+        PermissionLevel.Safe => "var(--savi-success)",
+        PermissionLevel.Controlled => "var(--savi-warning)",
+        PermissionLevel.Dangerous => "var(--savi-danger)",
+        _ => "var(--savi-cyan)"
+    };
+}
