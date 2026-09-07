@@ -21,7 +21,7 @@ public class VerificationEngine : IVerificationEngine
                 IsVerified = false,
                 Confidence = 0.0,
                 HasContradictions = false,
-                Synthesis = "No providers were able to return valid information for this request.",
+                Synthesis = $"I looked into that for you, but couldn't find specific live information matching \"{query}\". Could you please rephrase, or would you like me to check system stats, weather, currency, or files?",
                 Sources = Array.Empty<SourceReference>()
             });
         }

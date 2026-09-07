@@ -16,7 +16,7 @@ public class IntentDetector
     private static readonly Regex CurrencyRegex = new(@"(?:convert|exchange|rate|how much is)\s+([\d\.]+)?\s*([a-zA-Z]{3})\s+(?:to|in)\s+([a-zA-Z]{3})", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex GitHubRegex = new(@"(?:github|repo|repository)\s+(?:for\s+)?([a-zA-Z0-9_\-\/]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex TimeRegex = new(@"(?:what time|current time|clock|what is the date|today's date)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex SystemRegex = new(@"(?:system status|specs|cpu|ram|memory usage|hardware|system info|uptime)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex SystemRegex = new(@"(?:system status|specs|\bcpu\b|\bram\b|memory usage|hardware|system info|uptime|\bversion\b|\.net|\bdotnet\b|\bframework\b|os version|\bruntime\b|host info)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex CalcRegex = new(@"(?:calculate|eval|compute|math|\b\d+\s*[\+\-\*\/\^]\s*\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex UnitConvertRegex = new(@"([\d\.]+)\s*(?:km|miles?|celsius|fahrenheit|c|f)\s+(?:to|in)\s+(?:km|miles?|celsius|fahrenheit|c|f)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex FileListRegex = new(@"(?:list files|show files|dir|ls|browse directory)\s*(?:in|at)?\s*(.*)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -25,7 +25,11 @@ public class IntentDetector
     private static readonly Regex FileDeleteRegex = new(@"(?:delete file|remove file|erase file|rm)\s+(.+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex MemoryRememberRegex = new(@"(?:remember that|note that|keep in mind that|my preference is)\s+(.+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex MemoryRecallRegex = new(@"(?:what do you remember|what are my preferences|show my memories|what do you know about me)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex GreetingRegex = new(@"^(?:hi|hello|hey|greetings|good morning|good afternoon|good evening|who are you|savi)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ListeningCheckRegex = new(@"(?:are you listening|can you hear me|can you hear|is my mic working|testing (?:mic|voice|audio|microphone)|are you there|are you online|can you understand me)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex StatusCheckRegex = new(@"(?:how are you|how's it going|how are things|are you okay)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex GratitudeRegex = new(@"(?:thank you|thanks|great job|awesome|perfect|nice work)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex IdentityRegex = new(@"(?:who are you|what is your name|what can you do|introduce yourself|tell me about yourself)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex GreetingRegex = new(@"(?:^|[\s,])(?:hi|hello|hey|greetings|good morning|good afternoon|good evening|savi)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public DetectedIntent Detect(string prompt, ContextPackage? context = null)
     {
@@ -149,7 +153,27 @@ public class IntentDetector
                 new Dictionary<string, string> { ["repo"] = repo }, 0.90);
         }
 
-        // 10. Greetings & Identity
+        // 10. Chit-Chat, Listening check, Greetings & Identity
+        if (ListeningCheckRegex.IsMatch(clean))
+        {
+            return new DetectedIntent("chitchat", "listening_check", new Dictionary<string, string>(), 0.98);
+        }
+
+        if (StatusCheckRegex.IsMatch(clean))
+        {
+            return new DetectedIntent("chitchat", "status", new Dictionary<string, string>(), 0.95);
+        }
+
+        if (GratitudeRegex.IsMatch(clean))
+        {
+            return new DetectedIntent("chitchat", "gratitude", new Dictionary<string, string>(), 0.95);
+        }
+
+        if (IdentityRegex.IsMatch(clean))
+        {
+            return new DetectedIntent("chitchat", "identity", new Dictionary<string, string>(), 0.95);
+        }
+
         if (GreetingRegex.IsMatch(clean) || lower == "hi" || lower == "hello" || lower == "hey")
         {
             return new DetectedIntent("chitchat", "greeting", new Dictionary<string, string>(), 0.95);

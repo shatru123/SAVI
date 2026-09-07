@@ -12,6 +12,7 @@ public interface IPersonalityEngine
         bool isVoice = false);
 
     string FormatFriendlyGreeting();
+    string FormatChitChat(string operation, string prompt);
     string FormatError(string reason);
     string FormatActionApprovalPrompt(string actionDescription, PermissionLevel level);
 }

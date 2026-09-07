@@ -13,7 +13,6 @@ public class WikipediaKnowledgeProvider : ICapabilityProvider
     public WikipediaKnowledgeProvider(HttpClient httpClient)
     {
         _httpClient = httpClient;
-        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("SAVI-Companion/1.0 (https://github.com/shatru123/SAVI; contact: shatru@savi.local)");
     }
 
     public string Id => SaviConstants.Providers.Wikipedia;
@@ -35,7 +34,9 @@ public class WikipediaKnowledgeProvider : ICapabilityProvider
         {
             // First try summary API
             var summaryUrl = $"https://en.wikipedia.org/api/rest_v1/page/summary/{Uri.EscapeDataString(topic)}";
-            using var response = await _httpClient.GetAsync(summaryUrl, cancellationToken);
+            using var req = new HttpRequestMessage(HttpMethod.Get, summaryUrl);
+            req.Headers.TryAddWithoutValidation("User-Agent", "SAVI-Companion/1.0 (contact: info@savi.ai)");
+            using var response = await _httpClient.SendAsync(req, cancellationToken);
 
             if (response.IsSuccessStatusCode)
             {
@@ -72,7 +73,9 @@ public class WikipediaKnowledgeProvider : ICapabilityProvider
 
             // Fallback to Wikipedia search API
             var searchUrl = $"https://en.wikipedia.org/w/api.php?action=opensearch&search={Uri.EscapeDataString(topic)}&limit=3&namespace=0&format=json";
-            using var searchResp = await _httpClient.GetAsync(searchUrl, cancellationToken);
+            using var sReq = new HttpRequestMessage(HttpMethod.Get, searchUrl);
+            sReq.Headers.TryAddWithoutValidation("User-Agent", "SAVI-Companion/1.0 (contact: info@savi.ai)");
+            using var searchResp = await _httpClient.SendAsync(sReq, cancellationToken);
             if (searchResp.IsSuccessStatusCode)
             {
                 var sJson = await searchResp.Content.ReadAsStringAsync(cancellationToken);

@@ -13,7 +13,6 @@ public class DuckDuckGoSearchProvider : ICapabilityProvider, ISearchProvider
     public DuckDuckGoSearchProvider(HttpClient httpClient)
     {
         _httpClient = httpClient;
-        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("SAVI-Companion/1.0 (Public Search Integration)");
     }
 
     public string Id => SaviConstants.Providers.DuckDuckGo;
@@ -107,6 +106,48 @@ public class DuckDuckGoSearchProvider : ICapabilityProvider, ISearchProvider
                         }
                     }
                 }
+            }
+
+            if (items.Count == 0)
+            {
+                // Fallback to Wikipedia OpenSearch API for rich web encyclopedic search
+                try
+                {
+                    var wikiSearchUrl = $"https://en.wikipedia.org/w/api.php?action=opensearch&search={Uri.EscapeDataString(request.Query)}&limit={request.MaxResults}&format=json";
+                    using var wikiResp = await _httpClient.GetAsync(wikiSearchUrl, cancellationToken);
+                    if (wikiResp.IsSuccessStatusCode)
+                    {
+                        var wikiJson = await wikiResp.Content.ReadAsStringAsync(cancellationToken);
+                        using var wikiDoc = JsonDocument.Parse(wikiJson);
+                        var wikiRoot = wikiDoc.RootElement;
+                        if (wikiRoot.ValueKind == JsonValueKind.Array && wikiRoot.GetArrayLength() >= 4)
+                        {
+                            var titles = wikiRoot[1];
+                            var descriptions = wikiRoot[2];
+                            var urls = wikiRoot[3];
+                            var count = Math.Min(titles.GetArrayLength(), request.MaxResults);
+
+                            for (int i = 0; i < count; i++)
+                            {
+                                var title = titles[i].GetString() ?? "";
+                                var desc = i < descriptions.GetArrayLength() ? descriptions[i].GetString() ?? "" : "";
+                                var itemUrl = i < urls.GetArrayLength() ? urls[i].GetString() ?? "" : "";
+                                if (!string.IsNullOrWhiteSpace(title) && !string.IsNullOrWhiteSpace(itemUrl))
+                                {
+                                    items.Add(new SearchItem
+                                    {
+                                        Title = title,
+                                        Snippet = string.IsNullOrWhiteSpace(desc) ? $"Article for '{title}' on Wikipedia." : desc,
+                                        Url = itemUrl,
+                                        Source = "Wikipedia Search",
+                                        RelevanceScore = 0.85
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { }
             }
         }
         catch

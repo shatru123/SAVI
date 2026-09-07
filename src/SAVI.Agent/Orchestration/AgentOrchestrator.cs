@@ -79,15 +79,15 @@ public class AgentOrchestrator : IAgentOrchestrator
         LogActivity("Analyzing intent & capability routing");
         var intent = _intentDetector.Detect(request.Message, context);
 
-        // 5. Chit-Chat / Greetings
+        // 5. Chit-Chat / Greetings / Listening Checks
         if (intent.Capability == "chitchat")
         {
-            var greeting = _personalityEngine.FormatFriendlyGreeting();
-            await _conversationService.AppendMessageAsync(conversationId, MessageRole.Assistant, greeting, MessageType.Text, cancellationToken: cancellationToken);
+            var reply = _personalityEngine.FormatChitChat(intent.Operation, request.Message);
+            await _conversationService.AppendMessageAsync(conversationId, MessageRole.Assistant, reply, MessageType.Text, cancellationToken: cancellationToken);
 
             return new AgentResponse
             {
-                Message = greeting,
+                Message = reply,
                 ConversationId = conversationId,
                 Success = true,
                 Confidence = 1.0,

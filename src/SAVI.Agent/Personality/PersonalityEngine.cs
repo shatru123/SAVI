@@ -45,6 +45,19 @@ public class PersonalityEngine : IPersonalityEngine
         return greetings[idx];
     }
 
+    public string FormatChitChat(string operation, string prompt)
+    {
+        return operation.ToLowerInvariant() switch
+        {
+            "listening_check" => "Yes, Shatru! I'm listening loud and clear. My audio and reasoning systems are active. How can I help you right now?",
+            "status" => "I'm doing great, Shatru! All background services and providers are running smoothly. How's everything with you?",
+            "gratitude" => "You're very welcome, Shatru! Always happy to help.",
+            "identity" => "I am SAVI (Shatru's Adaptive Virtual Intelligence) — your personal digital companion and intelligent task execution platform. I can check live weather, convert currencies, evaluate math, inspect files, check host system diagnostics, and remember your preferences.",
+            "greeting" => FormatFriendlyGreeting(),
+            _ => FormatFriendlyGreeting()
+        };
+    }
+
     public string FormatError(string reason)
     {
         return $"I ran into a problem while checking that: {reason}. I've noted this in the diagnostics log.";
@@ -62,14 +75,21 @@ public class PersonalityEngine : IPersonalityEngine
             return $"Sure, Shatru. Here is what I found:\n\n{content}";
         }
 
-        if (!content.StartsWith("Done", StringComparison.OrdinalIgnoreCase) &&
-            !content.StartsWith("Sure", StringComparison.OrdinalIgnoreCase) &&
-            !content.StartsWith("Hey", StringComparison.OrdinalIgnoreCase))
+        // Do not prepend "Done." to complete natural conversational sentences
+        if (content.StartsWith("I ", StringComparison.OrdinalIgnoreCase) ||
+            content.StartsWith("Yes", StringComparison.OrdinalIgnoreCase) ||
+            content.StartsWith("Here", StringComparison.OrdinalIgnoreCase) ||
+            content.StartsWith("Got it", StringComparison.OrdinalIgnoreCase) ||
+            content.StartsWith("Understood", StringComparison.OrdinalIgnoreCase) ||
+            content.StartsWith("Hello", StringComparison.OrdinalIgnoreCase) ||
+            content.StartsWith("Hey", StringComparison.OrdinalIgnoreCase) ||
+            content.StartsWith("Sure", StringComparison.OrdinalIgnoreCase) ||
+            content.StartsWith("Done", StringComparison.OrdinalIgnoreCase))
         {
-            return $"Done. {content}";
+            return content;
         }
 
-        return content;
+        return $"Sure, {content}";
     }
 
     private static string CleanConcise(string content)
