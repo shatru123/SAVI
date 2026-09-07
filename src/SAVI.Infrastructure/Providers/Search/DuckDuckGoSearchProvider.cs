@@ -18,7 +18,14 @@ public class DuckDuckGoSearchProvider : ICapabilityProvider, ISearchProvider
     public string Id => SaviConstants.Providers.DuckDuckGo;
     public string Name => "DuckDuckGo Instant Answer / Web Search (Free)";
     public IReadOnlyCollection<string> Capabilities => new[] { SaviConstants.Capabilities.Search };
-    public int Priority => 15;
+    public int Priority => 25;
+    public SAVI.Core.Enums.ProviderCategory Category => SAVI.Core.Enums.ProviderCategory.WebSearch;
+    public SAVI.Core.Enums.ProviderCostType CostType => SAVI.Core.Enums.ProviderCostType.FreePublic;
+    public double AuthorityLevel => 0.70;
+    public double AccuracyScore => 0.80;
+    public double ReliabilityScore => 0.85;
+    public TimeSpan TypicalLatency => TimeSpan.FromMilliseconds(900);
+    public TimeSpan Timeout => TimeSpan.FromSeconds(3);
 
     public bool CanHandle(TaskRequest request)
     {

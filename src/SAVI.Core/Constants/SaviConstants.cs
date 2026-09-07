@@ -23,6 +23,12 @@ public static class SaviConstants
         public const string Document = "document";
         public const string Memory = "memory";
         public const string Reasoning = "reasoning";
+        public const string Entity = "entity";
+        public const string Research = "research";
+        public const string Books = "books";
+        public const string TechNews = "technews";
+        public const string Crypto = "crypto";
+        public const string Location = "location";
     }
 
     public static class Providers
@@ -38,5 +44,11 @@ public static class SaviConstants
         public const string GenericHttp = "provider-generic-http";
         public const string Ollama = "provider-ollama";
         public const string FreeAi = "provider-free-ai";
+        public const string Wikidata = "provider-wikidata";
+        public const string Crossref = "provider-crossref";
+        public const string OpenLibrary = "provider-openlibrary";
+        public const string HackerNews = "provider-hackernews";
+        public const string CoinGecko = "provider-coingecko";
+        public const string Nominatim = "provider-nominatim";
     }
 }

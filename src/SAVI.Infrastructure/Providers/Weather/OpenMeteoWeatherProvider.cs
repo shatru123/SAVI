@@ -19,40 +19,66 @@ public class OpenMeteoWeatherProvider : ICapabilityProvider
     public string Name => "Open-Meteo Weather Service (Free)";
     public IReadOnlyCollection<string> Capabilities => new[] { SaviConstants.Capabilities.Weather };
     public int Priority => 10;
+    public SAVI.Core.Enums.ProviderCategory Category => SAVI.Core.Enums.ProviderCategory.SpecializedPublicApi;
+    public SAVI.Core.Enums.ProviderCostType CostType => SAVI.Core.Enums.ProviderCostType.FreePublic;
+    public double AuthorityLevel => 0.95;
+    public double AccuracyScore => 0.95;
+    public double ReliabilityScore => 0.95;
+    public TimeSpan TypicalLatency => TimeSpan.FromMilliseconds(450);
+    public TimeSpan Timeout => TimeSpan.FromSeconds(3);
 
     public bool CanHandle(TaskRequest request)
     {
         return request.Capability.Equals(SaviConstants.Capabilities.Weather, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static readonly global::System.Collections.Concurrent.ConcurrentDictionary<string, (double Lat, double Lon, string Name, string Country)> GeoCache = new(StringComparer.OrdinalIgnoreCase);
+
     public async Task<ProviderResult> ExecuteAsync(TaskRequest request, CancellationToken cancellationToken = default)
     {
         var city = request.Parameters.GetValueOrDefault("city") ??
-                   request.Parameters.GetValueOrDefault("location") ?? "London";
+                    request.Parameters.GetValueOrDefault("location") ?? "London";
 
         try
         {
-            // 1. Geocode city
-            var geoUrl = $"https://geocoding-api.open-meteo.com/v1/search?name={Uri.EscapeDataString(city)}&count=1&language=en&format=json";
-            using var geoResponse = await _httpClient.GetAsync(geoUrl, cancellationToken);
-            if (!geoResponse.IsSuccessStatusCode)
+            double lat;
+            double lon;
+            string resolvedName;
+            string country = "";
+
+            if (GeoCache.TryGetValue(city.Trim(), out var cachedGeo))
             {
-                return ProviderResult.Failed(Id, Name, $"Geocoding failed for {city}");
+                lat = cachedGeo.Lat;
+                lon = cachedGeo.Lon;
+                resolvedName = cachedGeo.Name;
+                country = cachedGeo.Country;
             }
-
-            var geoJson = await geoResponse.Content.ReadAsStringAsync(cancellationToken);
-            using var geoDoc = JsonDocument.Parse(geoJson);
-
-            if (!geoDoc.RootElement.TryGetProperty("results", out var results) || results.GetArrayLength() == 0)
+            else
             {
-                return ProviderResult.Failed(Id, Name, $"Location '{city}' could not be resolved.");
-            }
+                // 1. Geocode city via Open-Meteo geocoding API
+                var geoUrl = $"https://geocoding-api.open-meteo.com/v1/search?name={Uri.EscapeDataString(city)}&count=1&language=en&format=json";
+                using var geoResponse = await _httpClient.GetAsync(geoUrl, cancellationToken);
+                if (!geoResponse.IsSuccessStatusCode)
+                {
+                    return ProviderResult.Failed(Id, Name, $"Geocoding failed for {city}");
+                }
 
-            var first = results[0];
-            var lat = first.GetProperty("latitude").GetDouble();
-            var lon = first.GetProperty("longitude").GetDouble();
-            var resolvedName = first.GetProperty("name").GetString() ?? city;
-            var country = first.TryGetProperty("country", out var cProp) ? cProp.GetString() : "";
+                var geoJson = await geoResponse.Content.ReadAsStringAsync(cancellationToken);
+                using var geoDoc = JsonDocument.Parse(geoJson);
+
+                if (!geoDoc.RootElement.TryGetProperty("results", out var results) || results.GetArrayLength() == 0)
+                {
+                    return ProviderResult.Failed(Id, Name, $"Location '{city}' could not be resolved.");
+                }
+
+                var first = results[0];
+                lat = first.GetProperty("latitude").GetDouble();
+                lon = first.GetProperty("longitude").GetDouble();
+                resolvedName = first.GetProperty("name").GetString() ?? city;
+                country = first.TryGetProperty("country", out var cProp) ? cProp.GetString() ?? "" : "";
+
+                GeoCache.TryAdd(city.Trim(), (lat, lon, resolvedName, country));
+            }
 
             // 2. Fetch current weather
             var weatherUrl = $"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto";

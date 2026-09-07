@@ -1,5 +1,6 @@
 @page "/"
 @rendermode InteractiveServer
+@using SAVI.Core.Enums
 @inject IAgentOrchestrator Orchestrator
 @inject IConversationService ConversationService
 @inject ISettingsService SettingsService
@@ -81,6 +82,15 @@
             </div>
 
             <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                <!-- Verification Mode Selector Button -->
+                <button class="savi-btn" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="CycleVerificationPolicy" title="Toggle verification mode (Fast, Balanced, Verified)">
+                    @(_activePolicy switch
+                    {
+                        VerificationPolicy.Fast => "⚡ Fast",
+                        VerificationPolicy.Verified => "🛡 Verified",
+                        _ => "⚖ Balanced"
+                    })
+                </button>
                 <!-- Voice Talk-Back Toggle Button -->
                 <button class="savi-btn @(_talkBackEnabled ? "active-voice-btn" : "")" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="ToggleTalkBack" title="Toggle Voice Talk-Back (Speech Synthesis)">
                     @(_talkBackEnabled ? "🔊 Voice: ON" : "🔇 Voice: OFF")
@@ -166,6 +176,10 @@
             @if (_isProcessing)
             {
                 <div class="savi-message savi-message-assistant" style="padding: 10px 14px; max-width: 90%;">
+                    <div style="font-size: 0.82rem; color: var(--savi-cyan); margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 0.95rem;">⚡</span>
+                        <span class="savi-glow-text">"Sure, Shatru. Checking that now..."</span>
+                    </div>
                     <div class="savi-agent-progress-card">
                         <div class="savi-agent-progress-header">
                             <div class="savi-agent-progress-title">
@@ -308,12 +322,25 @@
     private bool _mobileConvDrawerOpen = false;
     private string? _voiceError;
     private VoiceState _voiceState = VoiceState.Idle;
+    private VerificationPolicy _activePolicy = VerificationPolicy.Balanced;
+    private CancellationTokenSource? _searchCts;
 
     private List<ConversationSummaryDto> _conversations = new();
     private List<MessageDto> _messages = new();
     private List<string> _activityLogs = new();
     private ActionApprovalRequest? _pendingApproval;
     private DotNetObjectReference<Home>? _dotNetRef;
+
+    private void CycleVerificationPolicy()
+    {
+        _activePolicy = _activePolicy switch
+        {
+            VerificationPolicy.Balanced => VerificationPolicy.Verified,
+            VerificationPolicy.Verified => VerificationPolicy.Fast,
+            _ => VerificationPolicy.Balanced
+        };
+        StateHasChanged();
+    }
 
     private async Task ToggleTalkBack()
     {
@@ -430,7 +457,15 @@
 
     private async Task FilterConversations()
     {
-        await LoadConversations();
+        _searchCts?.Cancel();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
+        try
+        {
+            await Task.Delay(250, token);
+            await LoadConversations();
+        }
+        catch (OperationCanceledException) { }
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
@@ -469,6 +504,7 @@
                 Message = prompt,
                 ConversationId = _currentConversationId ?? string.Empty,
                 VoiceActive = _talkBackEnabled || _isListening,
+                VerificationPolicyOverride = _activePolicy,
                 OnStepProgress = (step, label) =>
                 {
                     _executionStep = step;

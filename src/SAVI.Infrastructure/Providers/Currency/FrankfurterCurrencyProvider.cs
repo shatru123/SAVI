@@ -19,6 +19,13 @@ public class FrankfurterCurrencyProvider : ICapabilityProvider
     public string Name => "Frankfurter ECB Currency Exchange (Free)";
     public IReadOnlyCollection<string> Capabilities => new[] { SaviConstants.Capabilities.Currency };
     public int Priority => 10;
+    public SAVI.Core.Enums.ProviderCategory Category => SAVI.Core.Enums.ProviderCategory.SpecializedPublicApi;
+    public SAVI.Core.Enums.ProviderCostType CostType => SAVI.Core.Enums.ProviderCostType.FreePublic;
+    public double AuthorityLevel => 0.95;
+    public double AccuracyScore => 0.98;
+    public double ReliabilityScore => 0.95;
+    public TimeSpan TypicalLatency => TimeSpan.FromMilliseconds(400);
+    public TimeSpan Timeout => TimeSpan.FromSeconds(3);
 
     public bool CanHandle(TaskRequest request)
     {

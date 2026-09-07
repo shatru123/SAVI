@@ -1,0 +1,156 @@
+@page "/diagnostics"
+@rendermode InteractiveServer
+@using SAVI.Core.Enums
+@using SAVI.Core.Interfaces
+@using SAVI.Infrastructure.Resilience
+@inject IProviderCache ProviderCache
+@inject CircuitBreakerRegistry CircuitBreakers
+@inject IProviderRegistry ProviderRegistry
+
+<PageTitle>SAVI — Performance Diagnostics</PageTitle>
+
+<div class="savi-glass-panel savi-hud-bracket" style="padding: 24px; min-height: calc(100vh - 80px);">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 16px; margin-bottom: 20px; flex-wrap: wrap; gap: 14px;">
+        <div>
+            <h2 class="savi-glow-text" style="margin: 0; font-size: 1.25rem;">PERFORMANCE TELEMETRY & DIAGNOSTICS</h2>
+            <div style="font-size: 0.8rem; color: var(--savi-text-secondary); margin-top: 4px;">
+                Live operational metrics, cache hit rates, circuit breaker health, and latency percentiles.
+            </div>
+        </div>
+
+        <button class="savi-btn" @onclick="RefreshMetrics">⟳ Refresh Telemetry</button>
+    </div>
+
+    <!-- Summary Metrics Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-bottom: 24px;">
+        <div class="savi-glass-panel" style="padding: 16px;">
+            <div style="font-size: 0.75rem; color: var(--savi-text-dim); text-transform: uppercase;">Cache Hit Rate</div>
+            <div class="savi-glow-text" style="font-size: 1.6rem; font-weight: bold; margin: 6px 0;">
+                @((ProviderCache.HitRatio * 100).ToString("F1"))%
+            </div>
+            <div style="font-size: 0.72rem; color: var(--savi-text-secondary);">
+                @ProviderCache.CacheHits Hits / @ProviderCache.CacheMisses Misses
+            </div>
+        </div>
+
+        <div class="savi-glass-panel" style="padding: 16px;">
+            <div style="font-size: 0.75rem; color: var(--savi-text-dim); text-transform: uppercase;">Circuit Health</div>
+            <div style="font-size: 1.6rem; font-weight: bold; margin: 6px 0; color: var(--savi-success);">
+                @_healthyCount / @_totalProviders
+            </div>
+            <div style="font-size: 0.72rem; color: var(--savi-text-secondary);">
+                @_openCount Open / @_degradedCount Degraded
+            </div>
+        </div>
+
+        <div class="savi-glass-panel" style="padding: 16px;">
+            <div style="font-size: 0.75rem; color: var(--savi-text-dim); text-transform: uppercase;">Average Provider Latency</div>
+            <div class="savi-glow-text" style="font-size: 1.6rem; font-weight: bold; margin: 6px 0;">
+                @_avgLatencyMs.ToString("F0") ms
+            </div>
+            <div style="font-size: 0.72rem; color: var(--savi-text-secondary);">
+                P95: @_p95LatencyMs.ToString("F0") ms
+            </div>
+        </div>
+
+        <div class="savi-glass-panel" style="padding: 16px;">
+            <div style="font-size: 0.75rem; color: var(--savi-text-dim); text-transform: uppercase;">Execution Concurrency</div>
+            <div style="font-size: 1.6rem; font-weight: bold; margin: 6px 0; color: var(--savi-cyan);">
+                Task.WhenAll
+            </div>
+            <div style="font-size: 0.72rem; color: var(--savi-text-secondary);">
+                Zero-mandatory cost pipeline
+            </div>
+        </div>
+    </div>
+
+    <!-- Telemetry Table -->
+    <h3 style="font-size: 1rem; color: var(--savi-text-primary); margin-bottom: 12px;">Provider Telemetry & Resilience Records</h3>
+    <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left;">
+            <thead>
+                <tr style="border-bottom: 1px solid var(--savi-border-subtle); color: var(--savi-text-dim); text-transform: uppercase; font-size: 0.7rem;">
+                    <th style="padding: 10px 8px;">Provider</th>
+                    <th style="padding: 10px 8px;">State</th>
+                    <th style="padding: 10px 8px;">Category</th>
+                    <th style="padding: 10px 8px;">Authority</th>
+                    <th style="padding: 10px 8px;">Latency (Avg)</th>
+                    <th style="padding: 10px 8px;">Latency (P95)</th>
+                    <th style="padding: 10px 8px;">Success Rate</th>
+                    <th style="padding: 10px 8px;">Failures</th>
+                    <th style="padding: 10px 8px;">Last Active</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in _providerRows)
+                {
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                        <td style="padding: 10px 8px; font-weight: 500; color: var(--savi-text-primary);">
+                            @p.Name
+                            <div style="font-size: 0.68rem; color: var(--savi-text-dim);">@p.Id</div>
+                        </td>
+                        <td style="padding: 10px 8px;">
+                            <span class="savi-badge" style="color: @GetStatusColor(p.CircuitState)">
+                                ● @p.CircuitState
+                            </span>
+                        </td>
+                        <td style="padding: 10px 8px; color: var(--savi-text-secondary);">@p.Category</td>
+                        <td style="padding: 10px 8px; color: var(--savi-cyan);">@((p.AuthorityLevel * 100).ToString("F0"))%</td>
+                        <td style="padding: 10px 8px; color: var(--savi-text-primary);">@p.Latency.TotalMilliseconds.ToString("F0") ms</td>
+                        <td style="padding: 10px 8px; color: var(--savi-text-secondary);">@p.RollingP95Latency.TotalMilliseconds.ToString("F0") ms</td>
+                        <td style="padding: 10px 8px; color: var(--savi-success);">@((p.RollingSuccessRate * 100).ToString("F0"))%</td>
+                        <td style="padding: 10px 8px; color: @(p.ConsecutiveFailures > 0 ? "var(--savi-warning)" : "var(--savi-text-dim)");">
+                            @p.ConsecutiveFailures
+                        </td>
+                        <td style="padding: 10px 8px; color: var(--savi-text-dim); font-size: 0.72rem;">
+                            @(p.LastSuccessfulCall.HasValue ? p.LastSuccessfulCall.Value.ToLocalTime().ToString("HH:mm:ss") : "Ready")
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private List<ProviderMetadata> _providerRows = new();
+    private int _totalProviders;
+    private int _healthyCount;
+    private int _degradedCount;
+    private int _openCount;
+    private double _avgLatencyMs;
+    private double _p95LatencyMs;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshMetrics();
+    }
+
+    private async Task RefreshMetrics()
+    {
+        _providerRows = (await ProviderRegistry.GetMetadataAsync()).ToList();
+        _totalProviders = _providerRows.Count;
+        _healthyCount = _providerRows.Count(p => p.CircuitState == CircuitBreakerState.Healthy);
+        _degradedCount = _providerRows.Count(p => p.CircuitState == CircuitBreakerState.Degraded || p.CircuitState == CircuitBreakerState.HalfOpen);
+        _openCount = _providerRows.Count(p => p.CircuitState == CircuitBreakerState.Open);
+
+        if (_providerRows.Count > 0)
+        {
+            _avgLatencyMs = _providerRows.Average(p => p.Latency.TotalMilliseconds);
+            _p95LatencyMs = _providerRows.Max(p => p.RollingP95Latency.TotalMilliseconds);
+        }
+        StateHasChanged();
+    }
+
+    private static string GetStatusColor(CircuitBreakerState state)
+    {
+        return state switch
+        {
+            CircuitBreakerState.Healthy => "var(--savi-success)",
+            CircuitBreakerState.Degraded => "var(--savi-warning)",
+            CircuitBreakerState.HalfOpen => "var(--savi-cyan)",
+            CircuitBreakerState.Open => "rgba(255, 0, 85, 0.9)",
+            _ => "var(--savi-text-dim)"
+        };
+    }
+}

@@ -1,5 +1,6 @@
 using SAVI.Agent.Routing;
 using SAVI.Core.Constants;
+using SAVI.Core.Enums;
 using SAVI.Core.Interfaces;
 using SAVI.Core.Models;
 
@@ -11,7 +12,8 @@ public record ExecutionPlan(
     IReadOnlyList<ICapabilityProvider> VerificationProviders,
     bool RequiresTool,
     string? ToolName,
-    ToolInput? ToolInput);
+    ToolInput? ToolInput,
+    VerificationPolicy Policy = VerificationPolicy.Balanced);
 
 public class ExecutionPlanner
 {
@@ -22,13 +24,15 @@ public class ExecutionPlanner
         _providerRegistry = providerRegistry;
     }
 
-    public ExecutionPlan CreatePlan(DetectedIntent intent, AgentRequest request)
+    public ExecutionPlan CreatePlan(DetectedIntent intent, AgentRequest request, VerificationPolicy defaultPolicy = VerificationPolicy.Balanced)
     {
+        var policy = request.VerificationPolicyOverride ?? intent.PolicyOverride ?? defaultPolicy;
+
         // 1. FileSystem or Terminal tools
         if (intent.Capability == SaviConstants.Capabilities.FileSystem)
         {
             var action = intent.Operation;
-            var perm = action == "delete" ? Core.Enums.PermissionLevel.Dangerous : Core.Enums.PermissionLevel.Controlled;
+            var perm = action == "delete" ? PermissionLevel.Dangerous : PermissionLevel.Controlled;
             var toolInput = new ToolInput
             {
                 ToolName = "file_system",
@@ -38,7 +42,7 @@ public class ExecutionPlanner
                 UserConfirmed = request.ActionApproved
             };
 
-            return new ExecutionPlan(intent.Capability, Array.Empty<ICapabilityProvider>(), Array.Empty<ICapabilityProvider>(), true, "file_system", toolInput);
+            return new ExecutionPlan(intent.Capability, Array.Empty<ICapabilityProvider>(), Array.Empty<ICapabilityProvider>(), true, "file_system", toolInput, policy);
         }
 
         if (intent.Capability == SaviConstants.Capabilities.Terminal)
@@ -48,14 +52,14 @@ public class ExecutionPlanner
                 ToolName = "terminal",
                 Action = "execute",
                 Arguments = intent.Parameters,
-                RequiredPermission = Core.Enums.PermissionLevel.Dangerous,
+                RequiredPermission = PermissionLevel.Dangerous,
                 UserConfirmed = request.ActionApproved
             };
 
-            return new ExecutionPlan(intent.Capability, Array.Empty<ICapabilityProvider>(), Array.Empty<ICapabilityProvider>(), true, "terminal", toolInput);
+            return new ExecutionPlan(intent.Capability, Array.Empty<ICapabilityProvider>(), Array.Empty<ICapabilityProvider>(), true, "terminal", toolInput, policy);
         }
 
-        // 2. Discover capability providers
+        // 2. Discover capability providers using dynamic scoring
         var taskReq = new TaskRequest
         {
             Capability = intent.Capability,
@@ -66,9 +70,32 @@ public class ExecutionPlanner
         };
 
         var matched = _providerRegistry.RankProviders(taskReq);
-        var primary = matched.Take(1).ToList();
-        var verification = matched.Skip(1).Take(2).ToList(); // Fallback & verification providers
 
-        return new ExecutionPlan(intent.Capability, primary, verification, false, null, null);
+        IReadOnlyList<ICapabilityProvider> primary;
+        IReadOnlyList<ICapabilityProvider> verification;
+
+        switch (policy)
+        {
+            case VerificationPolicy.Fast:
+                // Best provider only, zero verification overhead
+                primary = matched.Take(1).ToList();
+                verification = Array.Empty<ICapabilityProvider>();
+                break;
+
+            case VerificationPolicy.Verified:
+                // Multiple independent providers concurrently for consensus
+                primary = matched.Take(2).ToList();
+                verification = matched.Skip(2).Take(1).ToList();
+                break;
+
+            case VerificationPolicy.Balanced:
+            default:
+                // Best provider primary, fallback/verification standby
+                primary = matched.Take(1).ToList();
+                verification = matched.Skip(1).Take(1).ToList();
+                break;
+        }
+
+        return new ExecutionPlan(intent.Capability, primary, verification, false, null, null, policy);
     }
 }

@@ -24,6 +24,13 @@ public class OptionalOllamaProvider : ICapabilityProvider
     public string Name => $"Local Ollama LLM ({_modelName}) [Optional]";
     public IReadOnlyCollection<string> Capabilities => new[] { SaviConstants.Capabilities.Reasoning };
     public int Priority => 50;
+    public SAVI.Core.Enums.ProviderCategory Category => SAVI.Core.Enums.ProviderCategory.ReasoningSynthesis;
+    public SAVI.Core.Enums.ProviderCostType CostType => SAVI.Core.Enums.ProviderCostType.LocalZeroCost;
+    public double AuthorityLevel => 0.50;
+    public double AccuracyScore => 0.80;
+    public double ReliabilityScore => 0.70;
+    public TimeSpan TypicalLatency => TimeSpan.FromMilliseconds(2000);
+    public TimeSpan Timeout => TimeSpan.FromSeconds(5);
 
     public bool CanHandle(TaskRequest request)
     {

@@ -19,7 +19,14 @@ public class GitHubPublicProvider : ICapabilityProvider
     public string Id => SaviConstants.Providers.GitHubPublic;
     public string Name => "GitHub Public REST API (Free)";
     public IReadOnlyCollection<string> Capabilities => new[] { SaviConstants.Capabilities.GitHub };
-    public int Priority => 15;
+    public int Priority => 10;
+    public SAVI.Core.Enums.ProviderCategory Category => SAVI.Core.Enums.ProviderCategory.SpecializedPublicApi;
+    public SAVI.Core.Enums.ProviderCostType CostType => SAVI.Core.Enums.ProviderCostType.FreePublic;
+    public double AuthorityLevel => 0.95;
+    public double AccuracyScore => 0.95;
+    public double ReliabilityScore => 0.90;
+    public TimeSpan TypicalLatency => TimeSpan.FromMilliseconds(500);
+    public TimeSpan Timeout => TimeSpan.FromSeconds(3);
 
     public bool CanHandle(TaskRequest request)
     {

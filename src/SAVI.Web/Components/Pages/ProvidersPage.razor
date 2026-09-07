@@ -1,51 +1,68 @@
 @page "/providers"
 @rendermode InteractiveServer
+@using SAVI.Core.Enums
 @inject IProviderRegistry ProviderRegistry
 @inject IProviderDefinitionRepository ProviderDefinitionRepo
 @inject HttpClient HttpClient
 
-<PageTitle>SAVI — Provider Matrix</PageTitle>
+<PageTitle>SAVI — Provider Matrix & Intelligence</PageTitle>
 
 <div class="savi-glass-panel savi-hud-bracket" style="padding: 24px; min-height: calc(100vh - 80px);">
     <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 16px; margin-bottom: 20px; flex-wrap: wrap; gap: 14px;">
         <div style="flex: 1; min-width: 240px;">
-            <h2 class="savi-glow-text" style="margin: 0; font-size: 1.25rem;">CAPABILITY PROVIDER REGISTRY</h2>
+            <h2 class="savi-glow-text" style="margin: 0; font-size: 1.25rem;">CAPABILITY PROVIDER REGISTRY & TELEMETRY</h2>
             <div style="font-size: 0.8rem; color: var(--savi-text-secondary); margin-top: 4px;">
-                SAVI uses a pluggable, model-independent capability architecture. All built-in providers are 100% free with zero paid dependencies.
+                Model-independent capability architecture with dynamic scoring, circuit breaking, and parallel execution. Built-in providers are 100% free with zero mandatory cost.
             </div>
         </div>
 
         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button class="savi-btn" @onclick="BenchmarkAllProviders" disabled="@_isBenchmarking">
+                @(_isBenchmarking ? "⚡ Benchmarking..." : "⚡ Run Benchmark")
+            </button>
             <button class="savi-btn" @onclick="RefreshHealth">⟳ Refresh</button>
             <button class="savi-btn" @onclick="() => _showAddModal = true">+ Add API</button>
         </div>
     </div>
 
     <!-- Provider Cards Grid -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 16px;">
         @foreach (var p in _providers)
         {
-            <div class="savi-glass-panel" style="padding: 16px; border-color: @(p.IsHealthy ? "var(--savi-border-subtle)" : "rgba(255, 170, 0, 0.4)");">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+            <div class="savi-glass-panel" style="padding: 16px; border-color: @GetBorderColor(p); cursor: pointer; transition: transform 0.15s ease;"
+                 @onclick="() => SelectProviderDetails(p)">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                     <div>
                         <div style="font-weight: bold; font-size: 0.95rem; color: var(--savi-text-primary);">@p.Name</div>
-                        <div style="font-size: 0.75rem; color: var(--savi-text-dim); margin-top: 2px;">ID: @p.Id</div>
+                        <div style="font-size: 0.72rem; color: var(--savi-text-dim); margin-top: 2px;">ID: @p.Id</div>
                     </div>
 
-                    <span class="savi-badge" style="color: @(p.IsHealthy ? "var(--savi-success)" : "var(--savi-warning)"); border-color: @(p.IsHealthy ? "rgba(0,255,170,0.3)" : "rgba(255,170,0,0.3)");">
-                        ● @(p.IsHealthy ? "Healthy" : "Offline / Unchecked")
+                    <span class="savi-badge" style="color: @GetStatusColor(p.CircuitState); border-color: @GetStatusBorder(p.CircuitState);">
+                        ● @p.CircuitState
                     </span>
                 </div>
 
-                <div style="font-size: 0.78rem; color: var(--savi-text-secondary); display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 12px 0; background: rgba(0,0,0,0.25); padding: 10px; border-radius: 4px;">
-                    <div><strong>Capability:</strong> @p.Capability</div>
-                    <div><strong>Priority:</strong> @p.Priority</div>
-                    <div><strong>Latency:</strong> @p.Latency.TotalMilliseconds.ToString("F0") ms</div>
-                    <div><strong>Zero-Cost:</strong> ✓ Free Public</div>
+                <!-- Classification Tags -->
+                <div style="display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;">
+                    <span class="savi-badge" style="font-size: 0.65rem; background: rgba(0, 240, 255, 0.12); color: var(--savi-cyan); border-color: var(--savi-cyan);">
+                        @GetCostClassificationBadge(p)
+                    </span>
+                    <span class="savi-badge" style="font-size: 0.65rem; background: rgba(0, 255, 170, 0.1); color: var(--savi-success); border-color: var(--savi-success);">
+                        @p.Category
+                    </span>
                 </div>
 
-                <div style="display: flex; justify-content: flex-end; gap: 8px;">
-                    <button class="savi-btn" style="padding: 3px 10px; font-size: 0.75rem;" @onclick="() => TestProvider(p.Id)">
+                <!-- Metrics Grid -->
+                <div style="font-size: 0.76rem; color: var(--savi-text-secondary); display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 4px;">
+                    <div><strong>Capability:</strong> @p.Capability</div>
+                    <div><strong>Authority:</strong> @(p.AuthorityLevel * 100)%</div>
+                    <div><strong>Latency:</strong> @p.Latency.TotalMilliseconds.ToString("F0") ms</div>
+                    <div><strong>Success:</strong> @((p.RollingSuccessRate * 100).ToString("F0"))%</div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                    <span style="font-size: 0.7rem; color: var(--savi-text-dim);">Click for telemetry & details</span>
+                    <button class="savi-btn" style="padding: 3px 10px; font-size: 0.75rem;" @onclick="() => TestProvider(p.Id)" @onclick:stopPropagation="true">
                         Test Ping
                     </button>
                 </div>
@@ -53,6 +70,43 @@
         }
     </div>
 </div>
+
+<!-- Provider Details Modal -->
+@if (_selectedDetail != null)
+{
+    <div style="position: fixed; inset: 0; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 9999;"
+         @onclick="() => _selectedDetail = null">
+        <div class="savi-glass-panel savi-hud-bracket" style="width: 550px; max-width: 90%; padding: 24px;" @onclick:stopPropagation="true">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 12px; margin-bottom: 16px;">
+                <div>
+                    <h3 class="savi-glow-text" style="margin: 0; font-size: 1.15rem;">@_selectedDetail.Name</h3>
+                    <div style="font-size: 0.75rem; color: var(--savi-text-dim); margin-top: 2px;">@_selectedDetail.Id</div>
+                </div>
+                <button class="savi-btn" style="padding: 2px 8px;" @onclick="() => _selectedDetail = null">✕</button>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.82rem; margin-bottom: 16px;">
+                <div><strong>Status:</strong> <span style="color: @GetStatusColor(_selectedDetail.CircuitState)">● @_selectedDetail.CircuitState</span></div>
+                <div><strong>Classification:</strong> @GetCostClassificationBadge(_selectedDetail)</div>
+                <div><strong>Category:</strong> @_selectedDetail.Category</div>
+                <div><strong>Authority Level:</strong> @(_selectedDetail.AuthorityLevel * 100)%</div>
+                <div><strong>Accuracy Rating:</strong> @(_selectedDetail.AccuracyScore * 100)%</div>
+                <div><strong>Reliability Score:</strong> @(_selectedDetail.ReliabilityScore * 100)%</div>
+                <div><strong>Typical Latency:</strong> @_selectedDetail.TypicalLatency.TotalMilliseconds.ToString("F0") ms</div>
+                <div><strong>Rolling P95 Latency:</strong> @_selectedDetail.RollingP95Latency.TotalMilliseconds.ToString("F0") ms</div>
+                <div><strong>Rolling Success Rate:</strong> @((_selectedDetail.RollingSuccessRate * 100).ToString("F0"))%</div>
+                <div><strong>Timeout Limit:</strong> @_selectedDetail.Timeout.TotalMilliseconds.ToString("F0") ms</div>
+                <div><strong>Supports Caching:</strong> @(_selectedDetail.SupportsCaching ? "✓ Yes" : "✗ No")</div>
+                <div><strong>Supports Verification:</strong> @(_selectedDetail.SupportsVerification ? "✓ Yes" : "✗ No")</div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="savi-btn" @onclick="() => TestProvider(_selectedDetail.Id)">Run Diagnostic Ping</button>
+                <button class="savi-btn" style="border-color: var(--savi-text-dim); color: var(--savi-text-secondary);" @onclick="() => _selectedDetail = null">Close</button>
+            </div>
+        </div>
+    </div>
+}
 
 <!-- Add Generic Provider Modal -->
 @if (_showAddModal)
@@ -101,7 +155,9 @@
 
 @code {
     private List<ProviderMetadata> _providers = new();
+    private ProviderMetadata? _selectedDetail = null;
     private bool _showAddModal = false;
+    private bool _isBenchmarking = false;
     private string _newName = string.Empty;
     private string _newCapability = "generic";
     private string _newMethod = "GET";
@@ -119,7 +175,35 @@
 
     private async Task RefreshHealth()
     {
+        if (ProviderRegistry is SAVI.Infrastructure.Providers.ProviderRegistry pr)
+        {
+            await pr.RefreshHealthAsync();
+        }
         await LoadProviders();
+    }
+
+    private async Task BenchmarkAllProviders()
+    {
+        _isBenchmarking = true;
+        StateHasChanged();
+        try
+        {
+            if (ProviderRegistry is SAVI.Infrastructure.Providers.ProviderRegistry pr)
+            {
+                await pr.RefreshHealthAsync();
+            }
+            await LoadProviders();
+        }
+        finally
+        {
+            _isBenchmarking = false;
+            StateHasChanged();
+        }
+    }
+
+    private void SelectProviderDetails(ProviderMetadata p)
+    {
+        _selectedDetail = p;
     }
 
     private async Task TestProvider(string id)
@@ -127,15 +211,74 @@
         var provider = ProviderRegistry.GetById(id);
         if (provider != null)
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             var isHealthy = await provider.HealthCheckAsync();
+            sw.Stop();
+
             var meta = _providers.FirstOrDefault(p => p.Id == id);
             if (meta != null)
             {
                 var idx = _providers.IndexOf(meta);
-                _providers[idx] = meta with { IsHealthy = isHealthy };
+                _providers[idx] = meta with
+                {
+                    IsHealthy = isHealthy,
+                    CircuitState = isHealthy ? CircuitBreakerState.Healthy : CircuitBreakerState.Degraded,
+                    Latency = sw.Elapsed
+                };
+                if (_selectedDetail?.Id == id)
+                {
+                    _selectedDetail = _providers[idx];
+                }
                 StateHasChanged();
             }
         }
+    }
+
+    private static string GetCostClassificationBadge(ProviderMetadata p)
+    {
+        return p.CostType switch
+        {
+            ProviderCostType.LocalZeroCost => "LOCAL",
+            ProviderCostType.FreePublic => "PUBLIC FREE",
+            ProviderCostType.OptionalKey => "OPTIONAL KEY",
+            ProviderCostType.OptionalPaid => "OPTIONAL PAID",
+            _ => "PUBLIC"
+        };
+    }
+
+    private static string GetBorderColor(ProviderMetadata p)
+    {
+        return p.CircuitState switch
+        {
+            CircuitBreakerState.Healthy => "var(--savi-border-subtle)",
+            CircuitBreakerState.Degraded => "rgba(255, 170, 0, 0.5)",
+            CircuitBreakerState.Open => "rgba(255, 0, 85, 0.5)",
+            _ => "var(--savi-border-subtle)"
+        };
+    }
+
+    private static string GetStatusColor(CircuitBreakerState state)
+    {
+        return state switch
+        {
+            CircuitBreakerState.Healthy => "var(--savi-success)",
+            CircuitBreakerState.Degraded => "var(--savi-warning)",
+            CircuitBreakerState.HalfOpen => "var(--savi-cyan)",
+            CircuitBreakerState.Open => "rgba(255, 0, 85, 0.9)",
+            _ => "var(--savi-text-dim)"
+        };
+    }
+
+    private static string GetStatusBorder(CircuitBreakerState state)
+    {
+        return state switch
+        {
+            CircuitBreakerState.Healthy => "rgba(0,255,170,0.3)",
+            CircuitBreakerState.Degraded => "rgba(255,170,0,0.3)",
+            CircuitBreakerState.HalfOpen => "rgba(0,240,255,0.3)",
+            CircuitBreakerState.Open => "rgba(255,0,85,0.3)",
+            _ => "rgba(255,255,255,0.1)"
+        };
     }
 
     private async Task SaveGenericProvider()

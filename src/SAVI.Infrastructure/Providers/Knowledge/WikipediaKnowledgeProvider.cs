@@ -18,7 +18,14 @@ public class WikipediaKnowledgeProvider : ICapabilityProvider
     public string Id => SaviConstants.Providers.Wikipedia;
     public string Name => "Wikipedia Open Knowledge (Free)";
     public IReadOnlyCollection<string> Capabilities => new[] { SaviConstants.Capabilities.Knowledge };
-    public int Priority => 10;
+    public int Priority => 20;
+    public SAVI.Core.Enums.ProviderCategory Category => SAVI.Core.Enums.ProviderCategory.KnowledgeBase;
+    public SAVI.Core.Enums.ProviderCostType CostType => SAVI.Core.Enums.ProviderCostType.FreePublic;
+    public double AuthorityLevel => 0.85;
+    public double AccuracyScore => 0.85;
+    public double ReliabilityScore => 0.95;
+    public TimeSpan TypicalLatency => TimeSpan.FromMilliseconds(500);
+    public TimeSpan Timeout => TimeSpan.FromSeconds(3);
 
     public bool CanHandle(TaskRequest request)
     {

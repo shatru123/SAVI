@@ -18,7 +18,14 @@ public class WttrInWeatherProvider : ICapabilityProvider
     public string Id => SaviConstants.Providers.WttrIn;
     public string Name => "wttr.in Weather Service (Free)";
     public IReadOnlyCollection<string> Capabilities => new[] { SaviConstants.Capabilities.Weather };
-    public int Priority => 20; // Secondary fallback for verification comparison
+    public int Priority => 30; // Fallback for Open-Meteo
+    public SAVI.Core.Enums.ProviderCategory Category => SAVI.Core.Enums.ProviderCategory.SpecializedPublicApi;
+    public SAVI.Core.Enums.ProviderCostType CostType => SAVI.Core.Enums.ProviderCostType.FreePublic;
+    public double AuthorityLevel => 0.85;
+    public double AccuracyScore => 0.85;
+    public double ReliabilityScore => 0.80;
+    public TimeSpan TypicalLatency => TimeSpan.FromMilliseconds(800);
+    public TimeSpan Timeout => TimeSpan.FromSeconds(3);
 
     public bool CanHandle(TaskRequest request)
     {

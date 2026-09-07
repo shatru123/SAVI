@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using SAVI.Core.Constants;
+using SAVI.Core.Enums;
 using SAVI.Core.Interfaces;
 using SAVI.Core.Models;
 using SAVI.Core.ValueObjects;
@@ -14,7 +15,14 @@ public class SystemInfoProvider : ICapabilityProvider
     public string Id => SaviConstants.Providers.LocalSystem;
     public string Name => "Local Host System Diagnostics (Local/Zero-Cost)";
     public IReadOnlyCollection<string> Capabilities => new[] { SaviConstants.Capabilities.System, SaviConstants.Capabilities.Time };
-    public int Priority => 5;
+    public int Priority => 1;
+    public ProviderCategory Category => ProviderCategory.LocalDeterministic;
+    public ProviderCostType CostType => ProviderCostType.LocalZeroCost;
+    public double AuthorityLevel => 1.0;
+    public double AccuracyScore => 1.0;
+    public double ReliabilityScore => 1.0;
+    public TimeSpan TypicalLatency => TimeSpan.FromMilliseconds(5);
+    public TimeSpan Timeout => TimeSpan.FromMilliseconds(200);
 
     public bool CanHandle(TaskRequest request)
     {

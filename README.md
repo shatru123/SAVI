@@ -131,20 +131,43 @@ SAVI/
 
 ---
 
-## 5. Built-in Capability Providers
+## 5. Built-in Capability Providers & Intelligence Matrix
 
-| Provider | Capability | Auth Required | Cost | Description |
-| :--- | :--- | :---: | :---: | :--- |
-| **SAVI Neural Engine** | `reasoning`, `knowledge`, `search` | **None** | **Free** | Serverless OpenAI-compatible inference with Mistral-7B, Mistral-Nemo, and GPT-OSS models |
-| **Open-Meteo** | `weather` | None | Free | Geocoding + current/forecast weather |
-| **wttr.in** | `weather` | None | Free | Secondary weather source for cross-verification |
-| **Frankfurter** | `currency` | None | Free | Live European Central Bank exchange rates |
-| **Wikipedia** | `knowledge` | None | Free | Encyclopedia article summaries & searches |
-| **DuckDuckGo** | `search` | None | Free | Instant answers and web search extraction |
-| **GitHub Public** | `github` | None | Free | Repository stats, releases, and issue counts |
-| **Local System** | `system`, `time` | None | Free | Host OS diagnostics, CPU, RAM, clock |
-| **Calculator** | `calculator` | None | Free | Deterministic math & unit conversions |
-| **Optional LLM Keys** | `reasoning` | Optional | Free | Optional Groq (`GROQ_API_KEY`) or OpenRouter (`OPENROUTER_API_KEY`) |
+SAVI enforces a strict **Truth Ordering Principle**:
+> *Authoritative source > specialized provider > generic reasoning model.*  
+> Deterministic tasks (arithmetic, live weather, currency, system diagnostics) are never routed to slow, probabilistic LLMs.
+
+| Provider | Capability | Category | Authority | Cost | Description |
+| :--- | :--- | :---: | :---: | :---: | :--- |
+| **Local System** | `system`, `time` | LocalDeterministic | 100% | **Local Zero-Cost** | Sub-10ms host diagnostics, CPU, RAM, clock |
+| **Local Calculator** | `calculator` | LocalDeterministic | 100% | **Local Zero-Cost** | Deterministic arithmetic & unit conversion (<5ms) |
+| **Open-Meteo** | `weather` | SpecializedPublicApi | 95% | **Free Public** | Geocoding + live conditions, temperature, humidity |
+| **wttr.in** | `weather` | SpecializedPublicApi | 85% | **Free Public** | Fallback weather provider for consensus cross-verification |
+| **Frankfurter** | `currency` | SpecializedPublicApi | 95% | **Free Public** | Live European Central Bank foreign exchange rates |
+| **Wikidata** | `entity`, `knowledge` | KnowledgeBase | 90% | **Free Public** | Structured entity knowledge (people, dates, organizations) |
+| **Crossref** | `research` | SpecializedPublicApi | 95% | **Free Public** | Academic research papers, DOIs, authors & journals |
+| **Open Library** | `books` | SpecializedPublicApi | 90% | **Free Public** | Books, authors, ISBNs, and publication editions |
+| **Hacker News** | `technews` | SpecializedPublicApi | 75% | **Free Public** | Real-time tech, startup, and developer discussions |
+| **Nominatim / OSM** | `location` | SpecializedPublicApi | 95% | **Free Public** | OpenStreetMap coordinates and place geocoding |
+| **CoinGecko** | `crypto` | SpecializedPublicApi | 90% | **Free Public** | Live keyless crypto market rates (USD, INR, EUR) |
+| **GitHub Public** | `github` | SpecializedPublicApi | 95% | **Free Public** | Public repository stats, releases, and issue counts |
+| **Wikipedia** | `knowledge` | KnowledgeBase | 85% | **Free Public** | Explanatory articles, biographies, and general history |
+| **DuckDuckGo** | `search` | WebSearch | 70% | **Free Public** | Fast web search and fallback extraction |
+| **SAVI Neural Engine** | `reasoning`, `synthesis` | ReasoningSynthesis | 30% (Source) | **Free Public** | Free reasoning and code synthesis (priority 55) |
+| **Local Ollama** | `reasoning` | ReasoningSynthesis | 50% (Source) | **Optional Local** | Optional local model (`http://localhost:11434`) |
+
+---
+
+### ✦ VerificationPolicy & Parallel Execution
+SAVI executes independent primary and verification providers **concurrently** via `Task.WhenAll(...)`:
+* **`⚡ Fast`**: Queries single best provider with zero verification overhead.
+* **`⚖ Balanced`** *(Default)*: Uses best provider; verifies only if information is time-sensitive or uncertain.
+* **`🛡 Verified`**: Executes multiple independent providers concurrently and checks for cross-source consensus.
+
+### ✦ Resilience, Circuit Breakers & In-Memory Caching
+* **Circuit Breaker**: Detects 3 consecutive failures and trips circuit to `Open` (30s cooldown) before testing with `HalfOpen` probe.
+* **In-Memory Cache & Request Coalescing**: De-duplicates simultaneous identical queries and caches results with provider-specific TTLs (24h geocoding, 6h wiki, 5m weather/fx, 30s crypto).
+* **Zero Fake Timers**: The UI uses real backend execution callbacks and SignalR streaming events.
 
 ---
 

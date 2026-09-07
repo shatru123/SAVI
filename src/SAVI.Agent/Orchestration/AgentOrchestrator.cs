@@ -26,6 +26,7 @@ public class AgentOrchestrator : IAgentOrchestrator
     private readonly ISettingsService _settingsService;
     private readonly IToolRegistry _toolRegistry;
     private readonly IPermissionGuard _permissionGuard;
+    private readonly IProviderCache _providerCache;
 
     public AgentOrchestrator(
         IContextBuilder contextBuilder,
@@ -38,7 +39,8 @@ public class AgentOrchestrator : IAgentOrchestrator
         IMemoryService memoryService,
         ISettingsService settingsService,
         IToolRegistry toolRegistry,
-        IPermissionGuard permissionGuard)
+        IPermissionGuard permissionGuard,
+        IProviderCache providerCache)
     {
         _contextBuilder = contextBuilder;
         _intentDetector = intentDetector;
@@ -51,11 +53,12 @@ public class AgentOrchestrator : IAgentOrchestrator
         _settingsService = settingsService;
         _toolRegistry = toolRegistry;
         _permissionGuard = permissionGuard;
+        _providerCache = providerCache;
     }
 
     public async Task<AgentResponse> ProcessAsync(AgentRequest request, CancellationToken cancellationToken = default)
     {
-        var sw = Stopwatch.StartNew();
+        var totalSw = Stopwatch.StartNew();
         var activityLogs = new List<string>();
 
         void LogActivity(string step)
@@ -63,28 +66,34 @@ public class AgentOrchestrator : IAgentOrchestrator
             activityLogs.Add($"{DateTime.UtcNow:HH:mm:ss} — {step}");
         }
 
-        LogActivity("Understanding request & retrieving context");
-        request.OnStepProgress?.Invoke(1, "Analyzing prompt intent & task requirements");
+        void EmitEvent(string eventName, object? payload = null)
+        {
+            request.OnExecutionEvent?.Invoke(eventName, payload);
+        }
 
-        // 1. Ensure conversation exists
+        EmitEvent("request.started", new { Timestamp = DateTimeOffset.UtcNow, Prompt = request.Message });
+        request.OnStepProgress?.Invoke(1, "Analyzing task & intent");
+        LogActivity("1. Request initialization & context retrieval");
+
+        // Stage 1 & 2: Conversation & Context Retrieval
         var conv = await _conversationService.GetOrCreateAsync(request.ConversationId, cancellationToken);
         var conversationId = conv.Id;
-
-        // 2. Build Context
         var context = await _contextBuilder.BuildContextAsync(request with { ConversationId = conversationId }, cancellationToken);
 
-        // 3. Append user message to persistent history
         await _conversationService.AppendMessageAsync(conversationId, MessageRole.User, request.Message, MessageType.Text, cancellationToken: cancellationToken);
+        EmitEvent("context.ready", new { ConversationId = conversationId, MemoryCount = context.RelevantMemories.Count });
 
-        // 4. Intent Detection
-        LogActivity("Analyzing intent & capability routing");
+        // Stage 3 & 4: Intent Detection & Capability Routing
         var intent = _intentDetector.Detect(request.Message, context);
+        EmitEvent("request.classified", new { Capability = intent.Capability, Operation = intent.Operation });
+        LogActivity($"2. Routed capability '{intent.Capability}' (Operation: {intent.Operation})");
 
-        // 5. Chit-Chat / Greetings / Listening Checks
+        // Handle Chit-Chat & System Greetings
         if (intent.Capability == "chitchat")
         {
             var reply = _personalityEngine.FormatChitChat(intent.Operation, request.Message);
             await _conversationService.AppendMessageAsync(conversationId, MessageRole.Assistant, reply, MessageType.Text, cancellationToken: cancellationToken);
+            EmitEvent("response.completed", new { Message = reply });
 
             return new AgentResponse
             {
@@ -97,7 +106,7 @@ public class AgentOrchestrator : IAgentOrchestrator
             };
         }
 
-        // 6. Memory specific commands (remember & recall)
+        // Handle Memory commands (remember & recall)
         if (intent.Capability == SaviConstants.Capabilities.Memory)
         {
             if (intent.Operation == "remember")
@@ -110,8 +119,9 @@ public class AgentOrchestrator : IAgentOrchestrator
                     Importance = 1.0
                 }, conversationId, cancellationToken);
 
-                var confirmation = $"Got it, Shatru. I've stored that in long-term memory: \"{contentToRemember}\".";
+                var confirmation = $"Got it, Shatru. I've saved that in long-term memory: \"{contentToRemember}\".";
                 await _conversationService.AppendMessageAsync(conversationId, MessageRole.Assistant, confirmation, MessageType.Text, cancellationToken: cancellationToken);
+                EmitEvent("response.completed", new { Message = confirmation });
 
                 return new AgentResponse
                 {
@@ -125,8 +135,8 @@ public class AgentOrchestrator : IAgentOrchestrator
 
             if (intent.Operation == "recall")
             {
-                var memories = context.RelevantMemories.Count > 0 
-                    ? context.RelevantMemories 
+                var memories = context.RelevantMemories.Count > 0
+                    ? context.RelevantMemories
                     : (await _memoryService.GetAllAsync(cancellationToken)).Select(m => new MemoryItem { Type = m.Type, Content = m.Content }).ToList();
 
                 var reply = memories.Count == 0
@@ -135,6 +145,7 @@ public class AgentOrchestrator : IAgentOrchestrator
                       string.Join("\n", memories.Select(m => $"• [{m.Type}] {m.Content}"));
 
                 await _conversationService.AppendMessageAsync(conversationId, MessageRole.Assistant, reply, MessageType.Text, cancellationToken: cancellationToken);
+                EmitEvent("response.completed", new { Message = reply });
 
                 return new AgentResponse
                 {
@@ -147,12 +158,12 @@ public class AgentOrchestrator : IAgentOrchestrator
             }
         }
 
-        // 7. Execution Planning
-        LogActivity($"Selecting providers for '{intent.Capability}'");
-        request.OnStepProgress?.Invoke(2, "Routing to optimal AI neural engine & tools");
+        // Stage 5: Execution Planning
+        request.OnStepProgress?.Invoke(2, "Routing to optimal capability providers");
         var plan = _executionPlanner.CreatePlan(intent, request);
+        EmitEvent("provider.selected", new { Primary = plan.PrimaryProviders.Select(p => p.Name).ToList(), Policy = plan.Policy.ToString() });
 
-        // 8. Tool Execution
+        // Tool Execution Branch
         if (plan.RequiresTool && plan.ToolName != null && plan.ToolInput != null)
         {
             LogActivity($"Evaluating tool '{plan.ToolName}' permissions");
@@ -163,12 +174,10 @@ public class AgentOrchestrator : IAgentOrchestrator
                 return new AgentResponse { Message = notFound, ConversationId = conversationId, Success = false, ActivityLogs = activityLogs };
             }
 
-            // Check if approval is needed
             if (!await _permissionGuard.CanExecuteAsync(plan.ToolInput, cancellationToken))
             {
                 var approvalReq = _permissionGuard.CreateApprovalRequest(plan.ToolInput);
                 var approvalPrompt = _personalityEngine.FormatActionApprovalPrompt(approvalReq.Description, approvalReq.PermissionLevel);
-
                 LogActivity($"Awaiting user approval for {approvalReq.PermissionLevel} action");
 
                 await _conversationService.AppendMessageAsync(conversationId, MessageRole.Assistant, approvalPrompt, MessageType.ActionApproval, cancellationToken: cancellationToken);
@@ -187,10 +196,7 @@ public class AgentOrchestrator : IAgentOrchestrator
 
             LogActivity($"Executing tool '{plan.ToolName}'");
             var toolResult = await tool.ExecuteAsync(plan.ToolInput, cancellationToken);
-
-            var toolMsg = toolResult.Success
-                ? toolResult.Output ?? "Tool execution completed."
-                : $"Tool execution failed: {toolResult.ErrorMessage}";
+            var toolMsg = toolResult.Success ? toolResult.Output ?? "Tool execution completed." : $"Tool execution failed: {toolResult.ErrorMessage}";
 
             var userSettings = await _settingsService.GetSettingsAsync(cancellationToken);
             var formattedToolResponse = _personalityEngine.FormatResponse(toolMsg, userSettings.ActivePersonality, context.RelevantMemories, request.VoiceActive);
@@ -209,8 +215,7 @@ public class AgentOrchestrator : IAgentOrchestrator
             };
         }
 
-        // 9. Provider Execution
-        var providerResults = new List<ProviderResult>();
+        // Stage 6: Concurrent Provider Execution
         var taskRequest = new TaskRequest
         {
             Capability = intent.Capability,
@@ -221,41 +226,60 @@ public class AgentOrchestrator : IAgentOrchestrator
             Context = context
         };
 
-        request.OnStepProgress?.Invoke(3, "Executing task & synthesizing code/solution");
+        request.OnStepProgress?.Invoke(3, "Executing parallel provider queries");
 
-        foreach (var p in plan.PrimaryProviders)
+        var providerResults = new List<ProviderResult>();
+
+        // Execute primary providers concurrently using Task.WhenAll
+        if (plan.PrimaryProviders.Count > 0)
         {
-            LogActivity($"Querying provider: {p.Name}");
-            var res = await p.ExecuteAsync(taskRequest, cancellationToken);
-            providerResults.Add(res);
+            LogActivity($"Querying {plan.PrimaryProviders.Count} primary provider(s) in parallel: {string.Join(", ", plan.PrimaryProviders.Select(p => p.Name))}");
+            var primaryTasks = plan.PrimaryProviders.Select(p => ExecuteProviderSafelyAsync(p, taskRequest, LogActivity, EmitEvent, cancellationToken));
+            var primaryBatch = await Task.WhenAll(primaryTasks);
+            providerResults.AddRange(primaryBatch);
         }
 
-        // If primary succeeded, only query verification providers if it is a search task requiring multi-source synthesis.
-        // If primary failed, fall back to verification/alternative providers!
-        var primarySucceeded = providerResults.Any(r => r.Success);
-        if (plan.VerificationProviders.Count > 0 && (!primarySucceeded || intent.Capability == SaviConstants.Capabilities.Search))
+        // Fallback / Verification execution
+        var hasSuccessfulPrimary = providerResults.Any(r => r.Success);
+        bool shouldRunVerification = (plan.Policy == VerificationPolicy.Verified) ||
+                                     (!hasSuccessfulPrimary && plan.VerificationProviders.Count > 0);
+
+        if (shouldRunVerification && plan.VerificationProviders.Count > 0)
         {
-            var isFallback = !primarySucceeded;
-            foreach (var vp in plan.VerificationProviders)
-            {
-                LogActivity(isFallback ? $"Falling back to: {vp.Name}" : $"Cross-verifying with: {vp.Name}");
-                var vres = await vp.ExecuteAsync(taskRequest, cancellationToken);
-                providerResults.Add(vres);
-                if (isFallback && vres.Success) break;
-            }
+            var isFallback = !hasSuccessfulPrimary;
+            LogActivity(isFallback
+                ? $"Falling back to {plan.VerificationProviders.Count} secondary provider(s) in parallel: {string.Join(", ", plan.VerificationProviders.Select(p => p.Name))}"
+                : $"Cross-verifying with {plan.VerificationProviders.Count} verification provider(s) in parallel: {string.Join(", ", plan.VerificationProviders.Select(p => p.Name))}");
+
+            var verifyTasks = plan.VerificationProviders.Select(vp => ExecuteProviderSafelyAsync(vp, taskRequest, LogActivity, EmitEvent, cancellationToken));
+            var verifyBatch = await Task.WhenAll(verifyTasks);
+            providerResults.AddRange(verifyBatch);
         }
 
-        // 10. Verification Engine
-        LogActivity("Synthesizing and verifying source results");
-        request.OnStepProgress?.Invoke(4, "Verifying syntax, safety & confidence boundaries");
+        // Stage 7: Verification Engine
+        request.OnStepProgress?.Invoke(4, "Cross-verifying source accuracy & boundaries");
+        LogActivity("Synthesizing and cross-verifying provider outputs");
+        EmitEvent("verification.started");
+
         var verification = await _verificationEngine.VerifyAndCompareAsync(request.Message, providerResults, cancellationToken);
+        EmitEvent("verification.completed", new { IsVerified = verification.IsVerified, Confidence = verification.Confidence });
 
-        // 11. Personality Engine Response Formatting
+        // Stage 8: Personality Engine Response Formatting
         var settings = await _settingsService.GetSettingsAsync(cancellationToken);
         var activePersonality = request.PersonalityOverride ?? settings.ActivePersonality;
         var finalContent = _personalityEngine.FormatResponse(verification.Synthesis, activePersonality, context.RelevantMemories, request.VoiceActive);
 
-        // 12. Asynchronous Memory Extraction
+        // Stage 9: Persistence
+        totalSw.Stop();
+        LogActivity($"Completed in {totalSw.ElapsedMilliseconds} ms (Confidence: {verification.Confidence:P0})");
+
+        var sourcesJson = JsonSerializer.Serialize(verification.Sources);
+        var metadataJson = JsonSerializer.Serialize(activityLogs);
+        await _conversationService.AppendMessageAsync(conversationId, MessageRole.Assistant, finalContent, MessageType.Text, sourcesJson: sourcesJson, metadataJson: metadataJson, cancellationToken: cancellationToken);
+
+        EmitEvent("response.completed", new { Message = finalContent, TotalLatencyMs = totalSw.ElapsedMilliseconds });
+
+        // Stage 10: Asynchronous Memory Extraction via Safe Task
         _ = Task.Run(async () =>
         {
             try
@@ -264,14 +288,6 @@ public class AgentOrchestrator : IAgentOrchestrator
             }
             catch { }
         });
-
-        sw.Stop();
-        LogActivity($"Completed in {sw.ElapsedMilliseconds} ms (Confidence: {verification.Confidence:P0})");
-
-        // 13. Persist assistant response with activity logs
-        var sourcesJson = JsonSerializer.Serialize(verification.Sources);
-        var metadataJson = JsonSerializer.Serialize(activityLogs);
-        await _conversationService.AppendMessageAsync(conversationId, MessageRole.Assistant, finalContent, MessageType.Text, sourcesJson: sourcesJson, metadataJson: metadataJson, cancellationToken: cancellationToken);
 
         return new AgentResponse
         {
@@ -284,11 +300,70 @@ public class AgentOrchestrator : IAgentOrchestrator
             ActivityLogs = activityLogs,
             Telemetry = new Dictionary<string, string>
             {
-                ["LatencyMs"] = sw.ElapsedMilliseconds.ToString(),
+                ["LatencyMs"] = totalSw.ElapsedMilliseconds.ToString(),
                 ["Confidence"] = verification.Confidence.ToString("F2"),
                 ["SourcesCount"] = verification.Sources.Count.ToString(),
-                ["Capability"] = intent.Capability
+                ["Capability"] = intent.Capability,
+                ["Policy"] = plan.Policy.ToString()
             }
         };
+    }
+
+    private async Task<ProviderResult> ExecuteProviderSafelyAsync(
+        ICapabilityProvider provider,
+        TaskRequest request,
+        Action<string> logActivity,
+        Action<string, object?> emitEvent,
+        CancellationToken cancellationToken)
+    {
+        // Provider-aware caching & request coalescing
+        var cacheKey = $"{provider.Id}:{request.Capability}:{request.Operation}:{request.Prompt}".Trim().ToLowerInvariant();
+
+        emitEvent("provider.started", new { ProviderId = provider.Id, ProviderName = provider.Name });
+        var sw = Stopwatch.StartNew();
+
+        try
+        {
+            var result = await _providerCache.GetOrExecuteAsync(
+                provider.Id,
+                cacheKey,
+                provider.SupportsCaching ? provider.CacheTtl : TimeSpan.Zero,
+                async ct =>
+                {
+                    using var timeoutCts = new CancellationTokenSource(provider.Timeout);
+                    using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+                    return await provider.ExecuteAsync(request, linked.Token);
+                },
+                cancellationToken);
+
+            sw.Stop();
+
+            if (result.Success)
+            {
+                logActivity($"✓ {provider.Name} succeeded ({sw.ElapsedMilliseconds} ms)");
+                emitEvent("provider.completed", new { ProviderId = provider.Id, Success = true, LatencyMs = sw.ElapsedMilliseconds });
+            }
+            else
+            {
+                logActivity($"✗ {provider.Name} failed: {result.Error} ({sw.ElapsedMilliseconds} ms)");
+                emitEvent("provider.completed", new { ProviderId = provider.Id, Success = false, LatencyMs = sw.ElapsedMilliseconds, Error = result.Error });
+            }
+
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            sw.Stop();
+            logActivity($"✗ {provider.Name} timed out after {provider.Timeout.TotalMilliseconds} ms");
+            emitEvent("provider.completed", new { ProviderId = provider.Id, Success = false, Error = "Timeout" });
+            return ProviderResult.Failed(provider.Id, provider.Name, $"Provider timed out after {provider.Timeout.TotalMilliseconds} ms");
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            logActivity($"✗ {provider.Name} error: {ex.Message}");
+            emitEvent("provider.completed", new { ProviderId = provider.Id, Success = false, Error = ex.Message });
+            return ProviderResult.Failed(provider.Id, provider.Name, ex.Message);
+        }
     }
 }

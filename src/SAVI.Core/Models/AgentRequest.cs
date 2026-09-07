@@ -12,4 +12,6 @@ public sealed record AgentRequest
     public string? ApprovedActionId { get; init; }
     public bool ActionApproved { get; init; }
     public Action<int, string>? OnStepProgress { get; init; }
+    public VerificationPolicy? VerificationPolicyOverride { get; init; }
+    public Action<string, object?>? OnExecutionEvent { get; init; }
 }

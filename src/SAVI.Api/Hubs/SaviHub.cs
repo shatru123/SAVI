@@ -30,8 +30,16 @@ public class SaviHub : Hub
 
     public async Task SendMessage(SendChatMessageRequest request)
     {
-        // 1. Notify client that SAVI is thinking
+        // 1. Instant deterministic acknowledgement (<100ms)
         await Clients.Caller.SendAsync("ReceiveVoiceState", VoiceState.Processing);
+        await Clients.Caller.SendAsync("ReceiveAcknowledgement", new
+        {
+            ConversationId = request.ConversationId,
+            Message = "Sure, Shatru. Checking that now...",
+            Timestamp = DateTimeOffset.UtcNow
+        });
+
+        var caller = Clients.Caller;
 
         var agentRequest = new AgentRequest
         {
@@ -39,7 +47,15 @@ public class SaviHub : Hub
             ConversationId = request.ConversationId ?? string.Empty,
             PersonalityOverride = request.PersonalityOverride,
             VoiceActive = request.VoiceActive,
-            ClientType = "SignalR"
+            ClientType = "SignalR",
+            OnStepProgress = (step, label) =>
+            {
+                _ = caller.SendAsync("ReceiveExecutionStep", new { Step = step, Label = label });
+            },
+            OnExecutionEvent = (eventName, payload) =>
+            {
+                _ = caller.SendAsync("ReceiveExecutionEvent", new { Event = eventName, Payload = payload });
+            }
         };
 
         var response = await _agentOrchestrator.ProcessAsync(agentRequest);
@@ -56,7 +72,7 @@ public class SaviHub : Hub
                 IsComplete = isLast,
                 VoiceState = response.ActiveVoiceState
             });
-            await Task.Delay(20); // Smooth fluid typing cadence
+            await Task.Delay(15);
         }
 
         // 3. Send final complete response object with sources and tool metadata

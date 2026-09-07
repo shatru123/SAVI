@@ -38,7 +38,7 @@ public class PersonalityEngine : IPersonalityEngine
         {
             "Hey Shatru! I'm online and ready. What are we working on today?",
             "Hello Shatru! Systems are all green. How can I help you out?",
-            "Good to see you! SAVI core is active. What's on your mind?",
+            "Good to see you, Shatru! SAVI core is active. What's on your mind?",
             "Ready when you are, Shatru. Let's get things done."
         };
         var idx = Random.Shared.Next(greetings.Length);
@@ -53,7 +53,7 @@ public class PersonalityEngine : IPersonalityEngine
             "status" => "I'm doing great, Shatru! All background services and providers are running smoothly. How's everything with you?",
             "gratitude" => "You're very welcome, Shatru! Always happy to help.",
             "identity" => "I am SAVI (Shatru's Adaptive Virtual Intelligence) — an advanced personal digital assistant and autonomous task execution platform created by Shatrughna Ambhore.\n\nHere is how I can assist you:\n\n• 💻 Coding & Development: Write, debug, and explain algorithms and code in C#, Python, JavaScript, TypeScript, Go, SQL, and more.\n• ⚡ Agentic Tasks: Autonomous multi-step planning, solution generation, and cross-verification.\n• 🌦️ Real-Time Weather: Live forecasts, temperature, and conditions worldwide (e.g. \"weather in Tokyo\").\n• 💱 Currency Conversion: Live FX rates across global currencies (e.g. \"convert 100 USD to INR\").\n• 🔍 Knowledge & Search: Detailed answers, topic research, and factual summaries.\n• 🔢 Math & Computation: Calculations, mathematical formulas, and unit conversions.\n• 📁 Host Diagnostics & Files: System specs, CPU/RAM stats, directory inspection, and file operations.\n• 💾 Persistent Memory: Remembers your preferences across conversations (e.g. \"Remember that I prefer C#\").\n• 🔊 Voice Talk-Back: Speech recognition and real-time voice response (toggle ON/OFF anytime in the top bar).\n\nWhat would you like to work on today?",
-            "creator" => "I was created and architected by Shatrughna Ambhore (Email: ambhoreshatrughna@gmail.com, Phone: +91 9604466334). SAVI (Shatru's Adaptive Virtual Intelligence) is built as a personal digital companion and sovereign task execution platform.",
+            "creator" => "I was created and architected by Shatrughna Ambhore. SAVI (Shatru's Adaptive Virtual Intelligence) is built as a personal digital companion and sovereign task execution platform.",
             "greeting" => FormatFriendlyGreeting(),
             _ => FormatFriendlyGreeting()
         };

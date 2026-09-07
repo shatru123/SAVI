@@ -12,7 +12,7 @@ public class VerificationEngine : IVerificationEngine
         IReadOnlyList<ProviderResult> results,
         CancellationToken cancellationToken = default)
     {
-        var successful = results.Where(r => r.Success).ToList();
+        var successful = results.Where(r => r.Success && r.Data != null).ToList();
 
         if (successful.Count == 0)
         {
@@ -21,15 +21,11 @@ public class VerificationEngine : IVerificationEngine
 
             if (lowerQuery.Contains("help") || lowerQuery.Contains("what can you do") || lowerQuery.Contains("capability") || lowerQuery.Contains("capabilities"))
             {
-                fallbackSynthesis = "I am SAVI (Shatru's Adaptive Virtual Intelligence). I can help you with writing and debugging code, running autonomous multi-step tasks, checking live weather, converting currencies, performing calculations, inspecting host diagnostics, and remembering your preferences.";
-            }
-            else if (lowerQuery.Contains("code") || lowerQuery.Contains("program") || lowerQuery.Contains("function") || lowerQuery.Contains("class") || lowerQuery.Contains("write ") || lowerQuery.Contains("implement") || lowerQuery.Contains("algorithm"))
-            {
-                fallbackSynthesis = $"The public serverless neural model experienced momentary network saturation while processing your code request for \"{query}\". Please try re-sending your prompt, or specify the programming language (e.g. C#, Python, TypeScript).";
+                fallbackSynthesis = "I am SAVI (Shatru's Adaptive Virtual Intelligence). I can help you with writing and analyzing code, checking live weather, calculating expressions, converting currencies, looking up crypto rates, finding research papers, exploring books, querying Wikidata entities, inspecting host diagnostics, and remembering your preferences.";
             }
             else
             {
-                fallbackSynthesis = $"I searched for information on \"{query}\", but couldn't retrieve verified live results at this moment. You can try rephrasing your question, or ask me to check system stats, weather, currency, or files.";
+                fallbackSynthesis = $"I looked into \"{query}\", but couldn't verify an authoritative answer right now. Rather than fabricating a response, I'll be transparent: please try rephrasing or checking another reliable source.";
             }
 
             return Task.FromResult(new VerificationResult
@@ -42,7 +38,12 @@ public class VerificationEngine : IVerificationEngine
             });
         }
 
-        var allSources = successful.SelectMany(r => r.Sources).ToList();
+        // Deduplicate sources by URL or domain
+        var allSources = successful
+            .SelectMany(r => r.Sources)
+            .GroupBy(s => string.IsNullOrWhiteSpace(s.Url) ? s.SourceName : s.Url)
+            .Select(g => g.First())
+            .ToList();
 
         if (successful.Count == 1)
         {
@@ -89,6 +90,7 @@ public class VerificationEngine : IVerificationEngine
             }
         }
 
+        // Weighted confidence based on source authority and agreement
         var primary = successful.OrderByDescending(r => r.Confidence).First();
         var avgConfidence = successful.Average(r => r.Confidence);
 
@@ -98,10 +100,12 @@ public class VerificationEngine : IVerificationEngine
             synthesis = $"I noticed some differing numbers between sources ({contradictionReason}). Here is the verified consensus based on our primary source:\n\n{synthesis}";
         }
 
+        var finalConfidence = contradiction ? Math.Max(0.5, avgConfidence - 0.2) : Math.Min(1.0, avgConfidence + 0.05);
+
         return Task.FromResult(new VerificationResult
         {
             IsVerified = !contradiction,
-            Confidence = contradiction ? Math.Max(0.5, avgConfidence - 0.2) : Math.Min(1.0, avgConfidence + 0.05),
+            Confidence = finalConfidence,
             HasContradictions = contradiction,
             ContradictionExplanation = contradictionReason,
             Synthesis = synthesis,
@@ -115,12 +119,22 @@ public class VerificationEngine : IVerificationEngine
         if (data is string str) return str;
         try
         {
-            var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
+            // If data contains a "Formatted" or "Message" property, prefer it
+            var json = JsonSerializer.Serialize(data);
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
             if (root.ValueKind == JsonValueKind.Object)
             {
+                if (root.TryGetProperty("Formatted", out var fProp))
+                {
+                    return fProp.GetString() ?? "";
+                }
+                if (root.TryGetProperty("Message", out var mProp))
+                {
+                    return mProp.GetString() ?? "";
+                }
+
                 var lines = new List<string>();
                 foreach (var prop in root.EnumerateObject())
                 {
@@ -128,6 +142,28 @@ public class VerificationEngine : IVerificationEngine
                 }
                 return string.Join("\n", lines);
             }
+
+            if (root.ValueKind == JsonValueKind.Array)
+            {
+                var items = new List<string>();
+                foreach (var el in root.EnumerateArray())
+                {
+                    if (el.ValueKind == JsonValueKind.Object && el.TryGetProperty("Title", out var tProp))
+                    {
+                        var title = tProp.GetString() ?? "";
+                        var desc = el.TryGetProperty("Snippet", out var snProp) ? snProp.GetString() ?? "" :
+                                   el.TryGetProperty("Authors", out var auProp) ? $"by {auProp.GetString()}" : "";
+                        var url = el.TryGetProperty("Url", out var uProp) ? uProp.GetString() ?? "" : "";
+                        items.Add($"• **{title}** {(string.IsNullOrWhiteSpace(desc) ? "" : $"— {desc}")} {(string.IsNullOrWhiteSpace(url) ? "" : $"([Link]({url}))")}");
+                    }
+                    else
+                    {
+                        items.Add($"• {el}");
+                    }
+                }
+                return string.Join("\n", items);
+            }
+
             return json;
         }
         catch

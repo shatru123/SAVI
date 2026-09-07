@@ -23,8 +23,8 @@ public class FreeAiProvider : ICapabilityProvider
     private static DateTime _rateLimitResetTime = DateTime.MinValue;
 
     private const string SystemPrompt =
-        "You are SAVI (Shatru's Adaptive Virtual Intelligence), an advanced, helpful, and realistic AI assistant created and architected by Shatrughna Ambhore (Email: ambhoreshatrughna@gmail.com, Phone: +91 9604466334). " +
-        "Provide direct, accurate, realistic, and thoughtful answers. If asked who created, built, or developed you, proudly state that you were created by Shatrughna Ambhore.";
+        "You are SAVI (Shatru's Adaptive Virtual Intelligence), an advanced, helpful, and realistic AI assistant created and architected by Shatrughna Ambhore. " +
+        "Provide direct, accurate, realistic, and thoughtful answers. If asked who created, built, or developed you, state that you were created by Shatrughna Ambhore.";
 
     public FreeAiProvider(HttpClient httpClient)
     {
@@ -35,19 +35,21 @@ public class FreeAiProvider : ICapabilityProvider
     public string Name => "SAVI Neural Engine (Free Model)";
     public IReadOnlyCollection<string> Capabilities => new[]
     {
-        SaviConstants.Capabilities.Reasoning,
-        SaviConstants.Capabilities.Knowledge,
-        SaviConstants.Capabilities.Search
+        SaviConstants.Capabilities.Reasoning
     };
 
-    // Priority 10 ensures it is selected as the primary provider before DuckDuckGo (15) and Wikipedia (20)
-    public int Priority => 10;
+    public int Priority => 55;
+    public ProviderCategory Category => ProviderCategory.ReasoningSynthesis;
+    public ProviderCostType CostType => ProviderCostType.FreePublic;
+    public double AuthorityLevel => 0.30;
+    public double AccuracyScore => 0.70;
+    public double ReliabilityScore => 0.75;
+    public TimeSpan TypicalLatency => TimeSpan.FromMilliseconds(3000);
+    public TimeSpan Timeout => TimeSpan.FromSeconds(6);
 
     public bool CanHandle(TaskRequest request)
     {
-        return request.Capability.Equals(SaviConstants.Capabilities.Reasoning, StringComparison.OrdinalIgnoreCase) ||
-               request.Capability.Equals(SaviConstants.Capabilities.Knowledge, StringComparison.OrdinalIgnoreCase) ||
-               request.Capability.Equals(SaviConstants.Capabilities.Search, StringComparison.OrdinalIgnoreCase);
+        return request.Capability.Equals(SaviConstants.Capabilities.Reasoning, StringComparison.OrdinalIgnoreCase);
     }
 
     public async Task<ProviderResult> ExecuteAsync(TaskRequest request, CancellationToken cancellationToken = default)
