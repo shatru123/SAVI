@@ -26,6 +26,11 @@ class AudioPlaybackController {
         this.chunkQueue = [];
         this.currentUtterance = null;
         this.availableVoices = [];
+        this.currentTtsTurnId = null;
+        this.currentSpokenText = '';
+        this.allCurrentText = '';
+        this.lastSpokenTimestamp = 0;
+        this.recentSpokenSentences = []; // Rolling buffer of recent chunks with timestamps
 
         this.loadVoices();
         if (window.speechSynthesis) {
@@ -39,7 +44,7 @@ class AudioPlaybackController {
         }
     }
 
-    speak(text, rate = 1.0) {
+    speak(text, rate = 1.0, turnId = null) {
         if (!window.speechSynthesis) return;
 
         try {
@@ -59,6 +64,11 @@ class AudioPlaybackController {
 
             if (!cleanText) return;
 
+            this.currentTtsTurnId = turnId;
+            this.allCurrentText = cleanText;
+            this.recentSpokenSentences.push({ text: cleanText, timestamp: performance.now() });
+            if (this.recentSpokenSentences.length > 10) this.recentSpokenSentences.shift();
+
             // Split into natural sentences for streaming audio chunking
             const chunks = cleanText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [cleanText];
             this.chunkQueue = chunks.map(c => c.trim()).filter(c => c.length > 0);
@@ -74,6 +84,9 @@ class AudioPlaybackController {
         } catch (e) {
             console.error("SAVI playback error:", e);
             this.isSpeaking = false;
+            this.currentSpokenText = '';
+            this.currentTtsTurnId = null;
+            this.lastSpokenTimestamp = performance.now();
             if (this.saviVoice.dotNetRef) {
                 this.saviVoice.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 0);
             }
@@ -86,6 +99,8 @@ class AudioPlaybackController {
         if (this.chunkQueue.length === 0) {
             this.isSpeaking = false;
             this.isChunkSpeaking = false;
+            this.currentSpokenText = '';
+            this.lastSpokenTimestamp = performance.now();
             if (this.saviVoice.dotNetRef) {
                 const state = this.saviVoice.captureController.continuousVoiceMode ? 1 : 0;
                 this.saviVoice.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', state);
@@ -94,6 +109,10 @@ class AudioPlaybackController {
         }
 
         const chunk = this.chunkQueue.shift();
+        this.currentSpokenText = chunk;
+        this.recentSpokenSentences.push({ text: chunk, timestamp: performance.now() });
+        if (this.recentSpokenSentences.length > 10) this.recentSpokenSentences.shift();
+
         const utterance = new SpeechSynthesisUtterance(chunk);
         utterance.rate = rate || 1.0;
         utterance.pitch = 1.0;
@@ -115,11 +134,13 @@ class AudioPlaybackController {
         const self = this;
         utterance.onend = function () {
             self.isChunkSpeaking = false;
+            self.lastSpokenTimestamp = performance.now();
             self.playNextChunk(rate);
         };
 
         utterance.onerror = function () {
             self.isChunkSpeaking = false;
+            self.lastSpokenTimestamp = performance.now();
             self.playNextChunk(rate);
         };
 
@@ -133,6 +154,9 @@ class AudioPlaybackController {
         const stopStartTime = performance.now();
         this.isSpeaking = false;
         this.isChunkSpeaking = false;
+        this.currentSpokenText = '';
+        this.currentTtsTurnId = null;
+        this.lastSpokenTimestamp = performance.now();
         this.chunkQueue = [];
 
         // Instant volume ducking eliminates audio tail-off before cancel executes
@@ -165,6 +189,11 @@ class AudioCaptureController {
         this.saviVoice = saviVoice;
         this.isListening = false;
         this.continuousVoiceMode = false;
+        this.audioOutputMode = 'speaker'; // 'speaker' (aggressive echo filter) | 'headphone' (ultra-sensitive)
+        this.hardwareAecEnabled = null;
+        this.hardwareNsEnabled = null;
+        this.hardwareAgcEnabled = null;
+        this.falseSelfDetectionCount = 0;
         this.micStream = null;
         this.audioContext = null;
         this.analyserNode = null;
@@ -208,6 +237,35 @@ class AudioCaptureController {
                         autoGainControl: true
                     }
                 });
+            }
+
+            // Inspect actual MediaStreamTrack settings to verify hardware AEC & NS
+            const audioTracks = this.micStream.getAudioTracks();
+            if (audioTracks && audioTracks.length > 0) {
+                const track = audioTracks[0];
+                const settings = track.getSettings ? track.getSettings() : {};
+                this.hardwareAecEnabled = settings.echoCancellation !== false;
+                this.hardwareNsEnabled = settings.noiseSuppression !== false;
+                this.hardwareAgcEnabled = settings.autoGainControl !== false;
+                console.log("SAVI Hardware Audio Diagnostics:", {
+                    echoCancellation: settings.echoCancellation,
+                    noiseSuppression: settings.noiseSuppression,
+                    autoGainControl: settings.autoGainControl,
+                    sampleRate: settings.sampleRate,
+                    channelCount: settings.channelCount
+                });
+
+                if (this.saviVoice.dotNetRef) {
+                    try {
+                        this.saviVoice.dotNetRef.invokeMethodAsync(
+                            'OnAudioSettingsDetected',
+                            !!this.hardwareAecEnabled,
+                            !!this.hardwareNsEnabled,
+                            !!this.hardwareAgcEnabled,
+                            settings.sampleRate || 48000
+                        );
+                    } catch (_) {}
+                }
             }
 
             const source = this.audioContext.createMediaStreamSource(this.micStream);
@@ -266,11 +324,19 @@ class AudioCaptureController {
                 // Update CSS variable --savi-audio-level for reactive waveform and glowing rings
                 document.documentElement.style.setProperty('--savi-audio-level', normalizedLevel.toFixed(3));
 
-                // VAD Interruption: When SAVI is speaking and user voice energy exceeds threshold
-                if (self.saviVoice.playbackController.isSpeaking && normalizedLevel > 0.20) {
+                // Dynamic VAD Interruption:
+                // When speaking on laptop speakers, physical speaker sound couples into the mic at ~0.20-0.35.
+                // In Speaker Mode: Elevate threshold to 0.42 and require 3 sustained frames so SAVI does not self-interrupt!
+                // In Headphone Mode: Zero acoustic coupling; threshold remains sensitive (0.20).
+                const isSpeaking = self.saviVoice.playbackController.isSpeaking;
+                const dynamicThreshold = isSpeaking
+                    ? (self.audioOutputMode === 'headphone' ? 0.20 : 0.42)
+                    : 0.18;
+
+                if (isSpeaking && normalizedLevel > dynamicThreshold) {
                     self.vadSpeechCounter++;
-                    if (self.vadSpeechCounter >= 2) { // ~30ms of sustained speech energy
-                        console.log("SAVI VAD: Voice onset detected while speaking -> Instant duck & stop!");
+                    if (self.vadSpeechCounter >= 3) { // ~45ms of sustained speech energy clearly above speaker spillover
+                        console.log("SAVI VAD: Sustained user voice above speaker level detected -> Instant duck & stop!");
                         self.saviVoice.playbackController.duckAndStop(true);
                         self.vadSpeechCounter = 0;
 
@@ -287,6 +353,65 @@ class AudioCaptureController {
         }
 
         checkFrame();
+    }
+
+    // Intelligent client-side self-echo detector
+    isSelfEcho(transcript) {
+        if (!transcript || typeof transcript !== 'string') return false;
+        const cleanT = transcript.trim().toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()?"']/g, "").replace(/\s+/g, " ");
+        if (!cleanT) return false;
+
+        // In headphone mode, zero acoustic speaker-to-mic coupling exists
+        if (this.audioOutputMode === 'headphone') return false;
+
+        const playback = this.saviVoice.playbackController;
+        const isSpeaking = playback.isSpeaking;
+        const timeSinceSpeech = performance.now() - (playback.lastSpokenTimestamp || 0);
+        const inEchoWindow = isSpeaking || (timeSinceSpeech < 1800);
+
+        if (!inEchoWindow) return false;
+
+        // Explicit barge-in command words: NEVER treat as echo!
+        const isBargeInCommand = /^(?:wait|stop|hold on|actually|no|pause|listen|cancel|quiet|never mind|shh|shut up|hey savi)\b/i.test(cleanT);
+        if (isBargeInCommand) {
+            return false;
+        }
+
+        const tTokens = cleanT.split(' ').filter(w => w.length > 1);
+        if (tTokens.length === 0) return false;
+
+        // Compare against currently spoken text, full turn text, and recent spoken sentences
+        const candidates = [];
+        if (playback.currentSpokenText) candidates.push(playback.currentSpokenText);
+        if (playback.allCurrentText) candidates.push(playback.allCurrentText);
+        for (const s of playback.recentSpokenSentences) {
+            if (s.text) candidates.push(s.text);
+        }
+
+        for (const cand of candidates) {
+            const cleanCand = cand.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()?"']/g, "").replace(/\s+/g, " ");
+            if (!cleanCand) continue;
+
+            // Direct substring containment (e.g. "weather in Pune" matches "The weather in Pune today is around 28 degrees")
+            if (cleanCand.includes(cleanT) || cleanT.includes(cleanCand)) {
+                return true;
+            }
+
+            // Word token overlap / Jaccard calculation
+            const candTokens = new Set(cleanCand.split(' ').filter(w => w.length > 1));
+            let matchCount = 0;
+            for (const tok of tTokens) {
+                if (candTokens.has(tok)) matchCount++;
+            }
+
+            const overlapRatio = matchCount / tTokens.length;
+            // If >=50% of the recognized words are found in SAVI's speech, it is an acoustic echo!
+            if (overlapRatio >= 0.50) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     initSpeechRecognition() {
@@ -310,21 +435,39 @@ class AudioCaptureController {
             };
 
             this.recognition.onresult = function (event) {
-                // VAD backup: If user speaks while SAVI is speaking, duck immediately!
-                if (self.saviVoice.playbackController.isSpeaking) {
-                    self.saviVoice.playbackController.duckAndStop(true);
-                }
-
                 let interimText = '';
                 let finalChunk = '';
 
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     const res = event.results[i];
-                    if (res.isFinal) {
-                        finalChunk += res[0].transcript + ' ';
-                    } else {
-                        interimText += res[0].transcript;
+                    const rawText = res[0].transcript;
+
+                    // SELF-ECHO FILTER: Reject transcript if it's SAVI's own voice coming out of device speakers!
+                    if (self.isSelfEcho(rawText)) {
+                        self.falseSelfDetectionCount++;
+                        console.log(`[SAVI Self-Echo Suppressed #${self.falseSelfDetectionCount}]: "${rawText.trim()}"`);
+                        if (self.saviVoice.dotNetRef) {
+                            self.saviVoice.dotNetRef.invokeMethodAsync('OnSelfEchoSuppressed', rawText.trim(), self.falseSelfDetectionCount);
+                        }
+                        continue; // DISCARD ECHO!
                     }
+
+                    if (res.isFinal) {
+                        finalChunk += rawText + ' ';
+                    } else {
+                        interimText += rawText;
+                    }
+                }
+
+                // If all audio in this batch was SAVI's own voice echoing, do not duck and do not dispatch!
+                if (!finalChunk.trim() && !interimText.trim()) {
+                    return;
+                }
+
+                // Genuinely new user speech detected! Duck playback immediately!
+                if (self.saviVoice.playbackController.isSpeaking) {
+                    console.log("SAVI: Genuine user speech heard during speech -> Instant duck & stop!");
+                    self.saviVoice.playbackController.duckAndStop(true);
                 }
 
                 if (finalChunk) {
@@ -484,6 +627,25 @@ window.saviVoice = {
         }
     },
 
+    setAudioOutputMode: function (mode) {
+        if (this.captureController) {
+            this.captureController.audioOutputMode = mode;
+            console.log("SAVI Audio Output Mode configured to:", mode);
+        }
+    },
+
+    getDiagnostics: function () {
+        return {
+            micActive: this.captureController?.isListening ?? false,
+            speaking: this.playbackController?.isSpeaking ?? false,
+            audioOutputMode: this.captureController?.audioOutputMode ?? 'speaker',
+            hardwareAec: this.captureController?.hardwareAecEnabled,
+            hardwareNs: this.captureController?.hardwareNsEnabled,
+            hardwareAgc: this.captureController?.hardwareAgcEnabled,
+            selfEchoSuppressedCount: this.captureController?.falseSelfDetectionCount ?? 0
+        };
+    },
+
     toggleListening: async function () {
         if (!this.captureController) {
             const ok = await this.init(this.dotNetRef);
@@ -515,9 +677,9 @@ window.saviVoice = {
         return false;
     },
 
-    speak: function (text, rate = 1.0) {
+    speak: function (text, rate = 1.0, turnId = null) {
         if (this.playbackController) {
-            this.playbackController.speak(text, rate);
+            this.playbackController.speak(text, rate, turnId);
         }
     },
 

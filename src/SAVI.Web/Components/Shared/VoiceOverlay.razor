@@ -16,12 +16,18 @@
                     ⚡ Stop Latency: @(Math.Round(AudioStopLatencyMs)) ms
                 </span>
             }
-            <span class="telemetry-pill">
-                Latency: Real-Time Free
+            <span class="telemetry-pill desktop-only" title="Microphone AEC Status">
+                Mic: AEC @HardwareAecStatus
             </span>
-            <span class="telemetry-pill desktop-only">
-                Mic: AEC On
-            </span>
+            @if (FalseSelfDetectionCount > 0)
+            {
+                <span class="telemetry-pill" style="color: #00f0ff; border-color: rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.1);" title="SAVI self-echo transcripts suppressed">
+                    🛡 Echo Filter: @FalseSelfDetectionCount
+                </span>
+            }
+            <button class="telemetry-pill" style="cursor: pointer; background: rgba(0, 240, 255, 0.1); border-color: rgba(0, 240, 255, 0.3); color: #00f0ff;" @onclick="ToggleAudioModeAsync" title="Click to toggle between Speaker Mode (echo filter active) and Headphones Mode">
+                @(AudioOutputMode == "speaker" ? "🔊 Speaker" : "🎧 Headphone")
+            </button>
         </div>
 
         <button class="voice-exit-btn" @onclick="CloseAsync" title="Exit Voice Mode (Esc)">
@@ -157,6 +163,12 @@
             <button class="voice-ctl-btn @(!IsListening ? "btn-warning" : "btn-subtle")" @onclick="TogglePauseAsync" title="Pause / Resume Continuous Listening">
                 <span class="ctl-icon">@(!IsListening ? "▶️" : "⏸")</span>
                 <span class="ctl-label">@(!IsListening ? "Resume" : "Pause")</span>
+            </button>
+
+            <!-- Audio Output Mode Toggle (Speaker vs Headphone) -->
+            <button class="voice-ctl-btn btn-subtle" @onclick="ToggleAudioModeAsync" title="Toggle between Speaker Mode (aggressive echo rejection) and Headphone Mode">
+                <span class="ctl-icon">@(AudioOutputMode == "speaker" ? "🔊" : "🎧")</span>
+                <span class="ctl-label">@(AudioOutputMode == "speaker" ? "Speaker" : "Headphone")</span>
             </button>
 
             <!-- Exit Voice Mode Button -->
@@ -601,13 +613,14 @@
     }
 
     @@media (max-width: 640px) {
-        .voice-overlay-header { padding: 14px 16px; }
+        .voice-overlay-header { padding: 12px 14px; flex-wrap: wrap; gap: 8px; }
         .desktop-only { display: none; }
-        .voice-orb-container { width: 190px; height: 190px; }
-        .voice-orb-svg-wrapper { width: 150px; height: 150px; }
-        .transcript-text { font-size: 0.95rem; }
+        .voice-telemetry-hud { flex-wrap: wrap; gap: 6px; }
+        .voice-orb-container { width: 170px; height: 170px; }
+        .voice-orb-svg-wrapper { width: 135px; height: 135px; }
+        .transcript-text { font-size: 0.92rem; }
         .voice-controls-bar { gap: 8px; }
-        .voice-ctl-btn { padding: 8px 14px; font-size: 0.8rem; }
+        .voice-ctl-btn { padding: 7px 12px; font-size: 0.78rem; }
     }
 </style>
 
@@ -620,6 +633,15 @@
 
     [Parameter]
     public bool IsMuted { get; set; } = false;
+
+    [Parameter]
+    public string AudioOutputMode { get; set; } = "speaker";
+
+    [Parameter]
+    public int FalseSelfDetectionCount { get; set; } = 0;
+
+    [Parameter]
+    public string HardwareAecStatus { get; set; } = "Verified";
 
     [Parameter]
     public string UserTranscript { get; set; } = string.Empty;
@@ -642,6 +664,9 @@
     [Parameter]
     public EventCallback OnInterrupt { get; set; }
 
+    [Parameter]
+    public EventCallback OnToggleAudioMode { get; set; }
+
     private async Task CloseAsync()
     {
         await OnClose.InvokeAsync();
@@ -660,5 +685,10 @@
     private async Task InterruptAsync()
     {
         await OnInterrupt.InvokeAsync();
+    }
+
+    private async Task ToggleAudioModeAsync()
+    {
+        await OnToggleAudioMode.InvokeAsync();
     }
 }

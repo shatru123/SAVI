@@ -24,4 +24,10 @@ public sealed class VoiceSession
     public string? InterruptedTopic { get; set; }
     public string? InterruptedIntent { get; set; }
     public Dictionary<string, string> InterruptedParameters { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public int SelfEchoSuppressedCount { get; set; }
+    public string AudioOutputMode { get; set; } = "speaker";
+    public bool EchoCancellationEnabled { get; set; } = true;
+    public bool NoiseSuppressionEnabled { get; set; } = true;
+    public bool AutoGainControlEnabled { get; set; } = true;
 }

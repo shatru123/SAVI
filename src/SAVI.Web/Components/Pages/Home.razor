@@ -67,8 +67,8 @@
 
     <!-- Central Stage: Core & Chat Stream -->
     <div class="savi-glass-panel savi-hud-bracket" style="flex: 1; display: flex; flex-direction: column; padding: 14px; min-width: 0;">
-        <!-- Top Toolbar -->
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 10px;">
+        <!-- Top Toolbar (Mobile Responsive) -->
+        <div class="savi-top-toolbar">
             <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
                 <!-- Mobile Chats Toggle Button -->
                 <button class="savi-btn savi-mobile-only" style="padding: 4px 8px; font-size: 0.78rem; border-radius: 4px; flex-shrink: 0;" @onclick="() => _mobileConvDrawerOpen = !_mobileConvDrawerOpen" title="Conversations">
@@ -81,7 +81,7 @@
                 }
             </div>
 
-            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+            <div class="savi-top-actions">
                 <!-- Verification Mode Selector Button -->
                 <button class="savi-btn" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="CycleVerificationPolicy" title="Toggle verification mode (Fast, Balanced, Verified)">
                     @(_activePolicy switch
@@ -97,7 +97,7 @@
                 </button>
                 <!-- Continuous Conversational Voice Mode Button -->
                 <button class="savi-btn @(_continuousVoiceMode ? "active-voice-btn" : "")" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="ToggleContinuousVoice" title="Toggle Real-Time Conversational Voice Mode (Continuous Full-Duplex)">
-                    @(_continuousVoiceMode ? "🎙 Mode: Continuous" : "🎙 Mode: Standard")
+                    @(_continuousVoiceMode ? "🎙 Mode: Live" : "🎙 Mode: Std")
                 </button>
                 <!-- Immersive Voice Mode Screen Button -->
                 <button class="savi-btn active-voice-btn" style="padding: 4px 12px; font-size: 0.75rem; background: linear-gradient(135deg, rgba(0, 240, 255, 0.25) 0%, rgba(59, 130, 246, 0.25) 100%); border-color: rgba(0, 240, 255, 0.6); color: #00f0ff; font-weight: 700;" @onclick="OpenVoiceOverlay" title="Open Dedicated Real-Time Voice Screen">
@@ -106,7 +106,7 @@
                 @if (!string.IsNullOrEmpty(_currentConversationId))
                 {
                     <button class="savi-btn" style="padding: 4px 8px; font-size: 0.75rem; border-color: rgba(255, 0, 85, 0.4); color: #ff6688;" @onclick="() => DeleteConversation(_currentConversationId)" title="Delete active chat">
-                        🗑 <span class="savi-desktop-only">Delete Chat</span>
+                        🗑 <span class="savi-desktop-only">Delete</span>
                     </button>
                 }
                 <button class="savi-btn" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="ToggleActivityDrawer">
@@ -243,11 +243,20 @@
         <!-- Voice Status & Error Alerts -->
         @if (_continuousVoiceMode)
         {
-            <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.74rem; margin-top: 8px; padding: 5px 12px; background: rgba(0, 240, 255, 0.08); border: 1px solid var(--savi-border-subtle); border-radius: 6px; color: var(--savi-cyan);">
-                <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.74rem; margin-top: 8px; padding: 5px 12px; background: rgba(0, 240, 255, 0.08); border: 1px solid var(--savi-border-subtle); border-radius: 6px; color: var(--savi-cyan); flex-wrap: wrap; gap: 6px;">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                     <span class="core-center-pulse" style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #00f0ff;"></span>
                     <span class="savi-glow-text" style="font-weight: 700; letter-spacing: 0.5px;">LIVE FULL-DUPLEX VOICE</span>
-                    <span style="color: var(--savi-text-dim);">• Continuous listening active</span>
+                    <span style="color: var(--savi-text-dim);">• Continuous</span>
+                    <button class="savi-btn" style="padding: 2px 7px; font-size: 0.68rem; border-radius: 4px;" @onclick="ToggleAudioOutputMode" title="Toggle Speaker Mode (echo rejection active) vs Headphone Mode">
+                        @(_audioOutputMode == "speaker" ? "🔊 Speaker" : "🎧 Headphone")
+                    </button>
+                    @if (_falseSelfDetectionCount > 0)
+                    {
+                        <span class="savi-badge" style="background: rgba(0, 240, 255, 0.15); border: 1px solid var(--savi-cyan); color: var(--savi-cyan); font-size: 0.66rem; padding: 2px 6px;" title="SAVI self-echo transcripts suppressed">
+                            🛡 Echo Filter: @_falseSelfDetectionCount
+                        </span>
+                    }
                 </div>
                 <div style="font-size: 0.68rem; color: var(--savi-text-secondary); display: flex; gap: 10px;">
                     <span>[Space] Push-to-Talk</span>
@@ -312,16 +321,62 @@
         VoiceState="_voiceState"
         IsListening="_isListening"
         IsMuted="_isMicMuted"
+        AudioOutputMode="@_audioOutputMode"
+        FalseSelfDetectionCount="@_falseSelfDetectionCount"
+        HardwareAecStatus="@(_hardwareAec ? "Hardware Verified" : "Software Filter")"
         UserTranscript="@(!string.IsNullOrWhiteSpace(_liveInterimTranscript) ? _liveInterimTranscript : (_messages.LastOrDefault(m => m.Role == MessageRole.User)?.Content ?? ""))"
         AssistantTranscript="@(_messages.LastOrDefault(m => m.Role == MessageRole.Assistant)?.Content ?? "")"
         AudioStopLatencyMs="_lastAudioStopLatencyMs"
         OnClose="CloseVoiceOverlay"
         OnToggleMute="ToggleVoiceMute"
         OnTogglePause="ToggleVoicePause"
-        OnInterrupt="InterruptVoicePlayback" />
+        OnInterrupt="InterruptVoicePlayback"
+        OnToggleAudioMode="ToggleAudioOutputMode" />
 }
 
 <style>
+.savi-top-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--savi-border-subtle);
+    padding-bottom: 10px;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.savi-top-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    max-width: 100%;
+}
+@@media (max-width: 768px) {
+    .savi-top-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+    .savi-top-actions {
+        display: flex;
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 4px;
+        scrollbar-width: none;
+        max-width: 100%;
+        width: 100%;
+    }
+    .savi-top-actions::-webkit-scrollbar {
+        display: none;
+    }
+    .savi-top-actions .savi-btn {
+        flex-shrink: 0;
+        font-size: 0.72rem;
+        padding: 4px 8px;
+        white-space: nowrap;
+    }
+}
 .conv-item {
     padding: 6px 8px;
     border-radius: 4px;
@@ -381,6 +436,12 @@
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _processingCts;
     private string? _activeTurnId;
+    private string _audioOutputMode = "speaker";
+    private int _falseSelfDetectionCount = 0;
+    private bool _hardwareAec = true;
+    private bool _hardwareNs = true;
+    private bool _hardwareAgc = true;
+    private string? _lastSuppressedEcho;
 
     private bool _isVoiceOverlayOpen = false;
     private bool _isMicMuted = false;
@@ -391,6 +452,17 @@
     private List<string> _activityLogs = new();
     private ActionApprovalRequest? _pendingApproval;
     private DotNetObjectReference<Home>? _dotNetRef;
+
+    private async Task ToggleAudioOutputMode()
+    {
+        _audioOutputMode = _audioOutputMode == "speaker" ? "headphone" : "speaker";
+        try
+        {
+            await JS.InvokeVoidAsync("saviVoice.setAudioOutputMode", _audioOutputMode);
+        }
+        catch { }
+        StateHasChanged();
+    }
 
     private async Task OpenVoiceOverlay()
     {
@@ -545,7 +617,7 @@
     private async Task PlayVoiceGreeting()
     {
         var greeting = "Hello Shatru! I am SAVI, your Smart Adaptive Virtual Intelligence, developed by Shatrughna Ambhore. All neural systems are online and ready. How can I help you today?";
-        await JS.InvokeVoidAsync("saviVoice.speak", greeting);
+        await JS.InvokeVoidAsync("saviVoice.speak", greeting, 1.0, "greeting");
     }
 
     private async Task LoadConversations()
@@ -734,7 +806,7 @@
 
                 try
                 {
-                    await JS.InvokeVoidAsync("saviVoice.speak", spokenText);
+                    await JS.InvokeVoidAsync("saviVoice.speak", spokenText, 1.0, turnId);
                 }
                 catch { }
             }
@@ -872,6 +944,23 @@
         _voiceError = errorMessage;
         _isListening = false;
         _voiceState = VoiceState.Error;
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnAudioSettingsDetected(bool aec, bool ns, bool agc, int sampleRate)
+    {
+        _hardwareAec = aec;
+        _hardwareNs = ns;
+        _hardwareAgc = agc;
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnSelfEchoSuppressed(string echoedText, int count)
+    {
+        _falseSelfDetectionCount = count;
+        _lastSuppressedEcho = echoedText;
         InvokeAsync(StateHasChanged);
     }
 

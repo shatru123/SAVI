@@ -190,7 +190,23 @@ public class VoiceConversationSession : IVoiceConversationSession
 
         var cleanText = text.Trim();
 
-        // 1. Check Voice Control Commands
+        // 1. Self-Echo Defense-in-Depth: If incoming speech is an acoustic echo of assistant speech, suppress it!
+        if (session.AudioOutputMode != "headphone" && IsSelfEcho(cleanText, session.LastVoiceFriendlyResponse ?? session.LastAssistantResponse))
+        {
+            session.SelfEchoSuppressedCount++;
+            VoiceEventEmitted?.Invoke("voice.self_echo.suppressed", new { Utterance = cleanText, Count = session.SelfEchoSuppressedCount });
+            return new VoiceTurnResult
+            {
+                TurnId = turnContext.TurnId,
+                UserUtterance = cleanText,
+                AssistantResponse = "Self-echo suppressed.",
+                VoiceFriendlyResponse = "Self-echo suppressed.",
+                WasInterrupted = false,
+                Success = true
+            };
+        }
+
+        // 2. Check Voice Control Commands
         if (StopCommandRegex.IsMatch(cleanText))
         {
             await InterruptAsync(cancellationToken);
@@ -358,5 +374,35 @@ public class VoiceConversationSession : IVoiceConversationSession
                 AssistantResponse = $"Voice processing error: {ex.Message}"
             };
         }
+    }
+
+    public static bool IsSelfEcho(string utterance, string? assistantSpeech)
+    {
+        if (string.IsNullOrWhiteSpace(utterance) || string.IsNullOrWhiteSpace(assistantSpeech))
+            return false;
+
+        var cleanU = Regex.Replace(utterance.ToLowerInvariant(), @"[^\w\s]", " ").Trim();
+        var cleanA = Regex.Replace(assistantSpeech.ToLowerInvariant(), @"[^\w\s]", " ").Trim();
+
+        if (string.IsNullOrWhiteSpace(cleanU) || string.IsNullOrWhiteSpace(cleanA))
+            return false;
+
+        // Barge-in override: never treat barge-in commands as echo
+        if (Regex.IsMatch(cleanU, @"^(?:wait|stop|hold on|actually|no|pause|listen|cancel|quiet|never mind)\b", RegexOptions.IgnoreCase))
+            return false;
+
+        // Direct containment
+        if (cleanA.Contains(cleanU) || cleanU.Contains(cleanA))
+            return true;
+
+        var uWords = cleanU.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length > 1).ToArray();
+        if (uWords.Length == 0) return false;
+
+        var aWords = new HashSet<string>(cleanA.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length > 1), StringComparer.OrdinalIgnoreCase);
+
+        var matchCount = uWords.Count(w => aWords.Contains(w));
+        var ratio = (double)matchCount / uWords.Length;
+
+        return ratio >= 0.55;
     }
 }

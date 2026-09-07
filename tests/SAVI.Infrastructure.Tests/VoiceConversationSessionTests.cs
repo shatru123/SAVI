@@ -640,4 +640,67 @@ Answer: Done.";
         Assert.NotNull(stored);
         Assert.Equal("Turn 2 fast response", stored.LastAssistantResponse);
     }
+
+    [Fact]
+    public async Task SelfEcho_TranscriptsMatchingAssistantSpeech_AreDiscardedWithoutCreatingTurns()
+    {
+        await _session.StartAsync("conv_echo");
+        var stored = _store.GetOrCreate(_session.SessionId, "conv_echo");
+        stored.LastVoiceFriendlyResponse = "The weather in Pune today is around 28 degrees with clear skies.";
+        stored.AudioOutputMode = "speaker";
+
+        // Microphone captures SAVI's own speaker output
+        var echoUtterance = "The weather in Pune today is around 28 degrees";
+        var result = await _session.ProcessUtteranceAsync(echoUtterance);
+
+        Assert.Equal("Self-echo suppressed.", result.AssistantResponse);
+        Assert.Equal(1, stored.SelfEchoSuppressedCount);
+        Assert.Equal(0, _orchestrator.CallCount); // Orchestrator is never invoked for acoustic echoes!
+    }
+
+    [Fact]
+    public async Task BargeIn_UserSpeechDifferingFromAssistantSpeech_IsProcessedNormally()
+    {
+        await _session.StartAsync("conv_barge");
+        var stored = _store.GetOrCreate(_session.SessionId, "conv_barge");
+        stored.LastVoiceFriendlyResponse = "The weather in Pune today is around 28 degrees with clear skies.";
+        stored.AudioOutputMode = "speaker";
+
+        _orchestrator.Handler = (req, ct) => Task.FromResult(new AgentResponse
+        {
+            Message = "In Mumbai it is 31 degrees.",
+            VoiceFriendlyMessage = "In Mumbai it is 31 degrees.",
+            Success = true,
+            ConversationId = "conv_barge"
+        });
+
+        // User speaks a true barge-in with different content
+        var bargeInUtterance = "Wait, what about Mumbai?";
+        var result = await _session.ProcessUtteranceAsync(bargeInUtterance, isInterruption: true);
+
+        Assert.True(result.Success);
+        Assert.Equal("In Mumbai it is 31 degrees.", result.AssistantResponse);
+        Assert.Equal(1, _orchestrator.CallCount);
+        Assert.Equal(0, stored.SelfEchoSuppressedCount);
+    }
+
+    [Fact]
+    public void IsSelfEcho_Algorithm_CorrectlyDistinguishesEchosFromBargeIn()
+    {
+        var assistant = "The weather in Pune today is around 28 degrees with clear skies.";
+
+        // Substring / substantial overlap echo
+        Assert.True(VoiceConversationSession.IsSelfEcho("The weather in Pune today is around 28 degrees", assistant));
+        Assert.True(VoiceConversationSession.IsSelfEcho("around 28 degrees with clear skies", assistant));
+        Assert.True(VoiceConversationSession.IsSelfEcho("weather in pune today is 28 degrees", assistant));
+
+        // True user barge-in commands (must NEVER be classified as echo)
+        Assert.False(VoiceConversationSession.IsSelfEcho("Wait, what about Mumbai?", assistant));
+        Assert.False(VoiceConversationSession.IsSelfEcho("Stop, that's enough.", assistant));
+        Assert.False(VoiceConversationSession.IsSelfEcho("Actually, check tomorrow instead.", assistant));
+        Assert.False(VoiceConversationSession.IsSelfEcho("No, I meant something else.", assistant));
+
+        // Unrelated speech
+        Assert.False(VoiceConversationSession.IsSelfEcho("Can you write a python script for sorting an array?", assistant));
+    }
 }
