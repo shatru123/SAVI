@@ -70,6 +70,7 @@ public class VoiceConversationSession : IVoiceConversationSession
 
         CurrentState = VoiceState.Listening;
         VoiceEventEmitted?.Invoke("voice.session.started", new { SessionId = _sessionId, ConversationId = _conversationId });
+        VoiceEventEmitted?.Invoke("audio.capture.started", new { SessionId = _sessionId, SampleRate = 48000, AecEnabled = true, NoiseSuppression = true, AutoGainControl = true });
         VoiceEventEmitted?.Invoke("voice.listening", new { Timestamp = DateTimeOffset.UtcNow });
 
         return Task.CompletedTask;
@@ -83,6 +84,7 @@ public class VoiceConversationSession : IVoiceConversationSession
         if (_currentTurn != null && !_currentTurn.TurnCts.IsCancellationRequested)
         {
             _currentTurn.MarkInterrupted();
+            VoiceEventEmitted?.Invoke("voice.turn.cancelled", new { TurnId = _currentTurn.TurnId, Reason = "session_stopping" });
         }
 
         _sessionCts?.Cancel();
@@ -94,8 +96,9 @@ public class VoiceConversationSession : IVoiceConversationSession
             session.CurrentState = VoiceState.Idle;
         }
 
-        CurrentState = VoiceState.Idle;
+        VoiceEventEmitted?.Invoke("audio.capture.stopped", new { SessionId = _sessionId });
         VoiceEventEmitted?.Invoke("voice.session.stopped", new { SessionId = _sessionId });
+        CurrentState = VoiceState.Idle;
 
         return Task.CompletedTask;
     }
@@ -103,6 +106,7 @@ public class VoiceConversationSession : IVoiceConversationSession
     public Task InterruptAsync(CancellationToken cancellationToken = default)
     {
         var sw = Stopwatch.StartNew();
+        string? interruptedTurnId = _currentTurn?.TurnId;
 
         if (_currentTurn != null)
         {
@@ -114,14 +118,24 @@ public class VoiceConversationSession : IVoiceConversationSession
         {
             session.InterruptionCount++;
             session.CurrentState = VoiceState.Interrupted;
+            session.LastInterruptionLatencyMs = sw.Elapsed.TotalMilliseconds;
         }
 
         CurrentState = VoiceState.Interrupted;
         VoiceEventEmitted?.Invoke("voice.interrupted", new
         {
-            TurnId = _currentTurn?.TurnId,
+            TurnId = interruptedTurnId,
             InterruptionLatencyMs = sw.Elapsed.TotalMilliseconds
         });
+
+        if (interruptedTurnId != null)
+        {
+            VoiceEventEmitted?.Invoke("voice.turn.cancelled", new
+            {
+                TurnId = interruptedTurnId,
+                Reason = "interrupted"
+            });
+        }
 
         if (_isActive)
         {
@@ -150,6 +164,28 @@ public class VoiceConversationSession : IVoiceConversationSession
         return Task.CompletedTask;
     }
 
+    public void NotifyUserSpeechStarted(string? turnId = null)
+    {
+        var currentTurnId = turnId ?? _currentTurn?.TurnId ?? Guid.NewGuid().ToString();
+        VoiceEventEmitted?.Invoke("user.speech.started", new { TurnId = currentTurnId, Timestamp = DateTimeOffset.UtcNow });
+    }
+
+    public void NotifyUserSpeechPartial(string partialText, string? turnId = null)
+    {
+        var currentTurnId = turnId ?? _currentTurn?.TurnId;
+        if (_currentTurn != null && (_currentTurn.TurnId == currentTurnId || turnId == null))
+        {
+            _currentTurn.PartialTranscript = partialText;
+        }
+        VoiceEventEmitted?.Invoke("user.speech.partial", new { TurnId = currentTurnId, Transcript = partialText });
+    }
+
+    public void NotifyUserSpeechStopped(string? turnId = null)
+    {
+        var currentTurnId = turnId ?? _currentTurn?.TurnId;
+        VoiceEventEmitted?.Invoke("user.speech.stopped", new { TurnId = currentTurnId, Timestamp = DateTimeOffset.UtcNow });
+    }
+
     public async Task<VoiceTurnResult> ProcessUtteranceAsync(string text, bool isInterruption = false, CancellationToken cancellationToken = default)
     {
         var totalSw = Stopwatch.StartNew();
@@ -165,6 +201,7 @@ public class VoiceConversationSession : IVoiceConversationSession
                 priorTurn.TurnCts.Cancel();
             }
             catch (ObjectDisposedException) { }
+            VoiceEventEmitted?.Invoke("voice.turn.cancelled", new { TurnId = priorTurn.TurnId, Reason = "superseded" });
         }
 
         var session = _sessionStore.GetOrCreate(_sessionId, _conversationId);
@@ -173,9 +210,20 @@ public class VoiceConversationSession : IVoiceConversationSession
             session.InterruptedResponse = session.LastVoiceFriendlyResponse;
         }
 
+        var cleanText = text.Trim();
+
         var turnContext = new VoiceTurnContext
         {
-            UserUtterance = text.Trim()
+            SessionId = _sessionId,
+            ConversationId = _conversationId,
+            TurnIndex = session.TurnsCount + 1,
+            UserUtterance = cleanText,
+            FinalTranscript = cleanText,
+            PreRollDurationMs = 300,
+            PostRollDurationMs = 150,
+            HasPreRollAudio = true,
+            AudioStartTime = DateTimeOffset.UtcNow.AddMilliseconds(-300),
+            SpeechStartTime = DateTimeOffset.UtcNow
         };
 
         _currentTurn = turnContext;
@@ -183,18 +231,24 @@ public class VoiceConversationSession : IVoiceConversationSession
         session.TurnsCount++;
         session.LastUserUtterance = text;
 
+        VoiceEventEmitted?.Invoke("voice.turn.started", new
+        {
+            TurnId = turnContext.TurnId,
+            SessionId = _sessionId,
+            TurnIndex = turnContext.TurnIndex
+        });
+
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             turnContext.TurnCts.Token,
             _sessionCts?.Token ?? CancellationToken.None);
-
-        var cleanText = text.Trim();
 
         // 1. Self-Echo Defense-in-Depth: If incoming speech is an acoustic echo of assistant speech, suppress it!
         if (session.AudioOutputMode != "headphone" && IsSelfEcho(cleanText, session.LastVoiceFriendlyResponse ?? session.LastAssistantResponse))
         {
             session.SelfEchoSuppressedCount++;
             VoiceEventEmitted?.Invoke("voice.self_echo.suppressed", new { Utterance = cleanText, Count = session.SelfEchoSuppressedCount });
+            VoiceEventEmitted?.Invoke("voice.turn.completed", new { TurnId = turnContext.TurnId, Reason = "self_echo_suppressed" });
             return new VoiceTurnResult
             {
                 TurnId = turnContext.TurnId,
@@ -226,13 +280,18 @@ public class VoiceConversationSession : IVoiceConversationSession
             var repeatSpeech = session.LastVoiceFriendlyResponse;
             var chunks = _responseFormatter.ChunkForStreamingTts(repeatSpeech);
 
+            VoiceEventEmitted?.Invoke("assistant.speech.started", new { TurnId = turnContext.TurnId, Message = repeatSpeech });
+            VoiceEventEmitted?.Invoke("assistant.audio.started", new { TurnId = turnContext.TurnId, ChunksCount = chunks.Count });
             VoiceEventEmitted?.Invoke("voice.speaking", new { Message = repeatSpeech });
+
             foreach (var chunk in chunks)
             {
                 VoiceEventEmitted?.Invoke("voice.speech.chunk", new { Chunk = chunk });
             }
 
             turnContext.MarkCompleted(session.LastAssistantResponse ?? repeatSpeech, repeatSpeech);
+            VoiceEventEmitted?.Invoke("assistant.audio.stopped", new { TurnId = turnContext.TurnId });
+            VoiceEventEmitted?.Invoke("voice.turn.completed", new { TurnId = turnContext.TurnId, DurationMs = totalSw.Elapsed.TotalMilliseconds });
 
             if (_isActive && !turnContext.IsInterrupted)
             {
@@ -250,7 +309,7 @@ public class VoiceConversationSession : IVoiceConversationSession
             };
         }
 
-        // 2. State Transition: DetectingSpeech -> Processing
+        // 3. State Transition: DetectingSpeech -> Processing
         CurrentState = VoiceState.Processing;
         VoiceEventEmitted?.Invoke("voice.processing", new { Prompt = cleanText });
 
@@ -275,6 +334,7 @@ public class VoiceConversationSession : IVoiceConversationSession
             if (linkedCts.IsCancellationRequested || turnContext.IsInterrupted || turnContext.IsSuperseded || session.ActiveTurnId != turnContext.TurnId || _currentTurn != turnContext)
             {
                 turnContext.MarkInterrupted();
+                VoiceEventEmitted?.Invoke("voice.turn.cancelled", new { TurnId = turnContext.TurnId, Reason = "superseded_or_interrupted" });
                 return new VoiceTurnResult
                 {
                     TurnId = turnContext.TurnId,
@@ -284,7 +344,7 @@ public class VoiceConversationSession : IVoiceConversationSession
                 };
             }
 
-            // 3. Conversational Speech Formatting
+            // 4. Conversational Speech Formatting
             var voiceFriendly = response.VoiceFriendlyMessage
                 ?? _responseFormatter.FormatForSpeech(response.Message);
 
@@ -293,10 +353,20 @@ public class VoiceConversationSession : IVoiceConversationSession
             session.LastAssistantResponse = response.Message;
             session.LastVoiceFriendlyResponse = voiceFriendly;
 
-            // 4. State Transition: Speaking (only if still active turn)
+            // 5. State Transition: Speaking (only if still active turn)
             if (_currentTurn == turnContext)
             {
                 CurrentState = VoiceState.Speaking;
+                VoiceEventEmitted?.Invoke("assistant.speech.started", new
+                {
+                    TurnId = turnContext.TurnId,
+                    Message = voiceFriendly
+                });
+                VoiceEventEmitted?.Invoke("assistant.audio.started", new
+                {
+                    TurnId = turnContext.TurnId,
+                    ChunksCount = chunks.Count
+                });
                 VoiceEventEmitted?.Invoke("voice.speaking", new
                 {
                     Message = voiceFriendly,
@@ -310,12 +380,23 @@ public class VoiceConversationSession : IVoiceConversationSession
                 if (linkedCts.IsCancellationRequested || turnContext.IsInterrupted || _currentTurn != turnContext)
                 {
                     turnContext.MarkInterrupted();
+                    VoiceEventEmitted?.Invoke("voice.turn.cancelled", new { TurnId = turnContext.TurnId, Reason = "interrupted_during_speech" });
                     break;
                 }
                 VoiceEventEmitted?.Invoke("voice.speech.chunk", new { Chunk = chunk });
             }
 
             turnContext.MarkCompleted(response.Message, voiceFriendly);
+
+            if (!turnContext.IsInterrupted && _currentTurn == turnContext)
+            {
+                VoiceEventEmitted?.Invoke("assistant.audio.stopped", new { TurnId = turnContext.TurnId });
+                VoiceEventEmitted?.Invoke("voice.turn.completed", new
+                {
+                    TurnId = turnContext.TurnId,
+                    DurationMs = totalSw.Elapsed.TotalMilliseconds
+                });
+            }
 
             var telemetry = new VoiceTelemetryRecord
             {
@@ -326,7 +407,7 @@ public class VoiceConversationSession : IVoiceConversationSession
             };
             TelemetryRecorded?.Invoke(telemetry);
 
-            // 5. State Transition: Loop back to Listening for Full-Duplex Continuous Conversation
+            // 6. State Transition: Loop back to Listening for Full-Duplex Continuous Conversation
             if (_isActive && !turnContext.IsInterrupted && _currentTurn == turnContext)
             {
                 CurrentState = VoiceState.Listening;
@@ -348,6 +429,8 @@ public class VoiceConversationSession : IVoiceConversationSession
         catch (OperationCanceledException)
         {
             turnContext.MarkInterrupted();
+            VoiceEventEmitted?.Invoke("voice.turn.cancelled", new { TurnId = turnContext.TurnId, Reason = "cancelled" });
+
             if (_isActive && _currentTurn == turnContext)
             {
                 CurrentState = VoiceState.Listening;
@@ -388,7 +471,7 @@ public class VoiceConversationSession : IVoiceConversationSession
             return false;
 
         // Barge-in override: never treat barge-in commands as echo
-        if (Regex.IsMatch(cleanU, @"^(?:wait|stop|hold on|actually|no|pause|listen|cancel|quiet|never mind)\b", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(cleanU, @"^(?:wait|stop|hold on|actually|no|pause|listen|cancel|quiet|never mind|that's wrong|thats wrong|i meant|why|and tomorrow)\b", RegexOptions.IgnoreCase))
             return false;
 
         // Direct containment

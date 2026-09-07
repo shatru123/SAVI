@@ -18,6 +18,10 @@ public interface IVoiceConversationSession
     Task ResumeAsync(CancellationToken cancellationToken = default);
     Task<VoiceTurnResult> ProcessUtteranceAsync(string text, bool isInterruption = false, CancellationToken cancellationToken = default);
 
+    void NotifyUserSpeechStarted(string? turnId = null);
+    void NotifyUserSpeechPartial(string partialText, string? turnId = null);
+    void NotifyUserSpeechStopped(string? turnId = null);
+
     event Action<VoiceState>? StateChanged;
     event Action<string, object?>? VoiceEventEmitted;
     event Action<VoiceTelemetryRecord>? TelemetryRecorded;

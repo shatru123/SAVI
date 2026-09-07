@@ -26,8 +26,15 @@ public sealed class VoiceSession
     public Dictionary<string, string> InterruptedParameters { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public int SelfEchoSuppressedCount { get; set; }
+    public double LastInterruptionLatencyMs { get; set; }
     public string AudioOutputMode { get; set; } = "speaker";
     public bool EchoCancellationEnabled { get; set; } = true;
     public bool NoiseSuppressionEnabled { get; set; } = true;
     public bool AutoGainControlEnabled { get; set; } = true;
+    public string AecStatus { get; set; } = "Enabled";
+    public string NoiseSuppressionStatus { get; set; } = "Enabled";
+    public string AgcStatus { get; set; } = "Enabled";
+    public string VadStatus { get; set; } = "ACTIVE";
+    public string SttStatus { get; set; } = "CONNECTED";
+    public string TtsStatus { get; set; } = "READY";
 }

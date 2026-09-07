@@ -1,6 +1,7 @@
 // SAVI Voice Engine — Full-Duplex Real-Time Voice Conversation Architecture
 // Decoupled AudioCaptureController & AudioPlaybackController
-// 250ms Rolling Audio Pre-Roll Buffer, Client-Side VAD, and Atomic Per-Turn Context
+// Off-Thread AudioWorkletProcessor with ScriptProcessor Fallback
+// 300ms Pre-Roll & 150ms Post-Roll Ring Buffer, Adaptive VAD with Hysteresis, and Single Authoritative Barge-In
 
 class UserTurnContext {
     constructor() {
@@ -11,6 +12,7 @@ class UserTurnContext {
         this.endTime = null;
         this.hasDispatched = false;
         this.isInterrupted = false;
+        this.hasPreRollAudio = false;
     }
 
     getFullText() {
@@ -30,16 +32,17 @@ class AudioPlaybackController {
         this.currentSpokenText = '';
         this.allCurrentText = '';
         this.lastSpokenTimestamp = 0;
+        this.lastStopLatencyMs = 0;
         this.recentSpokenSentences = []; // Rolling buffer of recent chunks with timestamps
 
         this.loadVoices();
-        if (window.speechSynthesis) {
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
             window.speechSynthesis.onvoiceschanged = () => this.loadVoices();
         }
     }
 
     loadVoices() {
-        if (window.speechSynthesis) {
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
             this.availableVoices = window.speechSynthesis.getVoices();
         }
     }
@@ -168,6 +171,7 @@ class AudioPlaybackController {
         }
 
         const stopLatencyMs = Math.round(performance.now() - stopStartTime);
+        this.lastStopLatencyMs = stopLatencyMs;
         console.log(`SAVI: AudioPlaybackController duckAndStop executed in ${stopLatencyMs}ms`);
 
         if (notifyDotNet && this.saviVoice.dotNetRef) {
@@ -197,15 +201,25 @@ class AudioCaptureController {
         this.micStream = null;
         this.audioContext = null;
         this.analyserNode = null;
+        this.workletNode = null;
+        this.audioWorkletActive = false;
+
+        // Adaptive VAD & Ring Buffer parameters
         this.preRollRingBuffer = null;
         this.preRollWritePtr = 0;
-        this.vadSpeechCounter = 0;
+        this.preRollCapacity = 0;
+        this.adaptiveNoiseFloor = 0.02;
+        this.currentRms = 0.0;
+        this.vadSpeechOnsetStartTime = 0;
+        this.minSpeechDurationMs = 40; // 40ms sustained speech required to avoid mouth clicks/pops
+        this.isSpeechActive = false;
+
         this.animFrameId = null;
         this.recognition = null;
         this.currentTurn = new UserTurnContext();
         this.turnTimer = null;
 
-        this.immediateTriggerRegex = /^(?:wait|stop|hold on|actually|no|pause|keep it short)\b/i;
+        this.immediateTriggerRegex = /^(?:wait|stop|hold on|actually|no|pause|keep it short|listen|cancel)\b/i;
         this.trailingConjunctionRegex = /\b(?:and|or|because|if|whether|with|that|for|like|so|also|plus|then|but)$/i;
     }
 
@@ -247,7 +261,7 @@ class AudioCaptureController {
                 this.hardwareAecEnabled = settings.echoCancellation !== false;
                 this.hardwareNsEnabled = settings.noiseSuppression !== false;
                 this.hardwareAgcEnabled = settings.autoGainControl !== false;
-                console.log("SAVI Hardware Audio Diagnostics:", {
+                console.log("SAVI Audio Diagnostics:", {
                     echoCancellation: settings.echoCancellation,
                     noiseSuppression: settings.noiseSuppression,
                     autoGainControl: settings.autoGainControl,
@@ -270,24 +284,58 @@ class AudioCaptureController {
 
             const source = this.audioContext.createMediaStreamSource(this.micStream);
             this.analyserNode = this.audioContext.createAnalyser();
-            this.analyserNode.fftSize = 128;
-            this.analyserNode.smoothingTimeConstant = 0.8;
+            this.analyserNode.fftSize = 256;
+            this.analyserNode.smoothingTimeConstant = 0.7;
             source.connect(this.analyserNode);
 
             // Circular Pre-Roll Ring Buffer: stores ~300ms of rolling audio samples
-            const ringSamples = Math.round(this.audioContext.sampleRate * 0.3);
-            this.preRollRingBuffer = new Float32Array(ringSamples);
+            const sampleRate = this.audioContext.sampleRate || 48000;
+            this.preRollCapacity = Math.round(sampleRate * 0.3); // 300ms
+            this.preRollRingBuffer = new Float32Array(this.preRollCapacity);
             this.preRollWritePtr = 0;
 
-            if (this.audioContext.createScriptProcessor) {
+            // Try AudioWorklet first for off-thread processing, with ScriptProcessor fallback
+            let workletSuccess = false;
+            if (this.audioContext.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
+                try {
+                    const workletCode = `
+                    class SaviAudioProcessor extends AudioWorkletProcessor {
+                        process(inputs, outputs, parameters) {
+                            const input = inputs[0];
+                            if (input && input.length > 0) {
+                                const channelData = input[0];
+                                this.port.postMessage(channelData);
+                            }
+                            return true;
+                        }
+                    }
+                    registerProcessor('savi-audio-processor', SaviAudioProcessor);
+                    `;
+                    const blob = new Blob([workletCode], { type: 'application/javascript' });
+                    const blobUrl = URL.createObjectURL(blob);
+                    await this.audioContext.audioWorklet.addModule(blobUrl);
+                    URL.revokeObjectURL(blobUrl);
+
+                    this.workletNode = new AudioWorkletNode(this.audioContext, 'savi-audio-processor');
+                    this.workletNode.port.onmessage = (e) => {
+                        this.handleAudioFrame(e.data);
+                    };
+
+                    source.connect(this.workletNode);
+                    workletSuccess = true;
+                    this.audioWorkletActive = true;
+                    console.log("SAVI AudioWorklet processor registered successfully on audio thread.");
+                } catch (workletErr) {
+                    console.warn("SAVI AudioWorklet fallback to ScriptProcessor:", workletErr.message);
+                }
+            }
+
+            if (!workletSuccess && this.audioContext.createScriptProcessor) {
                 const proc = this.audioContext.createScriptProcessor(1024, 1, 1);
                 const self = this;
                 proc.onaudioprocess = function (e) {
                     const input = e.inputBuffer.getChannelData(0);
-                    for (let i = 0; i < input.length; i++) {
-                        self.preRollRingBuffer[self.preRollWritePtr] = input[i];
-                        self.preRollWritePtr = (self.preRollWritePtr + 1) % ringSamples;
-                    }
+                    self.handleAudioFrame(input);
                 };
 
                 const silentGain = this.audioContext.createGain();
@@ -295,6 +343,7 @@ class AudioCaptureController {
                 source.connect(proc);
                 proc.connect(silentGain);
                 silentGain.connect(this.audioContext.destination);
+                console.log("SAVI ScriptProcessor initialized as audio processing pipeline.");
             }
 
             this.startVadVisualizerLoop();
@@ -303,6 +352,76 @@ class AudioCaptureController {
         } catch (err) {
             console.warn("SAVI AudioCaptureController initialization warning:", err.message);
             return false;
+        }
+    }
+
+    handleAudioFrame(inputSamples) {
+        if (!inputSamples || inputSamples.length === 0) return;
+
+        // 1. Write to Circular Pre-Roll Buffer
+        const n = inputSamples.length;
+        for (let i = 0; i < n; i++) {
+            this.preRollRingBuffer[this.preRollWritePtr] = inputSamples[i];
+            this.preRollWritePtr = (this.preRollWritePtr + 1) % this.preRollCapacity;
+        }
+
+        // 2. Compute RMS Energy of Frame
+        let sumSq = 0;
+        for (let i = 0; i < n; i++) {
+            sumSq += inputSamples[i] * inputSamples[i];
+        }
+        const rms = Math.sqrt(sumSq / n);
+        this.currentRms = rms;
+
+        // 3. Adaptive Noise Floor Tracking (smooth EMA when user is not speaking)
+        if (!this.isSpeechActive) {
+            this.adaptiveNoiseFloor = (this.adaptiveNoiseFloor * 0.95) + (rms * 0.05);
+        }
+
+        // 4. Adaptive VAD with Hysteresis and Speaker-Aware Dynamic Threshold
+        const isAssistantSpeaking = this.saviVoice.playbackController.isSpeaking;
+
+        // When assistant is speaking through device speakers, acoustic energy leaks into the microphone
+        // Dynamic onset threshold:
+        // - Speaker Mode while assistant speaks: threshold is elevated to 0.36 or baseline + 0.16
+        // - Headphone Mode or assistant silent: sensitive threshold (0.12 or baseline + 0.04)
+        const onsetThreshold = isAssistantSpeaking
+            ? (this.audioOutputMode === 'headphone' ? Math.max(0.12, this.adaptiveNoiseFloor + 0.04) : Math.max(0.36, this.adaptiveNoiseFloor + 0.16))
+            : Math.max(0.12, this.adaptiveNoiseFloor + 0.04);
+
+        const continuationThreshold = onsetThreshold * 0.70;
+
+        const now = performance.now();
+
+        if (!this.isSpeechActive) {
+            if (rms >= onsetThreshold) {
+                if (!this.vadSpeechOnsetStartTime) {
+                    this.vadSpeechOnsetStartTime = now;
+                } else if (now - this.vadSpeechOnsetStartTime >= this.minSpeechDurationMs) {
+                    // Confirmed User Speech! Single Authoritative Event for Barge-In
+                    this.isSpeechActive = true;
+                    this.vadSpeechOnsetStartTime = 0;
+                    this.currentTurn.hasPreRollAudio = true;
+
+                    if (isAssistantSpeaking) {
+                        console.log("SAVI VAD: Sustained user speech detected -> Instant barge-in halt!");
+                        this.saviVoice.playbackController.duckAndStop(true);
+                    }
+
+                    if (this.saviVoice.dotNetRef) {
+                        this.saviVoice.dotNetRef.invokeMethodAsync('OnVadSpeechStarted', now);
+                    }
+                }
+            } else {
+                this.vadSpeechOnsetStartTime = 0;
+            }
+        } else {
+            // Speech currently active: use lower continuation threshold
+            if (rms < continuationThreshold) {
+                // Speech energy dropped below continuation threshold
+                this.isSpeechActive = false;
+                this.vadSpeechOnsetStartTime = 0;
+            }
         }
     }
 
@@ -323,30 +442,6 @@ class AudioCaptureController {
 
                 // Update CSS variable --savi-audio-level for reactive waveform and glowing rings
                 document.documentElement.style.setProperty('--savi-audio-level', normalizedLevel.toFixed(3));
-
-                // Dynamic VAD Interruption:
-                // When speaking on laptop speakers, physical speaker sound couples into the mic at ~0.20-0.35.
-                // In Speaker Mode: Elevate threshold to 0.42 and require 3 sustained frames so SAVI does not self-interrupt!
-                // In Headphone Mode: Zero acoustic coupling; threshold remains sensitive (0.20).
-                const isSpeaking = self.saviVoice.playbackController.isSpeaking;
-                const dynamicThreshold = isSpeaking
-                    ? (self.audioOutputMode === 'headphone' ? 0.20 : 0.42)
-                    : 0.18;
-
-                if (isSpeaking && normalizedLevel > dynamicThreshold) {
-                    self.vadSpeechCounter++;
-                    if (self.vadSpeechCounter >= 3) { // ~45ms of sustained speech energy clearly above speaker spillover
-                        console.log("SAVI VAD: Sustained user voice above speaker level detected -> Instant duck & stop!");
-                        self.saviVoice.playbackController.duckAndStop(true);
-                        self.vadSpeechCounter = 0;
-
-                        if (self.saviVoice.dotNetRef) {
-                            self.saviVoice.dotNetRef.invokeMethodAsync('OnVadSpeechStarted', performance.now());
-                        }
-                    }
-                } else {
-                    self.vadSpeechCounter = 0;
-                }
             }
 
             self.animFrameId = requestAnimationFrame(checkFrame);
@@ -355,7 +450,7 @@ class AudioCaptureController {
         checkFrame();
     }
 
-    // Intelligent client-side self-echo detector
+    // Secondary client-side self-echo detector
     isSelfEcho(transcript) {
         if (!transcript || typeof transcript !== 'string') return false;
         const cleanT = transcript.trim().toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()?"']/g, "").replace(/\s+/g, " ");
@@ -372,7 +467,7 @@ class AudioCaptureController {
         if (!inEchoWindow) return false;
 
         // Explicit barge-in command words: NEVER treat as echo!
-        const isBargeInCommand = /^(?:wait|stop|hold on|actually|no|pause|listen|cancel|quiet|never mind|shh|shut up|hey savi)\b/i.test(cleanT);
+        const isBargeInCommand = /^(?:wait|stop|hold on|actually|no|pause|listen|cancel|quiet|never mind|shh|shut up|hey savi|thats wrong|that's wrong|i meant|why|and tomorrow)\b/i.test(cleanT);
         if (isBargeInCommand) {
             return false;
         }
@@ -392,12 +487,12 @@ class AudioCaptureController {
             const cleanCand = cand.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()?"']/g, "").replace(/\s+/g, " ");
             if (!cleanCand) continue;
 
-            // Direct substring containment (e.g. "weather in Pune" matches "The weather in Pune today is around 28 degrees")
+            // Direct substring containment
             if (cleanCand.includes(cleanT) || cleanT.includes(cleanCand)) {
                 return true;
             }
 
-            // Word token overlap / Jaccard calculation
+            // Word token overlap calculation
             const candTokens = new Set(cleanCand.split(' ').filter(w => w.length > 1));
             let matchCount = 0;
             for (const tok of tTokens) {
@@ -405,8 +500,8 @@ class AudioCaptureController {
             }
 
             const overlapRatio = matchCount / tTokens.length;
-            // If >=50% of the recognized words are found in SAVI's speech, it is an acoustic echo!
-            if (overlapRatio >= 0.50) {
+            // Suppress only if >=60% overlap and at least 3 matching words
+            if (overlapRatio >= 0.60 && matchCount >= 3) {
                 return true;
             }
         }
@@ -459,16 +554,13 @@ class AudioCaptureController {
                     }
                 }
 
-                // If all audio in this batch was SAVI's own voice echoing, do not duck and do not dispatch!
+                // If all audio in this batch was SAVI's own voice echoing, do not proceed!
                 if (!finalChunk.trim() && !interimText.trim()) {
                     return;
                 }
 
-                // Genuinely new user speech detected! Duck playback immediately!
-                if (self.saviVoice.playbackController.isSpeaking) {
-                    console.log("SAVI: Genuine user speech heard during speech -> Instant duck & stop!");
-                    self.saviVoice.playbackController.duckAndStop(true);
-                }
+                // Note: Barge-in playback ducking is already handled authoritatively by VAD SpeechStarted!
+                // We do NOT call duckAndStop() here to avoid duplicate triggers and race conditions.
 
                 if (finalChunk) {
                     self.currentTurn.finalTranscript += finalChunk;
@@ -511,7 +603,7 @@ class AudioCaptureController {
                     };
 
                     if (isImmediate && fullText.split(/\s+/).length <= 4) {
-                        // Instant commands (wait, stop, keep it short) trigger with zero pause delay
+                        // Instant commands (wait, stop, hold on) trigger with zero pause delay
                         dispatchFinalTurn();
                     } else {
                         // 1200ms pause for conjunctions; 700ms standard pause; 1000ms interim-only pause
@@ -550,7 +642,7 @@ class AudioCaptureController {
                     }
                 }
 
-                // In continuous mode, restart STT stream seamlessly without touching microphone capture
+                // In continuous mode, restart STT stream seamlessly without touching microphone capture or AudioContext
                 if (self.continuousVoiceMode) {
                     setTimeout(() => {
                         if (self.continuousVoiceMode && !self.isListening) {
@@ -642,7 +734,11 @@ window.saviVoice = {
             hardwareAec: this.captureController?.hardwareAecEnabled,
             hardwareNs: this.captureController?.hardwareNsEnabled,
             hardwareAgc: this.captureController?.hardwareAgcEnabled,
-            selfEchoSuppressedCount: this.captureController?.falseSelfDetectionCount ?? 0
+            selfEchoSuppressedCount: this.captureController?.falseSelfDetectionCount ?? 0,
+            noiseFloor: this.captureController?.adaptiveNoiseFloor ?? 0.02,
+            currentRms: this.captureController?.currentRms ?? 0.0,
+            lastInterruptionLatencyMs: this.playbackController?.lastStopLatencyMs ?? 0,
+            audioWorkletActive: this.captureController?.audioWorkletActive ?? false
         };
     },
 

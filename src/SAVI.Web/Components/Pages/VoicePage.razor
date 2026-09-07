@@ -1,0 +1,984 @@
+@page "/voice"
+@page "/voice/{ConversationId?}"
+@rendermode InteractiveServer
+@using SAVI.Core.Enums
+@using SAVI.Application.DTOs
+@using SAVI.Core.Interfaces
+@inject IAgentOrchestrator Orchestrator
+@inject IConversationService ConversationService
+@inject ISettingsService SettingsService
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@implements IAsyncDisposable
+
+<PageTitle>SAVI — Real-Time Voice Conversation</PageTitle>
+
+<div class="savi-voice-page-root @(_voiceState == VoiceState.Interrupted ? "savi-interrupted-pulse" : "")" role="region" aria-label="SAVI Real-Time Voice Conversation">
+    <!-- Top HUD Bar -->
+    <header class="voice-page-header">
+        <div class="voice-page-brand">
+            <span class="voice-live-dot @(_voiceState == VoiceState.Listening || _voiceState == VoiceState.DetectingSpeech || _voiceState == VoiceState.Speaking ? "live-active" : "")"></span>
+            <div style="display: flex; flex-direction: column;">
+                <span class="voice-brand-title">SAVI NEURAL VOICE</span>
+                <span class="voice-conv-title">@(_activeTitle.Length > 28 ? _activeTitle.Substring(0, 26) + "..." : _activeTitle)</span>
+            </div>
+            <span class="voice-brand-badge">REAL-TIME FULL DUPLEX</span>
+        </div>
+
+        <!-- Diagnostics HUD -->
+        <div class="voice-telemetry-hud">
+            @if (_lastAudioStopLatencyMs > 0)
+            {
+                <span class="telemetry-pill barge-in-pill" title="Last Barge-In / Audio Duck Latency">
+                    ⚡ Stop: @(Math.Round(_lastAudioStopLatencyMs)) ms
+                </span>
+            }
+            <span class="telemetry-pill desktop-only" title="Acoustic Echo Cancellation Status">
+                AEC: @(_hardwareAec ? "Hardware Verified" : "Software Filter")
+            </span>
+            @if (_falseSelfDetectionCount > 0)
+            {
+                <span class="telemetry-pill" style="color: #00f0ff; border-color: rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.1);" title="SAVI self-echo transcripts suppressed">
+                    🛡 Echo Filter: @_falseSelfDetectionCount
+                </span>
+            }
+            <button class="telemetry-pill" style="cursor: pointer; background: rgba(0, 240, 255, 0.1); border-color: rgba(0, 240, 255, 0.3); color: #00f0ff;" @onclick="ToggleAudioOutputMode" title="Toggle Speaker Mode (echo filter active) vs Headphone Mode">
+                @(_audioOutputMode == "speaker" ? "🔊 Speaker" : "🎧 Headphone")
+            </button>
+        </div>
+
+        <!-- Back to Chat Button -->
+        <button class="voice-back-btn" @onclick="NavigateBackToChat" title="Return to Text Chat Screen">
+            <span class="back-icon">💬</span>
+            <span class="back-label">Back to Chat</span>
+        </button>
+    </header>
+
+    <!-- Center Interactive Stage -->
+    <main class="voice-page-center">
+        <!-- Reactive Orb Container -->
+        <div class="voice-orb-container state-@_voiceState.ToString().ToLowerInvariant()">
+            <!-- Dynamic Audio Rings -->
+            <div class="voice-audio-ripple ring-1"></div>
+            <div class="voice-audio-ripple ring-2"></div>
+            <div class="voice-audio-ripple ring-3"></div>
+
+            <!-- Central SAVI Reactor Orb SVG -->
+            <div class="voice-orb-svg-wrapper">
+                <svg class="voice-reactor-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <filter id="voice-glow-page" x="-20%" y="-20%" width="140%" height="140%">
+                            <feGaussianBlur stdDeviation="4" result="blur" />
+                            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                        </filter>
+                        <radialGradient id="voice-reactor-grad-page" cx="50%" cy="50%" r="50%">
+                            <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.9" />
+                            <stop offset="60%" stop-color="#0066cc" stop-opacity="0.5" />
+                            <stop offset="100%" stop-color="#050b14" stop-opacity="0.1" />
+                        </radialGradient>
+                    </defs>
+
+                    <!-- Outer Dashed Ring -->
+                    <circle cx="100" cy="100" r="90" fill="none" stroke="rgba(0, 240, 255, 0.2)" stroke-width="1.5" stroke-dasharray="6 8" />
+
+                    <!-- Rotating Outer Ring -->
+                    <g class="voice-rotating-ring">
+                        <circle cx="100" cy="100" r="80" fill="none" stroke="#00f0ff" stroke-width="2" stroke-dasharray="50 30 20 30 80 20" filter="url(#voice-glow-page)" />
+                        <circle cx="100" cy="20" r="4" fill="#00f0ff" />
+                        <circle cx="100" cy="180" r="4" fill="#00f0ff" />
+                    </g>
+
+                    <!-- Counter Rotating Ring -->
+                    <g class="voice-counter-ring">
+                        <circle cx="100" cy="100" r="62" fill="none" stroke="#0099ff" stroke-width="2" stroke-dasharray="35 15 25 15" />
+                    </g>
+
+                    <!-- Core Glowing Pulsing Circle -->
+                    <circle class="voice-center-orb" cx="100" cy="100" r="38" fill="url(#voice-reactor-grad-page)" stroke="#00f0ff" stroke-width="2" filter="url(#voice-glow-page)" />
+
+                    <!-- Center Emblem -->
+                    <text x="100" y="105" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="800" letter-spacing="3" font-family="'JetBrains Mono', monospace">SAVI</text>
+                </svg>
+            </div>
+        </div>
+
+        <!-- State Status Pill -->
+        <div class="voice-state-pill-wrapper">
+            <div class="voice-state-pill pill-@_voiceState.ToString().ToLowerInvariant()">
+                @switch (_voiceState)
+                {
+                    case VoiceState.Listening:
+                        <span class="pill-dot listening-dot"></span>
+                        <span>LISTENING</span>
+                        break;
+                    case VoiceState.DetectingSpeech:
+                        <span class="pill-dot detecting-dot"></span>
+                        <span>TRANSCRIBING SPEECH</span>
+                        break;
+                    case VoiceState.Processing:
+                        <span class="pill-dot thinking-dot"></span>
+                        <span>THINKING & REASONING</span>
+                        break;
+                    case VoiceState.Speaking:
+                        <span class="pill-dot speaking-dot"></span>
+                        <span>SPEAKING</span>
+                        break;
+                    case VoiceState.Interrupted:
+                        <span class="pill-dot interrupted-dot"></span>
+                        <span>⚡ INTERRUPTED — LISTENING RESUMED</span>
+                        break;
+                    case VoiceState.Error:
+                        <span class="pill-dot error-dot"></span>
+                        <span>MIC ATTENTION NEEDED</span>
+                        break;
+                    default:
+                        <span class="pill-dot idle-dot"></span>
+                        <span>STANDING BY</span>
+                        break;
+                }
+            </div>
+        </div>
+
+        <!-- Live Dual Transcript Stream Display -->
+        <section class="voice-transcript-stream" aria-live="polite">
+            <!-- User Speech Stream -->
+            <div class="transcript-row user-transcript-row @(!string.IsNullOrWhiteSpace(DisplayUserTranscript) ? "visible" : "dimmed")">
+                <span class="speaker-tag user-tag">YOU</span>
+                <p class="transcript-text">
+                    @(string.IsNullOrWhiteSpace(DisplayUserTranscript) ? "Speak naturally to SAVI..." : DisplayUserTranscript)
+                </p>
+            </div>
+
+            <!-- SAVI Spoken Response Stream -->
+            <div class="transcript-row savi-transcript-row @(!string.IsNullOrWhiteSpace(DisplayAssistantTranscript) ? "visible" : "")">
+                <span class="speaker-tag savi-tag">SAVI</span>
+                <p class="transcript-text">
+                    @(string.IsNullOrWhiteSpace(DisplayAssistantTranscript) ? "I am online and listening. Ask anything or give a command." : DisplayAssistantTranscript)
+                </p>
+            </div>
+        </section>
+
+        @if (!string.IsNullOrEmpty(_voiceError))
+        {
+            <div class="voice-error-banner">
+                <span>⚠️ @_voiceError</span>
+                <button class="voice-error-dismiss" @onclick="() => _voiceError = null">✕</button>
+            </div>
+        }
+    </main>
+
+    <!-- Bottom Controls Toolbar -->
+    <footer class="voice-page-footer">
+        <div class="voice-controls-bar">
+            <!-- Mute / Unmute Button -->
+            <button class="voice-ctl-btn @(_isMicMuted ? "btn-danger" : "btn-subtle")" @onclick="ToggleVoiceMute" title="Mute / Unmute Microphone">
+                <span class="ctl-icon">@(_isMicMuted ? "🔇" : "🎙️")</span>
+                <span class="ctl-label">@(_isMicMuted ? "Unmute Mic" : "Mute Mic")</span>
+            </button>
+
+            <!-- Interrupt / Silence Button (Instant Barge-in) -->
+            @if (_voiceState == VoiceState.Speaking || _voiceState == VoiceState.Processing)
+            {
+                <button class="voice-ctl-btn btn-danger-accent barge-in-btn" @onclick="InterruptSpeaking" title="Barge-in / Stop Audio (Esc)">
+                    <span class="ctl-icon">⏹</span>
+                    <span class="ctl-label">Stop Speaking</span>
+                </button>
+            }
+
+            <!-- Pause / Resume Session -->
+            <button class="voice-ctl-btn @(!_isListening ? "btn-warning" : "btn-subtle")" @onclick="ToggleVoicePause" title="Pause / Resume Continuous Listening">
+                <span class="ctl-icon">@(!_isListening ? "▶️" : "⏸")</span>
+                <span class="ctl-label">@(!_isListening ? "Resume" : "Pause")</span>
+            </button>
+
+            <!-- Audio Output Mode Toggle (Speaker vs Headphone) -->
+            <button class="voice-ctl-btn btn-subtle" @onclick="ToggleAudioOutputMode" title="Toggle between Speaker Mode and Headphone Mode">
+                <span class="ctl-icon">@(_audioOutputMode == "speaker" ? "🔊" : "🎧")</span>
+                <span class="ctl-label">@(_audioOutputMode == "speaker" ? "Speaker" : "Headphone")</span>
+            </button>
+
+            <!-- Return to Chat Button -->
+            <button class="voice-ctl-btn btn-exit-primary" @onclick="NavigateBackToChat" title="Return to text conversation">
+                <span class="ctl-icon">💬</span>
+                <span class="ctl-label">Back to Chat</span>
+            </button>
+        </div>
+
+        <div class="voice-shortcuts-hint">
+            <span>💡 <strong>Tip:</strong> Speak freely without pressing buttons. Say <em>"Wait"</em>, <em>"Actually"</em>, <em>"Stop"</em>, or <em>"Keep it short"</em> anytime to interrupt instantly.</span>
+        </div>
+    </footer>
+</div>
+
+<style>
+    .savi-voice-page-root {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        height: 100%;
+        min-height: calc(100vh - 80px);
+        background: radial-gradient(circle at 50% 35%, rgba(10, 26, 47, 0.95) 0%, rgba(3, 7, 18, 0.99) 100%);
+        border: 1px solid var(--savi-border-subtle);
+        border-radius: 12px;
+        color: #f8fafc;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .savi-interrupted-pulse {
+        animation: saviInterruptedFlash 0.3s ease-out;
+    }
+
+    @@keyframes saviInterruptedFlash {
+        0% { background: radial-gradient(circle at 50% 35%, rgba(245, 158, 11, 0.25) 0%, rgba(3, 7, 18, 0.99) 100%); }
+        100% { background: radial-gradient(circle at 50% 35%, rgba(10, 26, 47, 0.95) 0%, rgba(3, 7, 18, 0.99) 100%); }
+    }
+
+    /* Top HUD */
+    .voice-page-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 24px;
+        border-bottom: 1px solid rgba(0, 240, 255, 0.12);
+        background: rgba(3, 7, 18, 0.4);
+    }
+
+    .voice-page-brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .voice-live-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #64748b;
+        transition: all 0.3s ease;
+    }
+
+    .voice-live-dot.live-active {
+        background: #00f0ff;
+        box-shadow: 0 0 12px #00f0ff, 0 0 20px rgba(0, 240, 255, 0.5);
+        animation: pulseDot 1.5s infinite alternate;
+    }
+
+    @@keyframes pulseDot {
+        0% { transform: scale(0.9); opacity: 0.8; }
+        100% { transform: scale(1.2); opacity: 1; }
+    }
+
+    .voice-brand-title {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 800;
+        letter-spacing: 2px;
+        font-size: 0.95rem;
+        color: #f8fafc;
+    }
+
+    .voice-conv-title {
+        font-size: 0.68rem;
+        color: var(--savi-text-dim);
+    }
+
+    .voice-brand-badge {
+        font-size: 0.65rem;
+        padding: 3px 8px;
+        border-radius: 9999px;
+        background: rgba(0, 240, 255, 0.12);
+        color: #00f0ff;
+        border: 1px solid rgba(0, 240, 255, 0.3);
+        font-family: 'JetBrains Mono', monospace;
+        letter-spacing: 1px;
+    }
+
+    .voice-telemetry-hud {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .telemetry-pill {
+        font-size: 0.72rem;
+        font-family: 'JetBrains Mono', monospace;
+        padding: 4px 10px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #94a3b8;
+    }
+
+    .barge-in-pill {
+        background: rgba(245, 158, 11, 0.15);
+        color: #fbbf24;
+        border-color: rgba(245, 158, 11, 0.4);
+        font-weight: 600;
+    }
+
+    .voice-back-btn {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 16px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        color: #f1f5f9;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.82rem;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+
+    .voice-back-btn:hover {
+        background: rgba(0, 240, 255, 0.15);
+        border-color: rgba(0, 240, 255, 0.4);
+        color: #00f0ff;
+    }
+
+    /* Center Stage */
+    .voice-page-center {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 20px 24px;
+        gap: 20px;
+        max-width: 900px;
+        margin: 0 auto;
+        width: 100%;
+    }
+
+    /* Reactive Orb */
+    .voice-orb-container {
+        position: relative;
+        width: 230px;
+        height: 230px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .voice-orb-svg-wrapper {
+        position: relative;
+        width: 180px;
+        height: 180px;
+        z-index: 2;
+    }
+
+    .voice-reactor-svg {
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+    }
+
+    .voice-rotating-ring {
+        transform-origin: 100px 100px;
+        animation: rotateClockwise 14s linear infinite;
+    }
+
+    .voice-counter-ring {
+        transform-origin: 100px 100px;
+        animation: rotateCounter 20s linear infinite;
+    }
+
+    @@keyframes rotateClockwise {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    @@keyframes rotateCounter {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(-360deg); }
+    }
+
+    /* Audio Ripple Waves */
+    .voice-audio-ripple {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 1.5px solid rgba(0, 240, 255, 0.3);
+        pointer-events: none;
+        transform: scale(calc(1 + var(--savi-audio-level, 0) * 0.4));
+        opacity: calc(0.2 + var(--savi-audio-level, 0) * 0.6);
+        transition: transform 0.08s ease-out, opacity 0.08s ease-out;
+    }
+
+    .voice-audio-ripple.ring-2 {
+        inset: -18px;
+        border-color: rgba(0, 153, 255, 0.2);
+        transform: scale(calc(1 + var(--savi-audio-level, 0) * 0.6));
+    }
+
+    .voice-audio-ripple.ring-3 {
+        inset: -36px;
+        border-color: rgba(0, 240, 255, 0.1);
+        transform: scale(calc(1 + var(--savi-audio-level, 0) * 0.8));
+    }
+
+    .state-speaking .voice-center-orb {
+        animation: pulseCore 1s infinite alternate;
+    }
+
+    .state-processing .voice-rotating-ring {
+        animation-duration: 3s;
+    }
+
+    .state-interrupted .voice-reactor-svg text {
+        fill: #f59e0b;
+    }
+
+    @@keyframes pulseCore {
+        0% { r: 35; }
+        100% { r: 42; }
+    }
+
+    /* State Pill */
+    .voice-state-pill-wrapper {
+        display: flex;
+        justify-content: center;
+    }
+
+    .voice-state-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 18px;
+        border-radius: 9999px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.8rem;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    .pill-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+    }
+
+    .pill-listening {
+        background: rgba(0, 240, 255, 0.12);
+        border: 1px solid rgba(0, 240, 255, 0.4);
+        color: #00f0ff;
+    }
+    .listening-dot { background: #00f0ff; box-shadow: 0 0 8px #00f0ff; }
+
+    .pill-detectingspeech {
+        background: rgba(250, 204, 21, 0.15);
+        border: 1px solid rgba(250, 204, 21, 0.4);
+        color: #facc15;
+    }
+    .detecting-dot { background: #facc15; box-shadow: 0 0 8px #facc15; }
+
+    .pill-processing {
+        background: rgba(168, 85, 247, 0.15);
+        border: 1px solid rgba(168, 85, 247, 0.4);
+        color: #c084fc;
+    }
+    .thinking-dot { background: #c084fc; box-shadow: 0 0 8px #c084fc; animation: pulseDot 1s infinite; }
+
+    .pill-speaking {
+        background: rgba(34, 197, 94, 0.15);
+        border: 1px solid rgba(34, 197, 94, 0.4);
+        color: #4ade80;
+    }
+    .speaking-dot { background: #4ade80; box-shadow: 0 0 8px #4ade80; }
+
+    .pill-interrupted {
+        background: rgba(245, 158, 11, 0.2);
+        border: 1px solid rgba(245, 158, 11, 0.6);
+        color: #fbbf24;
+    }
+    .interrupted-dot { background: #fbbf24; box-shadow: 0 0 10px #fbbf24; }
+
+    .pill-error {
+        background: rgba(239, 68, 68, 0.15);
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        color: #f87171;
+    }
+    .error-dot { background: #f87171; }
+
+    .pill-idle {
+        background: rgba(148, 163, 184, 0.12);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        color: #94a3b8;
+    }
+    .idle-dot { background: #94a3b8; }
+
+    /* Dual Transcript Stream */
+    .voice-transcript-stream {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        background: rgba(7, 15, 30, 0.7);
+        border: 1px solid rgba(0, 240, 255, 0.12);
+        border-radius: 14px;
+        padding: 18px 22px;
+        min-height: 130px;
+        max-height: 250px;
+        overflow-y: auto;
+    }
+
+    .transcript-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        transition: opacity 0.2s;
+    }
+
+    .transcript-row.dimmed {
+        opacity: 0.5;
+    }
+
+    .speaker-tag {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.68rem;
+        font-weight: 800;
+        padding: 3px 7px;
+        border-radius: 4px;
+        letter-spacing: 1px;
+        flex-shrink: 0;
+        margin-top: 2px;
+    }
+
+    .user-tag {
+        background: rgba(59, 130, 246, 0.2);
+        border: 1px solid rgba(59, 130, 246, 0.4);
+        color: #93c5fd;
+    }
+
+    .savi-tag {
+        background: rgba(0, 240, 255, 0.2);
+        border: 1px solid rgba(0, 240, 255, 0.4);
+        color: #00f0ff;
+    }
+
+    .transcript-text {
+        margin: 0;
+        font-size: 1rem;
+        line-height: 1.5;
+        color: #f1f5f9;
+        word-break: break-word;
+    }
+
+    .voice-error-banner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        width: 100%;
+        background: rgba(239, 68, 68, 0.15);
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        border-radius: 8px;
+        padding: 8px 14px;
+        color: #fca5a5;
+        font-size: 0.8rem;
+    }
+
+    .voice-error-dismiss {
+        background: none;
+        border: none;
+        color: #fca5a5;
+        cursor: pointer;
+        font-size: 0.9rem;
+    }
+
+    /* Bottom Toolbar */
+    .voice-page-footer {
+        padding: 18px 24px 24px;
+        background: rgba(3, 7, 18, 0.7);
+        border-top: 1px solid rgba(0, 240, 255, 0.12);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .voice-controls-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .voice-ctl-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 18px;
+        border-radius: 10px;
+        font-size: 0.84rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        border: 1px solid transparent;
+    }
+
+    .btn-subtle {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.15);
+        color: #f1f5f9;
+    }
+    .btn-subtle:hover {
+        background: rgba(255, 255, 255, 0.14);
+    }
+
+    .btn-danger {
+        background: rgba(239, 68, 68, 0.2);
+        border-color: rgba(239, 68, 68, 0.5);
+        color: #fca5a5;
+    }
+
+    .btn-warning {
+        background: rgba(245, 158, 11, 0.2);
+        border-color: rgba(245, 158, 11, 0.5);
+        color: #fbbf24;
+    }
+
+    .btn-danger-accent {
+        background: rgba(239, 68, 68, 0.15);
+        border-color: rgba(239, 68, 68, 0.5);
+        color: #fca5a5;
+        animation: bargeInAttention 1s infinite alternate;
+    }
+
+    @@keyframes bargeInAttention {
+        0% { box-shadow: 0 0 0 rgba(239, 68, 68, 0); }
+        100% { box-shadow: 0 0 14px rgba(239, 68, 68, 0.5); }
+    }
+
+    .btn-exit-primary {
+        background: linear-gradient(135deg, rgba(0, 240, 255, 0.2) 0%, rgba(59, 130, 246, 0.2) 100%);
+        border: 1px solid rgba(0, 240, 255, 0.4);
+        color: #00f0ff;
+    }
+    .btn-exit-primary:hover {
+        background: linear-gradient(135deg, rgba(0, 240, 255, 0.3) 0%, rgba(59, 130, 246, 0.3) 100%);
+    }
+
+    .voice-shortcuts-hint {
+        font-size: 0.74rem;
+        color: #94a3b8;
+        text-align: center;
+    }
+
+    @@media (max-width: 640px) {
+        .voice-page-header { padding: 12px 14px; flex-wrap: wrap; gap: 8px; }
+        .desktop-only { display: none; }
+        .voice-telemetry-hud { flex-wrap: wrap; gap: 6px; }
+        .voice-orb-container { width: 160px; height: 160px; }
+        .voice-orb-svg-wrapper { width: 130px; height: 130px; }
+        .transcript-text { font-size: 0.9rem; }
+        .voice-controls-bar { gap: 8px; }
+        .voice-ctl-btn { padding: 6px 12px; font-size: 0.76rem; }
+    }
+</style>
+
+@code {
+    [Parameter]
+    public string? ConversationId { get; set; }
+
+    private string _currentConversationId = string.Empty;
+    private string _activeTitle = "Voice Conversation";
+    private VoiceState _voiceState = VoiceState.Idle;
+    private bool _isListening = false;
+    private bool _isMicMuted = false;
+    private string _audioOutputMode = "speaker";
+    private int _falseSelfDetectionCount = 0;
+    private bool _hardwareAec = true;
+    private bool _hardwareNs = true;
+    private bool _hardwareAgc = true;
+    private double _lastAudioStopLatencyMs = 0;
+    private string? _voiceError;
+
+    private string _liveInterimTranscript = string.Empty;
+    private string _lastUserUtterance = string.Empty;
+    private string _lastAssistantResponse = string.Empty;
+    private string? _activeTurnId;
+    private CancellationTokenSource? _processingCts;
+
+    private DotNetObjectReference<VoicePage>? _dotNetRef;
+
+    private string DisplayUserTranscript =>
+        !string.IsNullOrWhiteSpace(_liveInterimTranscript) ? _liveInterimTranscript : _lastUserUtterance;
+
+    private string DisplayAssistantTranscript => _lastAssistantResponse;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrEmpty(ConversationId))
+        {
+            _currentConversationId = ConversationId;
+            var conv = await ConversationService.GetByIdAsync(ConversationId);
+            if (conv != null)
+            {
+                _activeTitle = conv.Title;
+                var lastUser = conv.Messages.LastOrDefault(m => m.Role == MessageRole.User);
+                if (lastUser != null) _lastUserUtterance = lastUser.Content;
+                var lastAsst = conv.Messages.LastOrDefault(m => m.Role == MessageRole.Assistant);
+                if (lastAsst != null) _lastAssistantResponse = lastAsst.Content;
+            }
+        }
+        else
+        {
+            var newConv = await ConversationService.GetOrCreateAsync(null);
+            _currentConversationId = newConv.Id;
+            _activeTitle = newConv.Title;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            try
+            {
+                var ok = await JS.InvokeAsync<bool>("saviVoice.init", _dotNetRef);
+                if (ok)
+                {
+                    await JS.InvokeVoidAsync("saviVoice.setContinuousMode", true);
+                    _isListening = true;
+                    _voiceState = VoiceState.Listening;
+                }
+            }
+            catch (Exception ex)
+            {
+                _voiceError = $"Voice initialization notice: {ex.Message}";
+            }
+            StateHasChanged();
+        }
+    }
+
+    private void NavigateBackToChat()
+    {
+        Navigation.NavigateTo($"/chat/{_currentConversationId}");
+    }
+
+    private async Task ToggleVoiceMute()
+    {
+        _isMicMuted = !_isMicMuted;
+        try
+        {
+            if (_isMicMuted)
+            {
+                await JS.InvokeVoidAsync("saviVoice.stopListening");
+                _isListening = false;
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("saviVoice.startListening");
+                _isListening = true;
+                _voiceState = VoiceState.Listening;
+            }
+        }
+        catch { }
+        StateHasChanged();
+    }
+
+    private async Task ToggleVoicePause()
+    {
+        try
+        {
+            if (_isListening)
+            {
+                await JS.InvokeVoidAsync("saviVoice.stopListening");
+                _isListening = false;
+                _voiceState = VoiceState.Idle;
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("saviVoice.startListening");
+                _isListening = true;
+                _voiceState = VoiceState.Listening;
+            }
+        }
+        catch { }
+        StateHasChanged();
+    }
+
+    private async Task InterruptSpeaking()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("saviVoice.interruptSpeaking");
+        }
+        catch { }
+    }
+
+    private async Task ToggleAudioOutputMode()
+    {
+        _audioOutputMode = _audioOutputMode == "speaker" ? "headphone" : "speaker";
+        try
+        {
+            await JS.InvokeVoidAsync("saviVoice.setAudioOutputMode", _audioOutputMode);
+        }
+        catch { }
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnVadSpeechStarted(double timestampMs)
+    {
+        _voiceState = VoiceState.DetectingSpeech;
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnUserInterrupted(double audioStopLatencyMs = 0)
+    {
+        if (audioStopLatencyMs > 0)
+        {
+            _lastAudioStopLatencyMs = audioStopLatencyMs;
+        }
+        try
+        {
+            _processingCts?.Cancel();
+        }
+        catch { }
+        _voiceState = VoiceState.Interrupted;
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnSpeechInterim(string text)
+    {
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            _liveInterimTranscript = text;
+            _voiceState = VoiceState.DetectingSpeech;
+            _voiceError = null;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnSpeechRecognized(string transcript, string? turnId = null)
+    {
+        if (string.IsNullOrWhiteSpace(transcript)) return;
+
+        _liveInterimTranscript = string.Empty;
+        _lastUserUtterance = transcript.Trim();
+        _voiceError = null;
+
+        var assignedTurnId = turnId ?? ("turn_" + Guid.NewGuid().ToString("N"));
+        _activeTurnId = assignedTurnId;
+
+        var oldCts = _processingCts;
+        _processingCts = new CancellationTokenSource();
+        var currentToken = _processingCts.Token;
+
+        try
+        {
+            oldCts?.Cancel();
+            oldCts?.Dispose();
+        }
+        catch { }
+
+        _voiceState = VoiceState.Processing;
+        StateHasChanged();
+
+        try
+        {
+            var req = new AgentRequest
+            {
+                Message = transcript.Trim(),
+                ConversationId = _currentConversationId,
+                VoiceActive = true,
+                ClientType = "VoicePage"
+            };
+
+            var res = await Orchestrator.ProcessAsync(req, currentToken);
+
+            if (currentToken.IsCancellationRequested || _activeTurnId != assignedTurnId) return;
+
+            var spokenText = !string.IsNullOrWhiteSpace(res.VoiceFriendlyMessage)
+                ? res.VoiceFriendlyMessage
+                : res.Message;
+
+            _lastAssistantResponse = spokenText;
+            _voiceState = VoiceState.Speaking;
+            StateHasChanged();
+
+            try
+            {
+                await JS.InvokeVoidAsync("saviVoice.speak", spokenText, 1.0, assignedTurnId);
+            }
+            catch { }
+        }
+        catch (OperationCanceledException)
+        {
+            if (_activeTurnId == assignedTurnId)
+            {
+                _voiceState = VoiceState.Listening;
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!currentToken.IsCancellationRequested && _activeTurnId == assignedTurnId)
+            {
+                _voiceError = $"Voice error: {ex.Message}";
+                _voiceState = VoiceState.Error;
+            }
+        }
+        finally
+        {
+            if (_activeTurnId == assignedTurnId && _voiceState != VoiceState.Speaking && _voiceState != VoiceState.Interrupted)
+            {
+                _voiceState = VoiceState.Listening;
+                StateHasChanged();
+            }
+        }
+    }
+
+    [JSInvokable]
+    public void OnVoiceStateChanged(int stateCode)
+    {
+        _voiceState = (VoiceState)stateCode;
+        _isListening = _voiceState == VoiceState.Listening;
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnVoiceError(string errorMessage)
+    {
+        _voiceError = errorMessage;
+        _isListening = false;
+        _voiceState = VoiceState.Error;
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnAudioSettingsDetected(bool aec, bool ns, bool agc, int sampleRate)
+    {
+        _hardwareAec = aec;
+        _hardwareNs = ns;
+        _hardwareAgc = agc;
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnSelfEchoSuppressed(string echoedText, int count)
+    {
+        _falseSelfDetectionCount = count;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("saviVoice.stopListening");
+            await JS.InvokeVoidAsync("saviVoice.stopSpeaking");
+        }
+        catch { }
+        _dotNetRef?.Dispose();
+    }
+}

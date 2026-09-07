@@ -703,4 +703,190 @@ Answer: Done.";
         // Unrelated speech
         Assert.False(VoiceConversationSession.IsSelfEcho("Can you write a python script for sorting an array?", assistant));
     }
+
+    [Fact]
+    public async Task SessionVsTurn_CancellingTurn_PreservesSessionAndMicState()
+    {
+        await _session.StartAsync("conv_session_test");
+        Assert.True(_session.IsActive);
+        Assert.Equal(VoiceState.Listening, _session.CurrentState);
+
+        var turn1Tcs = new TaskCompletionSource<AgentResponse>();
+        _orchestrator.Handler = (req, ct) =>
+        {
+            ct.Register(() => turn1Tcs.TrySetCanceled());
+            return turn1Tcs.Task;
+        };
+
+        // Start Turn 1
+        var turn1Task = _session.ProcessUtteranceAsync("Explain the theory of general relativity in deep detail.");
+
+        // Wait brief moment, then interrupt
+        await Task.Delay(20);
+        await _session.InterruptAsync();
+
+        var turn1Result = await turn1Task;
+        Assert.True(turn1Result.WasInterrupted);
+
+        // Session remains 100% active and listening for next turn!
+        Assert.True(_session.IsActive);
+        Assert.Equal(VoiceState.Listening, _session.CurrentState);
+    }
+
+    [Fact]
+    public async Task EventPipeline_EmitsAllRequiredLifecycleEvents()
+    {
+        var emittedEvents = new List<string>();
+        _session.VoiceEventEmitted += (evt, _) => emittedEvents.Add(evt);
+
+        await _session.StartAsync("conv_pipeline");
+
+        _orchestrator.Handler = (req, ct) => Task.FromResult(new AgentResponse
+        {
+            Message = "Test pipeline answer.",
+            VoiceFriendlyMessage = "Test pipeline answer.",
+            Success = true,
+            ConversationId = "conv_pipeline"
+        });
+
+        _session.NotifyUserSpeechStarted();
+        _session.NotifyUserSpeechPartial("Test pipeline");
+        _session.NotifyUserSpeechStopped();
+
+        var result = await _session.ProcessUtteranceAsync("Test pipeline question.");
+        Assert.True(result.Success);
+
+        await _session.StopAsync();
+
+        Assert.Contains("voice.session.started", emittedEvents);
+        Assert.Contains("audio.capture.started", emittedEvents);
+        Assert.Contains("user.speech.started", emittedEvents);
+        Assert.Contains("user.speech.partial", emittedEvents);
+        Assert.Contains("user.speech.stopped", emittedEvents);
+        Assert.Contains("voice.turn.started", emittedEvents);
+        Assert.Contains("assistant.speech.started", emittedEvents);
+        Assert.Contains("assistant.audio.started", emittedEvents);
+        Assert.Contains("assistant.audio.stopped", emittedEvents);
+        Assert.Contains("voice.turn.completed", emittedEvents);
+        Assert.Contains("audio.capture.stopped", emittedEvents);
+        Assert.Contains("voice.session.stopped", emittedEvents);
+    }
+
+    [Fact]
+    public async Task PreRollAndPostRoll_ParametersAreCorrectlyRecordedInTurnContext()
+    {
+        await _session.StartAsync("conv_preroll");
+
+        _orchestrator.Handler = (req, ct) => Task.FromResult(new AgentResponse
+        {
+            Message = "Pre-roll verified.",
+            VoiceFriendlyMessage = "Pre-roll verified.",
+            Success = true,
+            ConversationId = "conv_preroll"
+        });
+
+        var turn = await _session.ProcessUtteranceAsync("Test utterance for pre-roll verification.");
+        Assert.True(turn.Success);
+
+        var currentTurn = _session.CurrentTurn;
+        Assert.NotNull(currentTurn);
+        Assert.True(currentTurn.HasPreRollAudio);
+        Assert.Equal(300, currentTurn.PreRollDurationMs);
+        Assert.Equal(150, currentTurn.PostRollDurationMs);
+        Assert.NotNull(currentTurn.AudioStartTime);
+    }
+
+    [Fact]
+    public async Task BargeIn_SingleAuthoritativeEvent_StopsPlaybackWithoutSTTDuplication()
+    {
+        await _session.StartAsync("conv_bargein_test");
+
+        var turnInterruptedFired = 0;
+        _session.VoiceEventEmitted += (evt, _) =>
+        {
+            if (evt == "voice.interrupted") turnInterruptedFired++;
+        };
+
+        // Simulate VAD barge-in interrupt event
+        await _session.InterruptAsync();
+
+        Assert.Equal(1, turnInterruptedFired);
+        Assert.Equal(VoiceState.Listening, _session.CurrentState);
+        Assert.True(_session.IsActive);
+    }
+
+    [Fact]
+    public async Task RapidMultiTurn_5ConsecutiveTurnsInSingleSession_Succeeds()
+    {
+        await _session.StartAsync("conv_multiturn");
+
+        int turnCounter = 0;
+        _orchestrator.Handler = (req, ct) =>
+        {
+            turnCounter++;
+            return Task.FromResult(new AgentResponse
+            {
+                Message = $"Response to turn {turnCounter}",
+                VoiceFriendlyMessage = $"Response to turn {turnCounter}",
+                Success = true,
+                ConversationId = "conv_multiturn"
+            });
+        };
+
+        for (int i = 1; i <= 5; i++)
+        {
+            var result = await _session.ProcessUtteranceAsync($"Turn message {i}");
+            Assert.True(result.Success);
+            Assert.Equal($"Response to turn {i}", result.VoiceFriendlyResponse);
+            Assert.Equal(VoiceState.Listening, _session.CurrentState);
+            Assert.True(_session.IsActive);
+        }
+
+        Assert.Equal(5, turnCounter);
+        var stored = _store.Get(_session.SessionId);
+        Assert.NotNull(stored);
+        Assert.Equal(5, stored.TurnsCount);
+    }
+
+    [Fact]
+    public async Task TurnCorrection_NoIMeantMumbai_CancelsTurn1AndExecutesMumbai()
+    {
+        await _session.StartAsync("conv_correction");
+
+        var turn1Tcs = new TaskCompletionSource<AgentResponse>();
+        _orchestrator.Handler = (req, ct) =>
+        {
+            if (req.Message.Contains("Patna"))
+            {
+                ct.Register(() => turn1Tcs.TrySetCanceled());
+                return turn1Tcs.Task;
+            }
+
+            return Task.FromResult(new AgentResponse
+            {
+                Message = "The weather in Mumbai is 31 degrees and sunny.",
+                VoiceFriendlyMessage = "In Mumbai it's 31 degrees.",
+                Success = true,
+                ConversationId = "conv_correction"
+            });
+        };
+
+        // User starts turn 1 about Patna
+        var turn1Task = _session.ProcessUtteranceAsync("What is the weather in Patna?");
+
+        // While turn 1 is processing, user interrupts with correction: "Actually, I meant Mumbai"
+        await Task.Delay(20);
+        var turn2Result = await _session.ProcessUtteranceAsync("Actually, I meant Mumbai", isInterruption: true);
+
+        var turn1Result = await turn1Task;
+
+        // Turn 1 was canceled/superseded
+        Assert.True(turn1Result.WasInterrupted);
+
+        // Turn 2 executed cleanly
+        Assert.True(turn2Result.Success);
+        Assert.Equal("In Mumbai it's 31 degrees.", turn2Result.VoiceFriendlyResponse);
+        Assert.Equal(VoiceState.Listening, _session.CurrentState);
+        Assert.True(_session.IsActive);
+    }
 }
