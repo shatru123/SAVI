@@ -51,19 +51,19 @@ public static class DependencyInjection
         // Providers & HTTP Clients
         services.AddHttpClient();
 
-        services.AddSingleton<ICapabilityProvider, OpenMeteoWeatherProvider>();
-        services.AddSingleton<ICapabilityProvider, WttrInWeatherProvider>();
-        services.AddSingleton<ICapabilityProvider, FrankfurterCurrencyProvider>();
-        services.AddSingleton<ICapabilityProvider, WikipediaKnowledgeProvider>();
-        services.AddSingleton<ICapabilityProvider, DuckDuckGoSearchProvider>();
-        services.AddSingleton<ISearchProvider, DuckDuckGoSearchProvider>();
-        services.AddSingleton<ICapabilityProvider, GitHubPublicProvider>();
-        services.AddSingleton<ICapabilityProvider, SystemInfoProvider>();
-        services.AddSingleton<ICapabilityProvider, CalculatorProvider>();
-        services.AddSingleton<ICapabilityProvider, FreeAiProvider>();
-        services.AddSingleton<ICapabilityProvider, OptionalOllamaProvider>();
+        services.AddScoped<ICapabilityProvider, OpenMeteoWeatherProvider>();
+        services.AddScoped<ICapabilityProvider, WttrInWeatherProvider>();
+        services.AddScoped<ICapabilityProvider, FrankfurterCurrencyProvider>();
+        services.AddScoped<ICapabilityProvider, WikipediaKnowledgeProvider>();
+        services.AddScoped<ICapabilityProvider, DuckDuckGoSearchProvider>();
+        services.AddScoped<ISearchProvider, DuckDuckGoSearchProvider>();
+        services.AddScoped<ICapabilityProvider, GitHubPublicProvider>();
+        services.AddScoped<ICapabilityProvider, SystemInfoProvider>();
+        services.AddScoped<ICapabilityProvider, CalculatorProvider>();
+        services.AddScoped<ICapabilityProvider, FreeAiProvider>();
+        services.AddScoped<ICapabilityProvider, OptionalOllamaProvider>();
 
-        services.AddSingleton<IProviderRegistry, ProviderRegistry>();
+        services.AddScoped<IProviderRegistry, ProviderRegistry>();
 
         return services;
     }
