@@ -14,6 +14,16 @@ window.saviVoice = {
         return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
     },
 
+    detectBrowser: function () {
+        const ua = navigator.userAgent;
+        if (navigator.brave && typeof navigator.brave.isBrave === 'function') return 'Brave';
+        if (/Edg/.test(ua)) return 'Edge';
+        if (/Chrome/.test(ua) && /Google Inc/.test(navigator.vendor)) return 'Chrome';
+        if (/^((?!chrome|android).)*safari/i.test(ua)) return 'Safari';
+        if (/Firefox/.test(ua)) return 'Firefox';
+        return 'Other';
+    },
+
     init: function (dotNetHelper) {
         this.dotNetRef = dotNetHelper;
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -76,7 +86,12 @@ window.saviVoice = {
                         friendlyMsg = "No microphone hardware found. Please ensure a microphone is connected and configured in system settings.";
                         break;
                     case 'network':
-                        friendlyMsg = "Network error: unable to reach speech recognition service. Check your internet connection.";
+                        const bName = self.detectBrowser();
+                        if (bName === 'Brave') {
+                            friendlyMsg = "Brave Browser blocks Google speech recognition by default. To fix: go to brave://settings/system, enable 'Use Google services for speech recognition', and refresh. Or open SAVI in Safari for 100% offline on-device speech!";
+                        } else {
+                            friendlyMsg = "Speech recognition network error: Google's cloud speech service was unreachable (blocked by VPN, firewall, or ad-blocker). Tip on macOS: Open SAVI in Safari (http://localhost:5212), which uses Apple's local on-device dictation without any cloud dependencies!";
+                        }
                         break;
                     case 'aborted':
                         // User cancelled or stopped explicitly; no warning needed
