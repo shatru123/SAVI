@@ -524,4 +524,120 @@ Answer: Done.";
         audioBuffer.Clear();
         Assert.Equal(0, audioBuffer.AvailableBytes);
     }
+
+    [Fact]
+    public async Task AcceptanceTest1_WeatherInterruption_FollowUpWithInterruptedContext()
+    {
+        await _session.StartAsync("conv_weather");
+        var detector = new IntentDetector();
+
+        // 1. Turn 1: Weather in Pune
+        _orchestrator.Handler = (req, ct) => Task.FromResult(new AgentResponse
+        {
+            Message = "Sure. It's currently around 28 degrees and tomorrow—",
+            VoiceFriendlyMessage = "Sure. It's currently around 28 degrees and tomorrow—",
+            Success = true,
+            ConversationId = "conv_weather"
+        });
+
+        var turn1 = await _session.ProcessUtteranceAsync("Hey SAVI, tell me the weather in Pune.");
+        Assert.Equal(VoiceState.Listening, _session.CurrentState);
+
+        // 2. Turn 2: User interrupts with "Wait, what about Mumbai?"
+        var weatherContext = new ContextPackage
+        {
+            CurrentPrompt = "Wait, what about Mumbai?",
+            RecentMessages = new List<Message>
+            {
+                new() { Role = MessageRole.User, Content = "Hey SAVI, tell me the weather in Pune.", Timestamp = DateTimeOffset.UtcNow.AddSeconds(-5) },
+                new() { Role = MessageRole.Assistant, Content = "Sure. It's currently around 28 degrees and tomorrow—", Timestamp = DateTimeOffset.UtcNow.AddSeconds(-2) }
+            }
+        };
+
+        var intent = detector.Detect("Wait, what about Mumbai?", weatherContext);
+        Assert.Equal(SaviConstants.Capabilities.Weather, intent.Capability);
+        Assert.Equal("Mumbai", intent.Parameters["city"]);
+
+        _orchestrator.Handler = (req, ct) => Task.FromResult(new AgentResponse
+        {
+            Message = "In Mumbai, it is currently 31 degrees and humid.",
+            VoiceFriendlyMessage = "In Mumbai, it's 31 degrees right now.",
+            Success = true,
+            ConversationId = "conv_weather"
+        });
+
+        var turn2 = await _session.ProcessUtteranceAsync("Wait, what about Mumbai?", isInterruption: true);
+        Assert.True(turn2.Success);
+        Assert.Equal("In Mumbai, it's 31 degrees right now.", turn2.VoiceFriendlyResponse);
+    }
+
+    [Fact]
+    public void AcceptanceTest2_NoIMeantSomethingElse_CapturedAsSingleTurn()
+    {
+        var detector = new IntentDetector();
+        var personality = new SAVI.Agent.Personality.PersonalityEngine();
+
+        // User speaks: "No, I meant something else."
+        var intent = detector.Detect("No, I meant something else.");
+        Assert.Equal("chitchat", intent.Capability);
+        Assert.Equal("clarify", intent.Operation);
+
+        var reply = personality.FormatChitChat(intent.Operation, "No, I meant something else.");
+        Assert.Equal("Got it. What did you mean?", reply);
+    }
+
+    [Fact]
+    public async Task ProcessUtteranceAsync_StaleResultDiscarding_LateTurn1ResultNeverOverwritesTurn2()
+    {
+        await _session.StartAsync("conv_stale");
+
+        var turn1StartedTcs = new TaskCompletionSource();
+        var turn1FinishTcs = new TaskCompletionSource<AgentResponse>();
+
+        _orchestrator.Handler = async (req, ct) =>
+        {
+            if (req.Message.Contains("Turn 1 slow"))
+            {
+                turn1StartedTcs.TrySetResult();
+                return await turn1FinishTcs.Task;
+            }
+
+            return new AgentResponse
+            {
+                Message = "Turn 2 fast response",
+                VoiceFriendlyMessage = "Turn 2 fast response",
+                Success = true,
+                ConversationId = "conv_stale"
+            };
+        };
+
+        // Start Turn 1 (slow)
+        var turn1Task = _session.ProcessUtteranceAsync("Turn 1 slow prompt");
+        await turn1StartedTcs.Task;
+
+        // Turn 2 arrives while Turn 1 is still waiting on orchestrator
+        var turn2Result = await _session.ProcessUtteranceAsync("Turn 2 prompt");
+
+        Assert.Equal("Turn 2 fast response", turn2Result.AssistantResponse);
+        Assert.True(turn2Result.Success);
+
+        // Turn 1 finally finishes late
+        turn1FinishTcs.TrySetResult(new AgentResponse
+        {
+            Message = "Late Turn 1 response",
+            VoiceFriendlyMessage = "Late Turn 1 response",
+            Success = true,
+            ConversationId = "conv_stale"
+        });
+
+        var turn1Result = await turn1Task;
+
+        // Turn 1 was superseded, so its result was discarded/marked interrupted
+        Assert.True(turn1Result.WasInterrupted);
+
+        // The session store still remembers Turn 2 as the active response
+        var stored = _store.Get(_session.SessionId);
+        Assert.NotNull(stored);
+        Assert.Equal("Turn 2 fast response", stored.LastAssistantResponse);
+    }
 }

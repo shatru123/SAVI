@@ -10,7 +10,10 @@ public sealed class VoiceTurnContext
     public string? SpokenUntil { get; set; }
     public bool IsInterrupted { get; set; }
     public bool IsCorrection { get; set; }
+    public bool IsSuperseded { get; set; }
+    public bool AudioPreRollCaptured { get; set; }
     public DateTimeOffset StartedAt { get; init; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? SpeechStartTime { get; set; }
     public DateTimeOffset? FinishedAt { get; set; }
     public bool IsCompleted => FinishedAt != null;
     public CancellationTokenSource TurnCts { get; } = new();

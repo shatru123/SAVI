@@ -158,6 +158,7 @@ public class VoiceConversationSession : IVoiceConversationSession
         var priorTurn = _currentTurn;
         if (priorTurn != null && !priorTurn.IsCompleted && !priorTurn.TurnCts.IsCancellationRequested)
         {
+            priorTurn.IsSuperseded = true;
             priorTurn.MarkInterrupted();
             try
             {
@@ -166,21 +167,26 @@ public class VoiceConversationSession : IVoiceConversationSession
             catch (ObjectDisposedException) { }
         }
 
+        var session = _sessionStore.GetOrCreate(_sessionId, _conversationId);
+        if (_currentState == VoiceState.Speaking && !string.IsNullOrWhiteSpace(session.LastVoiceFriendlyResponse))
+        {
+            session.InterruptedResponse = session.LastVoiceFriendlyResponse;
+        }
+
         var turnContext = new VoiceTurnContext
         {
-            UserUtterance = text.Trim(),
-            IsInterrupted = isInterruption
+            UserUtterance = text.Trim()
         };
 
         _currentTurn = turnContext;
+        session.ActiveTurnId = turnContext.TurnId;
+        session.TurnsCount++;
+        session.LastUserUtterance = text;
+
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             turnContext.TurnCts.Token,
             _sessionCts?.Token ?? CancellationToken.None);
-
-        var session = _sessionStore.GetOrCreate(_sessionId, _conversationId);
-        session.TurnsCount++;
-        session.LastUserUtterance = text;
 
         var cleanText = text.Trim();
 
@@ -250,7 +256,7 @@ public class VoiceConversationSession : IVoiceConversationSession
             var response = await _agentOrchestrator.ProcessAsync(agentReq, linkedCts.Token);
             var providerMs = totalSw.Elapsed.TotalMilliseconds;
 
-            if (linkedCts.IsCancellationRequested || turnContext.IsInterrupted || _currentTurn != turnContext)
+            if (linkedCts.IsCancellationRequested || turnContext.IsInterrupted || turnContext.IsSuperseded || session.ActiveTurnId != turnContext.TurnId || _currentTurn != turnContext)
             {
                 turnContext.MarkInterrupted();
                 return new VoiceTurnResult

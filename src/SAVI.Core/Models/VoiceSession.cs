@@ -18,4 +18,10 @@ public sealed class VoiceSession
     public string? LastVoiceFriendlyResponse { get; set; }
     public string? LastDetectedCapability { get; set; }
     public string? LastLocation { get; set; }
+
+    public string? ActiveTurnId { get; set; }
+    public string? InterruptedResponse { get; set; }
+    public string? InterruptedTopic { get; set; }
+    public string? InterruptedIntent { get; set; }
+    public Dictionary<string, string> InterruptedParameters { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }

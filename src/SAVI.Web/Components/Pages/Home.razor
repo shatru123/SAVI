@@ -380,6 +380,7 @@
     private VerificationPolicy _activePolicy = VerificationPolicy.Balanced;
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _processingCts;
+    private string? _activeTurnId;
 
     private bool _isVoiceOverlayOpen = false;
     private bool _isMicMuted = false;
@@ -640,24 +641,33 @@
 
         var prompt = _userInput.Trim();
         _userInput = string.Empty;
-        await ProcessPromptAsync(prompt);
+        var turnId = "turn_" + Guid.NewGuid().ToString("N");
+        await CancelCurrentTurnAndReplaceAsync(prompt, turnId);
     }
 
-    private async Task ProcessPromptAsync(string prompt)
+    private async Task CancelCurrentTurnAndReplaceAsync(string prompt, string turnId)
     {
         if (string.IsNullOrWhiteSpace(prompt)) return;
 
-        // Cancel-and-replace: cancel any previous turn's processing
-        try
-        {
-            _processingCts?.Cancel();
-            _processingCts?.Dispose();
-        }
-        catch { }
+        _activeTurnId = turnId;
 
+        // Asynchronous non-blocking cancellation of previous turn
+        var oldCts = _processingCts;
         _processingCts = new CancellationTokenSource();
         var currentToken = _processingCts.Token;
 
+        try
+        {
+            oldCts?.Cancel();
+            oldCts?.Dispose();
+        }
+        catch { }
+
+        await ExecuteTurnAsync(prompt, turnId, currentToken);
+    }
+
+    private async Task ExecuteTurnAsync(string prompt, string turnId, CancellationToken currentToken)
+    {
         _isProcessing = true;
         _executionStep = 1;
         _voiceState = VoiceState.Processing;
@@ -684,7 +694,7 @@
                 VerificationPolicyOverride = _activePolicy,
                 OnStepProgress = (step, label) =>
                 {
-                    if (currentToken.IsCancellationRequested) return;
+                    if (currentToken.IsCancellationRequested || _activeTurnId != turnId) return;
                     _executionStep = step;
                     InvokeAsync(StateHasChanged);
                 }
@@ -692,7 +702,8 @@
 
             var res = await Orchestrator.ProcessAsync(req, currentToken);
 
-            if (currentToken.IsCancellationRequested) return;
+            // STALE RESULT RULE: If this turn was superseded by a newer turn, discard the stale result!
+            if (currentToken.IsCancellationRequested || _activeTurnId != turnId) return;
 
             _executionStep = 4;
             _currentConversationId = res.ConversationId;
@@ -714,7 +725,7 @@
             });
 
             // If talk-back is enabled, speak the answer aloud (using concise voice-friendly phrasing)
-            if (_talkBackEnabled && !_wasInterrupted && !currentToken.IsCancellationRequested)
+            if (_talkBackEnabled && !_wasInterrupted && !currentToken.IsCancellationRequested && _activeTurnId == turnId)
             {
                 _voiceState = VoiceState.Speaking;
                 var spokenText = !string.IsNullOrWhiteSpace(res.VoiceFriendlyMessage)
@@ -741,14 +752,14 @@
         catch (OperationCanceledException)
         {
             _wasInterrupted = true;
-            if (_voiceState != VoiceState.Processing)
+            if (_voiceState != VoiceState.Processing && _activeTurnId == turnId)
             {
                 _voiceState = _continuousVoiceMode ? VoiceState.Listening : VoiceState.Idle;
             }
         }
         catch (Exception ex)
         {
-            if (!currentToken.IsCancellationRequested)
+            if (!currentToken.IsCancellationRequested && _activeTurnId == turnId)
             {
                 _messages.Add(new MessageDto
                 {
@@ -763,7 +774,7 @@
         finally
         {
             // Only reset if this turn is still the active one
-            if (_processingCts?.Token == currentToken)
+            if (_activeTurnId == turnId)
             {
                 _isProcessing = false;
                 _executionStep = 0;
@@ -791,6 +802,14 @@
             _voiceState = VoiceState.Idle;
             _voiceError = $"Voice input initialization failed: {ex.Message}";
         }
+    }
+
+    [JSInvokable]
+    public void OnVadSpeechStarted(double timestampMs)
+    {
+        _wasInterrupted = true;
+        _voiceState = VoiceState.DetectingSpeech;
+        InvokeAsync(StateHasChanged);
     }
 
     [JSInvokable]
@@ -823,7 +842,7 @@
     }
 
     [JSInvokable]
-    public async Task OnSpeechRecognized(string transcript)
+    public async Task OnSpeechRecognized(string transcript, string? turnId = null)
     {
         if (string.IsNullOrWhiteSpace(transcript)) return;
 
@@ -835,14 +854,8 @@
         }
         _voiceError = null;
 
-        // Immediately cancel prior turn and stop any TTS
-        if (_isProcessing)
-        {
-            try { _processingCts?.Cancel(); } catch { }
-            try { await JS.InvokeVoidAsync("saviVoice.stopSpeaking"); } catch { }
-        }
-
-        await ProcessPromptAsync(transcript.Trim());
+        var assignedTurnId = turnId ?? ("turn_" + Guid.NewGuid().ToString("N"));
+        await CancelCurrentTurnAndReplaceAsync(transcript.Trim(), assignedTurnId);
     }
 
     [JSInvokable]

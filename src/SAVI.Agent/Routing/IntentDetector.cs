@@ -139,11 +139,18 @@ public class IntentDetector
             }
         }
 
-        // 3. Conversational Follow-up Resolution (e.g. "what about tomorrow?", "and what about Mumbai?")
+        // Handle "Actually, that's not what I meant" / "No, that's not what I meant" / "That's not what I meant" / "No, I meant something else"
+        if (Regex.IsMatch(clean, @"^(?:no,?\s+)?(?:that'?s\s+not\s+what\s+i\s+meant|i\s+meant\s+something\s+else)[\.!\?]?$", RegexOptions.IgnoreCase))
+        {
+            return new DetectedIntent("chitchat", "clarify", new(), 0.98, policyOverride);
+        }
+
+        // 3. Conversational Follow-up Resolution (e.g. "what about tomorrow?", "and what about Mumbai?", "Wait, what about Mumbai?")
         if (context?.RecentMessages?.Count > 0)
         {
+            var strippedInterjections = Regex.Replace(clean, @"^(?:wait|hold on|actually|no)\s*,\s*", "", RegexOptions.IgnoreCase).Trim();
             var isTomorrow = lower.Contains("tomorrow") || lower.Contains("forecast") || lower.Contains("next week");
-            var locationFollowup = Regex.Match(clean, @"^(?:and\s+)?(?:what about|how about|and in|and for)\s+([a-zA-Z\s]+)", RegexOptions.IgnoreCase);
+            var locationFollowup = Regex.Match(strippedInterjections, @"^(?:and\s+)?(?:what about|how about|and in|and for)\s+([a-zA-Z\s]+)", RegexOptions.IgnoreCase);
 
             var candidate = locationFollowup.Success ? locationFollowup.Groups[1].Value.Replace("?", "").Trim() : "";
             var isTimeframeOnly = candidate.Equals("tomorrow", StringComparison.OrdinalIgnoreCase) ||
