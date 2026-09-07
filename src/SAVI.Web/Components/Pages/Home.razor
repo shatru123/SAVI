@@ -97,7 +97,11 @@
                 </button>
                 <!-- Continuous Conversational Voice Mode Button -->
                 <button class="savi-btn @(_continuousVoiceMode ? "active-voice-btn" : "")" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="ToggleContinuousVoice" title="Toggle Real-Time Conversational Voice Mode (Continuous Full-Duplex)">
-                    @(_continuousVoiceMode ? "🎙 Voice Mode: LIVE" : "🎙 Voice: Standard")
+                    @(_continuousVoiceMode ? "🎙 Mode: Continuous" : "🎙 Mode: Standard")
+                </button>
+                <!-- Immersive Voice Mode Screen Button -->
+                <button class="savi-btn active-voice-btn" style="padding: 4px 12px; font-size: 0.75rem; background: linear-gradient(135deg, rgba(0, 240, 255, 0.25) 0%, rgba(59, 130, 246, 0.25) 100%); border-color: rgba(0, 240, 255, 0.6); color: #00f0ff; font-weight: 700;" @onclick="OpenVoiceOverlay" title="Open Dedicated Real-Time Voice Screen">
+                    🎙️ Voice Screen
                 </button>
                 @if (!string.IsNullOrEmpty(_currentConversationId))
                 {
@@ -301,6 +305,22 @@
 <!-- Dangerous Action Approval Modal -->
 <ActionModal ApprovalRequest="_pendingApproval" OnDecision="HandleActionDecision" />
 
+<!-- Immersive Dedicated Voice Screen Overlay -->
+@if (_isVoiceOverlayOpen)
+{
+    <VoiceOverlay
+        VoiceState="_voiceState"
+        IsListening="_isListening"
+        IsMuted="_isMicMuted"
+        UserTranscript="@(!string.IsNullOrWhiteSpace(_liveInterimTranscript) ? _liveInterimTranscript : (_messages.LastOrDefault(m => m.Role == MessageRole.User)?.Content ?? ""))"
+        AssistantTranscript="@(_messages.LastOrDefault(m => m.Role == MessageRole.Assistant)?.Content ?? "")"
+        AudioStopLatencyMs="_lastAudioStopLatencyMs"
+        OnClose="CloseVoiceOverlay"
+        OnToggleMute="ToggleVoiceMute"
+        OnTogglePause="ToggleVoicePause"
+        OnInterrupt="InterruptVoicePlayback" />
+}
+
 <style>
 .conv-item {
     padding: 6px 8px;
@@ -361,11 +381,94 @@
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _processingCts;
 
+    private bool _isVoiceOverlayOpen = false;
+    private bool _isMicMuted = false;
+    private double _lastAudioStopLatencyMs = 0;
+
     private List<ConversationSummaryDto> _conversations = new();
     private List<MessageDto> _messages = new();
     private List<string> _activityLogs = new();
     private ActionApprovalRequest? _pendingApproval;
     private DotNetObjectReference<Home>? _dotNetRef;
+
+    private async Task OpenVoiceOverlay()
+    {
+        _isVoiceOverlayOpen = true;
+        _talkBackEnabled = true;
+        _wasInterrupted = false;
+        if (!_continuousVoiceMode)
+        {
+            await ToggleContinuousVoice();
+        }
+        else if (!_isListening)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("saviVoice.startListening");
+                _isListening = true;
+                _voiceState = VoiceState.Listening;
+            }
+            catch { }
+        }
+        StateHasChanged();
+    }
+
+    private void CloseVoiceOverlay()
+    {
+        _isVoiceOverlayOpen = false;
+        StateHasChanged();
+    }
+
+    private async Task ToggleVoiceMute()
+    {
+        _isMicMuted = !_isMicMuted;
+        try
+        {
+            if (_isMicMuted)
+            {
+                await JS.InvokeVoidAsync("saviVoice.stopListening");
+                _isListening = false;
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("saviVoice.startListening");
+                _isListening = true;
+                _voiceState = VoiceState.Listening;
+            }
+        }
+        catch { }
+        StateHasChanged();
+    }
+
+    private async Task ToggleVoicePause()
+    {
+        try
+        {
+            if (_isListening)
+            {
+                await JS.InvokeVoidAsync("saviVoice.stopListening");
+                _isListening = false;
+                _voiceState = VoiceState.Idle;
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("saviVoice.startListening");
+                _isListening = true;
+                _voiceState = VoiceState.Listening;
+            }
+        }
+        catch { }
+        StateHasChanged();
+    }
+
+    private async Task InterruptVoicePlayback()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("saviVoice.interruptSpeaking");
+        }
+        catch { }
+    }
 
     private async Task ToggleContinuousVoice()
     {
@@ -663,9 +766,13 @@
     }
 
     [JSInvokable]
-    public void OnUserInterrupted()
+    public void OnUserInterrupted(double audioStopLatencyMs = 0)
     {
         _wasInterrupted = true;
+        if (audioStopLatencyMs > 0)
+        {
+            _lastAudioStopLatencyMs = audioStopLatencyMs;
+        }
         try
         {
             _processingCts?.Cancel();

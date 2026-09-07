@@ -1,0 +1,664 @@
+@using SAVI.Core.Enums
+
+<div class="savi-voice-overlay-backdrop @(VoiceState == VoiceState.Interrupted ? "savi-interrupted-pulse" : "")" role="dialog" aria-modal="true" aria-label="SAVI Live Voice Assistant">
+    <!-- Top HUD Bar -->
+    <header class="voice-overlay-header">
+        <div class="voice-overlay-brand">
+            <span class="voice-live-dot @(VoiceState == VoiceState.Listening || VoiceState == VoiceState.DetectingSpeech || VoiceState == VoiceState.Speaking ? "live-active" : "")"></span>
+            <span class="voice-brand-title">SAVI NEURAL VOICE</span>
+            <span class="voice-brand-badge">REAL-TIME FULL DUPLEX</span>
+        </div>
+
+        <div class="voice-telemetry-hud">
+            @if (AudioStopLatencyMs > 0)
+            {
+                <span class="telemetry-pill barge-in-pill">
+                    ⚡ Stop Latency: @(Math.Round(AudioStopLatencyMs)) ms
+                </span>
+            }
+            <span class="telemetry-pill">
+                Latency: Real-Time Free
+            </span>
+            <span class="telemetry-pill desktop-only">
+                Mic: AEC On
+            </span>
+        </div>
+
+        <button class="voice-exit-btn" @onclick="CloseAsync" title="Exit Voice Mode (Esc)">
+            <span class="exit-icon">✕</span>
+            <span class="exit-label">Exit Voice Mode</span>
+        </button>
+    </header>
+
+    <!-- Center Interactive Stage -->
+    <main class="voice-overlay-center">
+        <!-- Reactive Orb Container -->
+        <div class="voice-orb-container state-@VoiceState.ToString().ToLowerInvariant()">
+            <!-- Dynamic Audio Rings -->
+            <div class="voice-audio-ripple ring-1"></div>
+            <div class="voice-audio-ripple ring-2"></div>
+            <div class="voice-audio-ripple ring-3"></div>
+
+            <!-- Central SAVI Reactor Orb SVG -->
+            <div class="voice-orb-svg-wrapper">
+                <svg class="voice-reactor-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <filter id="voice-glow" x="-20%" y="-20%" width="140%" height="140%">
+                            <feGaussianBlur stdDeviation="4" result="blur" />
+                            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                        </filter>
+                        <radialGradient id="voice-reactor-grad" cx="50%" cy="50%" r="50%">
+                            <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.9" />
+                            <stop offset="60%" stop-color="#0066cc" stop-opacity="0.5" />
+                            <stop offset="100%" stop-color="#050b14" stop-opacity="0.1" />
+                        </radialGradient>
+                    </defs>
+
+                    <!-- Outer Dashed Ring -->
+                    <circle cx="100" cy="100" r="90" fill="none" stroke="rgba(0, 240, 255, 0.2)" stroke-width="1.5" stroke-dasharray="6 8" />
+
+                    <!-- Rotating Outer Ring -->
+                    <g class="voice-rotating-ring">
+                        <circle cx="100" cy="100" r="80" fill="none" stroke="#00f0ff" stroke-width="2" stroke-dasharray="50 30 20 30 80 20" filter="url(#voice-glow)" />
+                        <circle cx="100" cy="20" r="4" fill="#00f0ff" />
+                        <circle cx="100" cy="180" r="4" fill="#00f0ff" />
+                    </g>
+
+                    <!-- Counter Rotating Ring -->
+                    <g class="voice-counter-ring">
+                        <circle cx="100" cy="100" r="62" fill="none" stroke="#0099ff" stroke-width="2" stroke-dasharray="35 15 25 15" />
+                    </g>
+
+                    <!-- Core Glowing Pulsing Circle -->
+                    <circle class="voice-center-orb" cx="100" cy="100" r="38" fill="url(#voice-reactor-grad)" stroke="#00f0ff" stroke-width="2" filter="url(#voice-glow)" />
+
+                    <!-- Center Emblem -->
+                    <text x="100" y="105" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="800" letter-spacing="3" font-family="'JetBrains Mono', monospace">SAVI</text>
+                </svg>
+            </div>
+        </div>
+
+        <!-- State Status Pill -->
+        <div class="voice-state-pill-wrapper">
+            <div class="voice-state-pill pill-@VoiceState.ToString().ToLowerInvariant()">
+                @switch (VoiceState)
+                {
+                    case VoiceState.Listening:
+                        <span class="pill-dot listening-dot"></span>
+                        <span>LISTENING</span>
+                        break;
+                    case VoiceState.DetectingSpeech:
+                        <span class="pill-dot detecting-dot"></span>
+                        <span>TRANSCRIBING SPEECH</span>
+                        break;
+                    case VoiceState.Processing:
+                        <span class="pill-dot thinking-dot"></span>
+                        <span>THINKING & REASONING</span>
+                        break;
+                    case VoiceState.Speaking:
+                        <span class="pill-dot speaking-dot"></span>
+                        <span>SPEAKING</span>
+                        break;
+                    case VoiceState.Interrupted:
+                        <span class="pill-dot interrupted-dot"></span>
+                        <span>⚡ INTERRUPTED — LISTENING RESUMED</span>
+                        break;
+                    case VoiceState.Error:
+                        <span class="pill-dot error-dot"></span>
+                        <span>MIC ATTENTION NEEDED</span>
+                        break;
+                    default:
+                        <span class="pill-dot idle-dot"></span>
+                        <span>STANDING BY</span>
+                        break;
+                }
+            </div>
+        </div>
+
+        <!-- Live Dual Transcript Stream Display -->
+        <section class="voice-transcript-stream" aria-live="polite">
+            <!-- User Speech Stream -->
+            <div class="transcript-row user-transcript-row @(!string.IsNullOrWhiteSpace(UserTranscript) ? "visible" : "dimmed")">
+                <span class="speaker-tag user-tag">YOU</span>
+                <p class="transcript-text">
+                    @(string.IsNullOrWhiteSpace(UserTranscript) ? "Speak naturally to SAVI..." : UserTranscript)
+                </p>
+            </div>
+
+            <!-- SAVI Spoken Response Stream -->
+            <div class="transcript-row savi-transcript-row @(!string.IsNullOrWhiteSpace(AssistantTranscript) ? "visible" : "")">
+                <span class="speaker-tag savi-tag">SAVI</span>
+                <p class="transcript-text">
+                    @(string.IsNullOrWhiteSpace(AssistantTranscript) ? "I am ready and listening." : AssistantTranscript)
+                </p>
+            </div>
+        </section>
+    </main>
+
+    <!-- Bottom Controls Toolbar -->
+    <footer class="voice-overlay-footer">
+        <div class="voice-controls-bar">
+            <!-- Mute / Unmute Button -->
+            <button class="voice-ctl-btn @(IsMuted ? "btn-danger" : "btn-subtle")" @onclick="ToggleMuteAsync" title="Mute Microphone">
+                <span class="ctl-icon">@(IsMuted ? "🔇" : "🎙️")</span>
+                <span class="ctl-label">@(IsMuted ? "Unmute Mic" : "Mute Mic")</span>
+            </button>
+
+            <!-- Interrupt / Silence Button (Instant Barge-in) -->
+            @if (VoiceState == VoiceState.Speaking || VoiceState == VoiceState.Processing)
+            {
+                <button class="voice-ctl-btn btn-danger-accent barge-in-btn" @onclick="InterruptAsync" title="Barge-in / Stop Audio (Esc)">
+                    <span class="ctl-icon">⏹</span>
+                    <span class="ctl-label">Stop Speaking</span>
+                </button>
+            }
+
+            <!-- Pause / Resume Session -->
+            <button class="voice-ctl-btn @(!IsListening ? "btn-warning" : "btn-subtle")" @onclick="TogglePauseAsync" title="Pause / Resume Continuous Listening">
+                <span class="ctl-icon">@(!IsListening ? "▶️" : "⏸")</span>
+                <span class="ctl-label">@(!IsListening ? "Resume" : "Pause")</span>
+            </button>
+
+            <!-- Exit Voice Mode Button -->
+            <button class="voice-ctl-btn btn-exit-primary" @onclick="CloseAsync" title="Return to text conversation">
+                <span class="ctl-icon">💬</span>
+                <span class="ctl-label">Exit to Chat</span>
+            </button>
+        </div>
+
+        <div class="voice-shortcuts-hint">
+            <span>💡 <strong>Tip:</strong> Speak freely without buttons. Say <em>"Wait"</em>, <em>"Stop"</em>, or <em>"Keep it short"</em> anytime to interrupt instantly.</span>
+        </div>
+    </footer>
+</div>
+
+<style>
+    .savi-voice-overlay-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        background: radial-gradient(circle at 50% 35%, rgba(10, 26, 47, 0.97) 0%, rgba(3, 7, 18, 0.99) 100%);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        color: #f8fafc;
+        overflow: hidden;
+        animation: saviOverlayFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @@keyframes saviOverlayFadeIn {
+        from { opacity: 0; transform: scale(0.98); }
+        to { opacity: 1; transform: scale(1); }
+    }
+
+    .savi-interrupted-pulse {
+        animation: saviInterruptedFlash 0.3s ease-out;
+    }
+
+    @@keyframes saviInterruptedFlash {
+        0% { background: radial-gradient(circle at 50% 35%, rgba(245, 158, 11, 0.25) 0%, rgba(3, 7, 18, 0.99) 100%); }
+        100% { background: radial-gradient(circle at 50% 35%, rgba(10, 26, 47, 0.97) 0%, rgba(3, 7, 18, 0.99) 100%); }
+    }
+
+    /* Top HUD */
+    .voice-overlay-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 20px 32px;
+        border-bottom: 1px solid rgba(0, 240, 255, 0.12);
+        background: rgba(3, 7, 18, 0.4);
+    }
+
+    .voice-overlay-brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .voice-live-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #64748b;
+        transition: all 0.3s ease;
+    }
+
+    .voice-live-dot.live-active {
+        background: #00f0ff;
+        box-shadow: 0 0 12px #00f0ff, 0 0 20px rgba(0, 240, 255, 0.5);
+        animation: pulseDot 1.5s infinite alternate;
+    }
+
+    @@keyframes pulseDot {
+        0% { transform: scale(0.9); opacity: 0.8; }
+        100% { transform: scale(1.2); opacity: 1; }
+    }
+
+    .voice-brand-title {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 800;
+        letter-spacing: 2px;
+        font-size: 0.95rem;
+        color: #f8fafc;
+    }
+
+    .voice-brand-badge {
+        font-size: 0.65rem;
+        padding: 3px 8px;
+        border-radius: 9999px;
+        background: rgba(0, 240, 255, 0.12);
+        color: #00f0ff;
+        border: 1px solid rgba(0, 240, 255, 0.3);
+        font-family: 'JetBrains Mono', monospace;
+        letter-spacing: 1px;
+    }
+
+    .voice-telemetry-hud {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .telemetry-pill {
+        font-size: 0.72rem;
+        font-family: 'JetBrains Mono', monospace;
+        padding: 4px 10px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #94a3b8;
+    }
+
+    .barge-in-pill {
+        background: rgba(245, 158, 11, 0.15);
+        color: #fbbf24;
+        border-color: rgba(245, 158, 11, 0.4);
+        font-weight: 600;
+    }
+
+    .voice-exit-btn {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 16px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        color: #f1f5f9;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.82rem;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+
+    .voice-exit-btn:hover {
+        background: rgba(239, 68, 68, 0.2);
+        border-color: rgba(239, 68, 68, 0.5);
+        color: #fca5a5;
+    }
+
+    /* Center Stage */
+    .voice-overlay-center {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 20px 24px;
+        gap: 24px;
+        max-width: 900px;
+        margin: 0 auto;
+        width: 100%;
+    }
+
+    /* Reactive Orb */
+    .voice-orb-container {
+        position: relative;
+        width: 250px;
+        height: 250px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .voice-orb-svg-wrapper {
+        position: relative;
+        width: 200px;
+        height: 200px;
+        z-index: 2;
+    }
+
+    .voice-reactor-svg {
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+    }
+
+    .voice-rotating-ring {
+        transform-origin: 100px 100px;
+        animation: rotateClockwise 14s linear infinite;
+    }
+
+    .voice-counter-ring {
+        transform-origin: 100px 100px;
+        animation: rotateCounter 20s linear infinite;
+    }
+
+    @@keyframes rotateClockwise {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    @@keyframes rotateCounter {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(-360deg); }
+    }
+
+    /* Audio Ripple Waves */
+    .voice-audio-ripple {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 1.5px solid rgba(0, 240, 255, 0.3);
+        pointer-events: none;
+        transform: scale(calc(1 + var(--savi-audio-level, 0) * 0.4));
+        opacity: calc(0.2 + var(--savi-audio-level, 0) * 0.6);
+        transition: transform 0.08s ease-out, opacity 0.08s ease-out;
+    }
+
+    .voice-audio-ripple.ring-2 {
+        inset: -20px;
+        border-color: rgba(0, 153, 255, 0.2);
+        transform: scale(calc(1 + var(--savi-audio-level, 0) * 0.6));
+    }
+
+    .voice-audio-ripple.ring-3 {
+        inset: -40px;
+        border-color: rgba(0, 240, 255, 0.1);
+        transform: scale(calc(1 + var(--savi-audio-level, 0) * 0.8));
+    }
+
+    /* States for Orb */
+    .state-speaking .voice-center-orb {
+        animation: pulseCore 1s infinite alternate;
+        fill: url(#voice-reactor-grad);
+    }
+
+    .state-processing .voice-rotating-ring {
+        animation-duration: 3s;
+    }
+
+    .state-interrupted .voice-reactor-svg text {
+        fill: #f59e0b;
+    }
+
+    @@keyframes pulseCore {
+        0% { r: 35; }
+        100% { r: 42; }
+    }
+
+    /* State Pill */
+    .voice-state-pill-wrapper {
+        display: flex;
+        justify-content: center;
+    }
+
+    .voice-state-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 20px;
+        border-radius: 9999px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    .pill-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+    }
+
+    .pill-listening {
+        background: rgba(0, 240, 255, 0.12);
+        border: 1px solid rgba(0, 240, 255, 0.4);
+        color: #00f0ff;
+    }
+    .listening-dot { background: #00f0ff; box-shadow: 0 0 8px #00f0ff; }
+
+    .pill-detectingspeech {
+        background: rgba(250, 204, 21, 0.15);
+        border: 1px solid rgba(250, 204, 21, 0.4);
+        color: #facc15;
+    }
+    .detecting-dot { background: #facc15; box-shadow: 0 0 8px #facc15; }
+
+    .pill-processing {
+        background: rgba(168, 85, 247, 0.15);
+        border: 1px solid rgba(168, 85, 247, 0.4);
+        color: #c084fc;
+    }
+    .thinking-dot { background: #c084fc; box-shadow: 0 0 8px #c084fc; animation: pulseDot 1s infinite; }
+
+    .pill-speaking {
+        background: rgba(34, 197, 94, 0.15);
+        border: 1px solid rgba(34, 197, 94, 0.4);
+        color: #4ade80;
+    }
+    .speaking-dot { background: #4ade80; box-shadow: 0 0 8px #4ade80; }
+
+    .pill-interrupted {
+        background: rgba(245, 158, 11, 0.2);
+        border: 1px solid rgba(245, 158, 11, 0.6);
+        color: #fbbf24;
+    }
+    .interrupted-dot { background: #fbbf24; box-shadow: 0 0 10px #fbbf24; }
+
+    .pill-error {
+        background: rgba(239, 68, 68, 0.15);
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        color: #f87171;
+    }
+    .error-dot { background: #f87171; }
+
+    .pill-idle {
+        background: rgba(148, 163, 184, 0.12);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        color: #94a3b8;
+    }
+    .idle-dot { background: #94a3b8; }
+
+    /* Dual Transcript Stream */
+    .voice-transcript-stream {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        background: rgba(7, 15, 30, 0.7);
+        border: 1px solid rgba(0, 240, 255, 0.12);
+        border-radius: 16px;
+        padding: 20px 24px;
+        min-height: 140px;
+        max-height: 260px;
+        overflow-y: auto;
+    }
+
+    .transcript-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        transition: opacity 0.2s;
+    }
+
+    .transcript-row.dimmed {
+        opacity: 0.5;
+    }
+
+    .speaker-tag {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.7rem;
+        font-weight: 800;
+        padding: 3px 8px;
+        border-radius: 4px;
+        letter-spacing: 1px;
+        flex-shrink: 0;
+        margin-top: 2px;
+    }
+
+    .user-tag {
+        background: rgba(59, 130, 246, 0.2);
+        border: 1px solid rgba(59, 130, 246, 0.4);
+        color: #93c5fd;
+    }
+
+    .savi-tag {
+        background: rgba(0, 240, 255, 0.2);
+        border: 1px solid rgba(0, 240, 255, 0.4);
+        color: #00f0ff;
+    }
+
+    .transcript-text {
+        margin: 0;
+        font-size: 1.05rem;
+        line-height: 1.6;
+        color: #f1f5f9;
+        word-break: break-word;
+    }
+
+    /* Bottom Toolbar */
+    .voice-overlay-footer {
+        padding: 24px 32px 32px;
+        background: rgba(3, 7, 18, 0.7);
+        border-top: 1px solid rgba(0, 240, 255, 0.12);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+    }
+
+    .voice-controls-bar {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .voice-ctl-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 20px;
+        border-radius: 12px;
+        font-size: 0.88rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        border: 1px solid transparent;
+    }
+
+    .btn-subtle {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.15);
+        color: #f1f5f9;
+    }
+    .btn-subtle:hover {
+        background: rgba(255, 255, 255, 0.14);
+    }
+
+    .btn-danger-accent {
+        background: rgba(239, 68, 68, 0.15);
+        border-color: rgba(239, 68, 68, 0.5);
+        color: #fca5a5;
+        animation: bargeInAttention 1s infinite alternate;
+    }
+
+    @@keyframes bargeInAttention {
+        0% { box-shadow: 0 0 0 rgba(239, 68, 68, 0); }
+        100% { box-shadow: 0 0 14px rgba(239, 68, 68, 0.5); }
+    }
+
+    .btn-exit-primary {
+        background: linear-gradient(135deg, rgba(0, 240, 255, 0.2) 0%, rgba(59, 130, 246, 0.2) 100%);
+        border: 1px solid rgba(0, 240, 255, 0.4);
+        color: #00f0ff;
+    }
+    .btn-exit-primary:hover {
+        background: linear-gradient(135deg, rgba(0, 240, 255, 0.3) 0%, rgba(59, 130, 246, 0.3) 100%);
+    }
+
+    .voice-shortcuts-hint {
+        font-size: 0.78rem;
+        color: #94a3b8;
+        text-align: center;
+    }
+
+    @@media (max-width: 640px) {
+        .voice-overlay-header { padding: 14px 16px; }
+        .desktop-only { display: none; }
+        .voice-orb-container { width: 190px; height: 190px; }
+        .voice-orb-svg-wrapper { width: 150px; height: 150px; }
+        .transcript-text { font-size: 0.95rem; }
+        .voice-controls-bar { gap: 8px; }
+        .voice-ctl-btn { padding: 8px 14px; font-size: 0.8rem; }
+    }
+</style>
+
+@code {
+    [Parameter]
+    public VoiceState VoiceState { get; set; } = VoiceState.Idle;
+
+    [Parameter]
+    public bool IsListening { get; set; } = true;
+
+    [Parameter]
+    public bool IsMuted { get; set; } = false;
+
+    [Parameter]
+    public string UserTranscript { get; set; } = string.Empty;
+
+    [Parameter]
+    public string AssistantTranscript { get; set; } = string.Empty;
+
+    [Parameter]
+    public double AudioStopLatencyMs { get; set; } = 0;
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    [Parameter]
+    public EventCallback OnToggleMute { get; set; }
+
+    [Parameter]
+    public EventCallback OnTogglePause { get; set; }
+
+    [Parameter]
+    public EventCallback OnInterrupt { get; set; }
+
+    private async Task CloseAsync()
+    {
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task ToggleMuteAsync()
+    {
+        await OnToggleMute.InvokeAsync();
+    }
+
+    private async Task TogglePauseAsync()
+    {
+        await OnTogglePause.InvokeAsync();
+    }
+
+    private async Task InterruptAsync()
+    {
+        await OnInterrupt.InvokeAsync();
+    }
+}

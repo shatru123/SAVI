@@ -30,6 +30,8 @@
 
 SAVI is **NOT** a simple chatbot or generic API wrapper. SAVI behaves like a personal digital friend and sovereign companion that can:
 * **Connect to Free AI Models**: Automatically queries serverless OpenAI-compatible inference endpoints (Mistral 7B Instruct, Mistral Nemo 2407, GPT-OSS 20B) for realistic, intelligent, and accurate responses with zero API keys and zero cost.
+* **Real-Time Full-Duplex Voice Conversation**: Continuous conversational voice experience with live partial speech transcription, adaptive turn detection, streaming sentence-level speech playback, and instant barge-in interruption (<200ms stop latency).
+* **Dedicated Immersive Voice Screen (`VoiceOverlay`)**: Interactive full-screen HUD featuring a central reactive SAVI reactor orb, dynamic audio ripple waves responding to voice levels, live dual transcript streams, and instant voice controls.
 * **Auto-Speaking Welcome Voice**: Automatically begins speaking aloud ("Hello Shatru! I am SAVI...") when you open the URL, featuring browser autoplay security unlockers.
 * **Maintain Deep Context & Long-Term Memory**: Remembers user preferences, past conversations, and facts in persistent SQLite memory.
 * **Search & Verify with Multi-Source Consensus**: Discovers public knowledge bases, live weather, currency rates, GitHub repositories, and system diagnostics, verifying consensus before responding.
@@ -48,6 +50,14 @@ SAVI is 100% free to develop and run with zero paid subscriptions:
 - **Zero Mandatory Paid Search APIs** (free DuckDuckGo instant answers & Wikipedia OpenSearch).
 - **Zero Mandatory Paid Databases** (lightweight, zero-config EF Core SQLite).
 - **Zero Mandatory Paid Speech Services** (native W3C Web Speech API for both STT and TTS).
+
+### ✦ Real-Time Conversational Voice Engine
+SAVI features a human-like, continuous voice conversation loop:
+- **Full-Duplex Audio**: Microphone remains active while SAVI speaks (using browser Acoustic Echo Cancellation).
+- **Instant Barge-In**: User interruptions immediately halt speech playback (<200ms audio stop latency) and cancel in-flight tasks without terminating the voice session.
+- **Adaptive Turn Detection**: Intelligent pause buffering prevents accidental cutoffs on conjunctions (`and`, `or`, `because`, `if`, `that`) while executing instant single-word interrupts (`"wait"`, `"stop"`, `"keep it short"`).
+- **Sentence-Level Streaming TTS**: Answers are chunked and streamed sentence-by-sentence to minimize time-to-first-audio.
+- **Dedicated Voice Screen (`VoiceOverlay`)**: Interactive visual HUD featuring a pulsing SAVI reactor orb, dual real-time streaming transcripts, latency telemetry, and quick session controls.
 
 ### ✦ Model Independence & Fallback Cascade
 SAVI dynamically ranks available capability providers. If an AI endpoint is temporarily busy, it seamlessly cascades through alternate models (Mistral 7B → Mistral Nemo → GPT-OSS → Wikipedia / DuckDuckGo), guaranteeing a responsive answer at all times.

@@ -14,7 +14,7 @@ public record DetectedIntent(
 
 public class IntentDetector
 {
-    private static readonly Regex WeatherRegex = new(@"(?:weather|forecast|temperature|rain|climate|snow)\s+(?:in|for|at)?\s*([a-zA-Z\s]+)?", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex WeatherRegex = new(@"(?:weather|forecast|temperature|rain|climate|snow)\s+(?:like in|in|for|at)?\s*([a-zA-Z\s]+)?", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex CurrencyRegex = new(@"(?:convert|exchange|rate|how much is)\s+([\d\.]+)?\s*([a-zA-Z]{3})\s+(?:to|in)\s+([a-zA-Z]{3})", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex CryptoRegex = new(@"(?:crypto|bitcoin|\bbtc\b|ethereum|\beth\b|solana|\bsol\b|dogecoin|\bdoge\b|cardano|\bada\b|price of|crypto rate)\s*(.*)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex ResearchRegex = new(@"(?:papers?|research|publications?|\bdoi\b|academic studies)\s+(?:on|about|regarding)?\s*(.+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -57,18 +57,71 @@ public class IntentDetector
             policyOverride = VerificationPolicy.Verified;
         }
 
+        var trimmedPunctuation = clean.TrimEnd('.', '!', '?', ' ', ';');
+        var lowerTrimmed = lower.TrimEnd('.', '!', '?', ' ', ';');
+
+        // Conversational check prompt: "SAVI, can you check something for me?", "can you check something"
+        if (Regex.IsMatch(trimmedPunctuation, @"^(?:savi,?\s*)?(?:can|could)\s+you\s+check\s+something(?:\s+for\s+me)?$", RegexOptions.IgnoreCase))
+        {
+            return new DetectedIntent("chitchat", "check_prompt", new(), 0.98, policyOverride);
+        }
+
+        // Conversational clarification: "actually, that's not what I meant", "that's not what I meant"
+        if (Regex.IsMatch(clean, @"^(?:actually,?\s*)?that(?:'s|\s+is)\s+not\s+what\s+i\s+meant", RegexOptions.IgnoreCase))
+        {
+            return new DetectedIntent("chitchat", "clarify", new(), 0.98, policyOverride);
+        }
+
+        // Clarify note: "wait, what note?", "what note?"
+        if (Regex.IsMatch(trimmedPunctuation, @"^(?:wait,?\s*)?(?:what|which)\s+note$", RegexOptions.IgnoreCase))
+        {
+            return new DetectedIntent("voice_control", "clarify_note", new(), 0.98, policyOverride);
+        }
+
+        // Go back to first item: "go back to the first one", "back to the first one", "the first one"
+        if (Regex.IsMatch(trimmedPunctuation, @"^(?:go\s+)?back\s+to\s+(?:the\s+)?first(?:\s+one)?$", RegexOptions.IgnoreCase))
+        {
+            return new DetectedIntent("voice_control", "first_item", new(), 0.98, policyOverride);
+        }
+
+        // Brevity Modifier: "keep it short", "make it brief", "wait, keep it short", "wait keep it short"
+        if (Regex.IsMatch(trimmedPunctuation, @"^(?:wait,?\s*)?(?:keep\s+it\s+short|make\s+it\s+brief|be\s+brief|shorter\s+please)$", RegexOptions.IgnoreCase))
+        {
+            return new DetectedIntent("voice_control", "keep_it_short", new(), 0.98, policyOverride);
+        }
+
         // 1. Voice Control Commands (Immediate)
-        if (lower is "stop" or "wait" or "hold on" or "pause" or "stop speaking" or "silence")
+        if (lowerTrimmed is "stop" or "pause" or "stop speaking" or "silence")
         {
             return new DetectedIntent("voice_control", "stop", new(), 1.0, policyOverride);
         }
-        if (lower is "say that again" or "repeat that" or "repeat" or "can you repeat that" or "what did you say")
+        if (lowerTrimmed is "wait" or "wait a second" or "hold on" or "wait please")
+        {
+            return new DetectedIntent("voice_control", "wait", new(), 1.0, policyOverride);
+        }
+        if (lowerTrimmed is "go back")
+        {
+            return new DetectedIntent("voice_control", "go_back", new(), 1.0, policyOverride);
+        }
+        if (lowerTrimmed is "say that again" or "repeat that" or "repeat" or "can you repeat that" or "what did you say")
         {
             return new DetectedIntent("voice_control", "repeat", new(), 1.0, policyOverride);
         }
-        if (lower is "continue" or "go on" or "keep going")
+        if (lowerTrimmed is "continue" or "go on" or "keep going")
         {
             return new DetectedIntent("voice_control", "continue", new(), 1.0, policyOverride);
+        }
+        if (lowerTrimmed is "never mind" or "nevermind" or "actually never mind" or "actually nevermind")
+        {
+            return new DetectedIntent("chitchat", "never_mind", new(), 1.0, policyOverride);
+        }
+
+        // Handle "Actually never mind, what about Berlin?" or "Never mind, what about Berlin?"
+        var neverMindMatch = Regex.Match(clean, @"^(?:actually\s+)?never\s*mind,?\s+(.+)$", RegexOptions.IgnoreCase);
+        if (neverMindMatch.Success)
+        {
+            clean = neverMindMatch.Groups[1].Value.Trim();
+            lower = clean.ToLowerInvariant();
         }
 
         // 2. Correction Handling: "no, I meant Pune, not Patna", "actually Pune", "I said Pune"
@@ -120,6 +173,19 @@ public class IntentDetector
                     return new DetectedIntent(SaviConstants.Capabilities.Weather, isTomorrow ? "forecast" : "current",
                         new Dictionary<string, string> { ["city"] = newCity, ["timeframe"] = isTomorrow ? "tomorrow" : "today" }, 0.95, policyOverride);
                 }
+            }
+
+            // Population follow-up resolution: "what about Berlin?", "and what about Berlin?"
+            var lastPopMsg = context.RecentMessages.LastOrDefault(m =>
+                m.Content.Contains("population", StringComparison.OrdinalIgnoreCase) ||
+                m.Content.Contains("million", StringComparison.OrdinalIgnoreCase));
+
+            var popFollowup = Regex.Match(clean, @"^(?:and\s+)?(?:what about|how about)\s+([a-zA-Z\s]+)", RegexOptions.IgnoreCase);
+            if (popFollowup.Success && lastPopMsg != null)
+            {
+                var city = popFollowup.Groups[1].Value.Trim(' ', '?', '.');
+                return new DetectedIntent(SaviConstants.Capabilities.Knowledge, "summary",
+                    new Dictionary<string, string> { ["topic"] = $"population of {city}", ["query"] = $"what is the population of {city}" }, 0.95, policyOverride);
             }
 
             if (lower.StartsWith("which one") || lower.StartsWith("what about the second") || lower.StartsWith("open the second") || lower.StartsWith("open it"))
@@ -202,6 +268,8 @@ public class IntentDetector
             var city = weatherMatch.Groups[1].Success && !string.IsNullOrWhiteSpace(weatherMatch.Groups[1].Value)
                 ? weatherMatch.Groups[1].Value.Trim()
                 : "London";
+            city = Regex.Replace(city, @"\b(?:right now|today|currently|now|please)\b", "", RegexOptions.IgnoreCase).Trim(' ', '?', '.');
+            if (string.IsNullOrWhiteSpace(city)) city = "London";
             return new DetectedIntent(SaviConstants.Capabilities.Weather, "current",
                 new Dictionary<string, string> { ["city"] = city }, 0.95, policyOverride);
         }
@@ -323,6 +391,15 @@ public class IntentDetector
         {
             return new DetectedIntent(SaviConstants.Capabilities.Reasoning, "synthesize",
                 new Dictionary<string, string> { ["prompt"] = clean }, 0.90, policyOverride);
+        }
+
+        // Direct population query: "What's the population of Paris?", "population of Paris"
+        var popDirectMatch = Regex.Match(clean, @"^(?:what(?:'s|\s+is)\s+(?:the\s+)?)?population(?:\s+of)?\s+([a-zA-Z\s]+)\??$", RegexOptions.IgnoreCase);
+        if (popDirectMatch.Success)
+        {
+            var city = popDirectMatch.Groups[1].Value.Trim(' ', '?', '.');
+            return new DetectedIntent(SaviConstants.Capabilities.Knowledge, "summary",
+                new Dictionary<string, string> { ["topic"] = $"population of {city}", ["query"] = clean }, 0.95, policyOverride);
         }
 
         if (lower.StartsWith("who is ") || lower.StartsWith("what is ") || lower.StartsWith("define ") ||

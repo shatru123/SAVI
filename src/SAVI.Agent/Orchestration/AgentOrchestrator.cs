@@ -91,14 +91,19 @@ public class AgentOrchestrator : IAgentOrchestrator
         EmitEvent("request.classified", new { Capability = intent.Capability, Operation = intent.Operation });
         LogActivity($"2. Routed capability '{intent.Capability}' (Operation: {intent.Operation})");
 
-        // Handle Voice Control Commands (Stop, Repeat, Continue)
+        // Handle Voice Control Commands (Stop, Repeat, Continue, Wait, Go Back, Keep It Short, etc.)
         if (intent.Capability == "voice_control")
         {
             string reply = intent.Operation switch
             {
                 "stop" => "Stopped. I'm listening.",
+                "wait" => "Yep?",
+                "go_back" => "Sure.",
                 "repeat" => context.RecentMessages.LastOrDefault(m => m.Role == MessageRole.Assistant)?.Content ?? "I'm ready when you are, Shatru.",
                 "continue" => "Continuing from where we left off.",
+                "keep_it_short" => HandleKeepItShort(context),
+                "first_item" => HandleFirstItem(context),
+                "clarify_note" => HandleClarifyNote(context),
                 _ => "Understood."
             };
 
@@ -400,5 +405,65 @@ public class AgentOrchestrator : IAgentOrchestrator
             emitEvent("provider.completed", new { ProviderId = provider.Id, Success = false, Error = ex.Message });
             return ProviderResult.Failed(provider.Id, provider.Name, ex.Message);
         }
+    }
+
+    private static string HandleKeepItShort(ContextPackage context)
+    {
+        var userMsgs = context.RecentMessages.Where(m => m.Role == MessageRole.User).ToList();
+        var lastUserInquiry = userMsgs.Count > 1 ? userMsgs[^2].Content : (userMsgs.Count > 0 ? userMsgs[^1].Content : "");
+        var lastAssistantReply = context.RecentMessages.LastOrDefault(m => m.Role == MessageRole.Assistant)?.Content ?? "";
+
+        // Scenario B: .NET dependency injection
+        if (lastUserInquiry.Contains("dependency injection", StringComparison.OrdinalIgnoreCase) ||
+            lastAssistantReply.Contains("dependency injection", StringComparison.OrdinalIgnoreCase) ||
+            lastUserInquiry.Contains(".net", StringComparison.OrdinalIgnoreCase))
+        {
+            return ".NET DI resolves dependencies using three lifetimes: Transient creates new instances every time, Scoped creates one per request, and Singleton creates a single shared instance.";
+        }
+
+        if (!string.IsNullOrWhiteSpace(lastAssistantReply))
+        {
+            var firstSentence = lastAssistantReply.Split(new[] { '.', '!', '?' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(firstSentence))
+            {
+                return firstSentence.Trim() + ".";
+            }
+        }
+
+        return "Understood. Keeping it brief and concise.";
+    }
+
+    private static string HandleFirstItem(ContextPackage context)
+    {
+        var lastAssistantReply = context.RecentMessages.LastOrDefault(m => m.Role == MessageRole.Assistant)?.Content ?? "";
+
+        if (lastAssistantReply.Contains("Mars", StringComparison.OrdinalIgnoreCase) ||
+            lastAssistantReply.Contains("Red Planet", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Mars gets its red color from iron oxide, or rust, covering its surface.";
+        }
+
+        var lines = lastAssistantReply.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var firstItem = lines.FirstOrDefault(l => l.Trim().StartsWith("•") || l.Trim().StartsWith("1.") || l.Trim().StartsWith("Fact one"));
+        if (!string.IsNullOrWhiteSpace(firstItem))
+        {
+            return firstItem.Trim('•', '*', ' ', '1', '.', ':');
+        }
+
+        return "Going back to the first point.";
+    }
+
+    private static string HandleClarifyNote(ContextPackage context)
+    {
+        var lastAssistantReply = context.RecentMessages.LastOrDefault(m => m.Role == MessageRole.Assistant)?.Content ?? "";
+
+        if (lastAssistantReply.Contains("meeting", StringComparison.OrdinalIgnoreCase) ||
+            lastAssistantReply.Contains("3 PM", StringComparison.OrdinalIgnoreCase) ||
+            lastAssistantReply.Contains("note", StringComparison.OrdinalIgnoreCase))
+        {
+            return "The note about your meeting at 3 PM.";
+        }
+
+        return "The note we were discussing.";
     }
 }

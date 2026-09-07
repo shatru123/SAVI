@@ -20,6 +20,9 @@ window.saviVoice = {
     currentUtterance: null,
     lastAudioLevel: 0,
     vadSpeechCounter: 0,
+    turnTimer: null,
+    immediateTriggerRegex: /^(?:wait|stop|hold on|actually|no|pause|keep it short)\b/i,
+    trailingConjunctionRegex: /\b(?:and|or|because|if|whether|with|that|for|like|so|also|plus|then|but)$/i,
 
     isSupported: function () {
         return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -92,12 +95,35 @@ window.saviVoice = {
                     self.dotNetRef.invokeMethodAsync('OnSpeechInterim', fullText);
                 }
 
-                if (currentFinal && self.dotNetRef) {
-                    const finalUtterance = self.accumulatedTranscript.trim();
-                    self.accumulatedTranscript = '';
-                    self.interimTranscript = '';
-                    self.hasDispatchedFinal = true;
-                    self.dotNetRef.invokeMethodAsync('OnSpeechRecognized', finalUtterance);
+                if (self.turnTimer) {
+                    clearTimeout(self.turnTimer);
+                    self.turnTimer = null;
+                }
+
+                if (currentFinal) {
+                    const candidateText = self.accumulatedTranscript.trim();
+                    const trimmedUtterance = candidateText.replace(/[.,!?;:]+$/, '');
+                    const endsWithConjunction = self.trailingConjunctionRegex.test(trimmedUtterance);
+                    const isImmediate = self.immediateTriggerRegex.test(candidateText);
+
+                    const dispatchFinal = function () {
+                        const finalUtterance = self.accumulatedTranscript.trim();
+                        self.accumulatedTranscript = '';
+                        self.interimTranscript = '';
+                        self.hasDispatchedFinal = true;
+                        if (self.dotNetRef && finalUtterance) {
+                            self.dotNetRef.invokeMethodAsync('OnSpeechRecognized', finalUtterance);
+                        }
+                    };
+
+                    if (isImmediate && candidateText.split(/\s+/).length <= 4) {
+                        // Immediate voice commands (stop, wait, keep it short) trigger with zero turn delay
+                        dispatchFinal();
+                    } else {
+                        // Conjunction buffering gives user 1200ms to continue; standard pause is 700ms
+                        const delayMs = endsWithConjunction ? 1200 : 700;
+                        self.turnTimer = setTimeout(dispatchFinal, delayMs);
+                    }
                 }
             };
 
@@ -341,6 +367,7 @@ window.saviVoice = {
     interruptSpeaking: function () {
         if (!this.isSpeaking && !window.speechSynthesis?.speaking) return;
 
+        const stopStartTime = performance.now();
         console.log("SAVI: Instant barge-in triggered! Halting TTS playback.");
         this.isSpeaking = false;
         this.chunkQueue = [];
@@ -349,10 +376,11 @@ window.saviVoice = {
         if (window.speechSynthesis) {
             window.speechSynthesis.cancel();
         }
+        const audioStopLatencyMs = Math.round(performance.now() - stopStartTime);
 
         if (this.dotNetRef) {
             try {
-                this.dotNetRef.invokeMethodAsync('OnUserInterrupted');
+                this.dotNetRef.invokeMethodAsync('OnUserInterrupted', audioStopLatencyMs);
                 this.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 8); // 8 = Interrupted
                 setTimeout(() => {
                     if (this.dotNetRef && !this.isSpeaking) {

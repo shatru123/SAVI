@@ -49,6 +49,11 @@ public class PersonalityEngine : IPersonalityEngine
     {
         return operation.ToLowerInvariant() switch
         {
+            "check_prompt" => "Sure, what do you need?",
+            "never_mind" => "No worries.",
+            "wait" => "Yep?",
+            "go_back" => "Sure.",
+            "clarify" => "Got it. What did you mean?",
             "listening_check" => "Yes, Shatru! I'm listening loud and clear. My audio and reasoning systems are active. How can I help you right now?",
             "status" => "I'm doing great, Shatru! All background services and providers are running smoothly. How's everything with you?",
             "gratitude" => "You're very welcome, Shatru! Always happy to help.",
