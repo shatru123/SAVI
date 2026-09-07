@@ -53,6 +53,7 @@ public class PersonalityEngine : IPersonalityEngine
             "status" => "I'm doing great, Shatru! All background services and providers are running smoothly. How's everything with you?",
             "gratitude" => "You're very welcome, Shatru! Always happy to help.",
             "identity" => "I am SAVI (Shatru's Adaptive Virtual Intelligence) — your personal digital companion and intelligent task execution platform. I can check live weather, convert currencies, evaluate math, inspect files, check host system diagnostics, and remember your preferences.",
+            "creator" => "I was created and architected by Shatrughna Ambhore (Email: ambhoreshatrughna@gmail.com, Phone: +91 9604466334). SAVI (Shatru's Adaptive Virtual Intelligence) is built as a personal digital companion and sovereign task execution platform.",
             "greeting" => FormatFriendlyGreeting(),
             _ => FormatFriendlyGreeting()
         };

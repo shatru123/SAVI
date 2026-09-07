@@ -1,0 +1,75 @@
+<svg width="@Size" height="@Size" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" class="savi-logo-svg @(Animated ? "savi-logo-animated" : "")" style="@Style">
+    <defs>
+        <!-- Primary Cybernetic Cyan-to-Purple Gradient -->
+        <linearGradient id="saviGradPrimary" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#00f0ff" />
+            <stop offset="50%" stop-color="#0088ff" />
+            <stop offset="100%" stop-color="#7928ca" />
+        </linearGradient>
+
+        <!-- Secondary Neon Cyan Accent Gradient -->
+        <linearGradient id="saviGradAccent" x1="100%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#00ffaa" />
+            <stop offset="100%" stop-color="#00f0ff" />
+        </linearGradient>
+
+        <!-- Core Radial Glow -->
+        <radialGradient id="saviCoreRadial" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.9" />
+            <stop offset="45%" stop-color="#0077dd" stop-opacity="0.5" />
+            <stop offset="100%" stop-color="#070b14" stop-opacity="0" />
+        </radialGradient>
+
+        <!-- Cyber Hologram Glow Filter -->
+        <filter id="saviLogoGlow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="2.5" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+    </defs>
+
+    <!-- Outer Hexagonal Frame / Cyber Shield -->
+    <polygon points="50,6 88,28 88,72 50,94 12,72 12,28" 
+             stroke="url(#saviGradPrimary)" stroke-width="2.5" 
+             fill="rgba(11, 19, 34, 0.75)" 
+             filter="url(#saviLogoGlow)" />
+
+    <!-- Corner Circuit Tick Marks -->
+    <line x1="50" y1="6" x2="50" y2="15" stroke="#00f0ff" stroke-width="2" stroke-linecap="round" />
+    <line x1="88" y1="28" x2="80" y2="33" stroke="#00f0ff" stroke-width="2" stroke-linecap="round" />
+    <line x1="88" y1="72" x2="80" y2="67" stroke="#00f0ff" stroke-width="2" stroke-linecap="round" />
+    <line x1="50" y1="94" x2="50" y2="85" stroke="#00f0ff" stroke-width="2" stroke-linecap="round" />
+    <line x1="12" y1="72" x2="20" y2="67" stroke="#00f0ff" stroke-width="2" stroke-linecap="round" />
+    <line x1="12" y1="28" x2="20" y2="33" stroke="#00f0ff" stroke-width="2" stroke-linecap="round" />
+
+    <!-- Concentric Orbital Data Track -->
+    <circle cx="50" cy="50" r="27" 
+            stroke="rgba(0, 240, 255, 0.3)" stroke-width="1.2" 
+            stroke-dasharray="8 4 2 4" />
+
+    <!-- Pulsing Core Orb -->
+    <circle cx="50" cy="50" r="18" 
+            fill="url(#saviCoreRadial)" 
+            stroke="#00f0ff" stroke-width="1.5" 
+            filter="url(#saviLogoGlow)" />
+
+    <!-- Stylized S-Monogram Hologram -->
+    <path d="M57 39 C57 35.5, 43 35, 43 43 C43 51, 57 49, 57 57 C57 65, 43 64.5, 43 61" 
+          stroke="#ffffff" stroke-width="3" stroke-linecap="round" fill="none" 
+          filter="url(#saviLogoGlow)" />
+
+    <!-- Quantum Orbital Particles -->
+    <circle cx="50" cy="23" r="2.2" fill="#00ffaa" filter="url(#saviLogoGlow)" />
+    <circle cx="73" cy="63" r="2.2" fill="#00f0ff" filter="url(#saviLogoGlow)" />
+    <circle cx="27" cy="63" r="2.2" fill="#7928ca" filter="url(#saviLogoGlow)" />
+</svg>
+
+@code {
+    [Parameter]
+    public int Size { get; set; } = 36;
+
+    [Parameter]
+    public bool Animated { get; set; } = true;
+
+    [Parameter]
+    public string Style { get; set; } = string.Empty;
+}

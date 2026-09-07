@@ -121,6 +121,23 @@ body {
   100% { transform: scale(0.9); opacity: 0.3; }
 }
 
+.savi-logo-svg {
+  transition: transform 0.3s ease, filter 0.3s ease;
+  display: inline-block;
+  vertical-align: middle;
+}
+.savi-logo-svg:hover {
+  transform: scale(1.08);
+  filter: drop-shadow(0 0 14px rgba(0, 240, 255, 0.7));
+}
+.savi-logo-animated {
+  animation: savi-logo-float 4s ease-in-out infinite;
+}
+@keyframes savi-logo-float {
+  0%, 100% { transform: translateY(0); filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.4)); }
+  50% { transform: translateY(-2px); filter: drop-shadow(0 0 18px rgba(0, 240, 255, 0.75)); }
+}
+
 .core-ring-outer {
   transform-origin: center;
   animation: savi-spin-slow 24s linear infinite;
@@ -287,3 +304,242 @@ body {
 .savi-reduced-motion .core-center-pulse {
   animation: none !important;
 }
+
+/* =========================================================
+   RICH APP & MOBILE RESPONSIVE SYSTEM
+   ========================================================= */
+
+/* Tactile button feedback for mobile & desktop */
+.savi-btn {
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.savi-btn:active {
+  transform: scale(0.96);
+}
+
+/* Base Responsive Helpers */
+.savi-mobile-only {
+  display: none !important;
+}
+.savi-desktop-only {
+  display: flex !important;
+}
+
+/* Smooth Touch Scrolling */
+.savi-messages-stream,
+.savi-main-content,
+.savi-conv-sidebar {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Custom Cyberpunk Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(7, 11, 20, 0.8);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--savi-border-subtle);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--savi-cyan);
+}
+
+/* Mobile Bottom Navigation Bar (Docked App Bar) */
+.savi-bottom-nav {
+  display: none;
+}
+
+/* Drawer Scrim / Backdrop */
+.savi-drawer-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 1100;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+.savi-drawer-backdrop.active {
+  display: block;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Tablet & Mobile Breakpoint (< 992px) */
+@media (max-width: 991px) {
+  .savi-mobile-only {
+    display: flex !important;
+  }
+  .savi-desktop-only {
+    display: none !important;
+  }
+
+  /* Fixed Mobile App Header */
+  .savi-app-header {
+    padding: 0 12px !important;
+  }
+
+  /* Off-canvas Main Sidebar */
+  .savi-main-sidebar {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 280px !important;
+    max-width: 85vw !important;
+    z-index: 1200;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    background: rgba(7, 11, 20, 0.98) !important;
+    border-right: 1px solid var(--savi-border-glow);
+    box-shadow: 10px 0 35px rgba(0, 0, 0, 0.85);
+    height: 100vh !important;
+    height: 100dvh !important;
+    box-sizing: border-box;
+  }
+  .savi-main-sidebar.open {
+    transform: translateX(0);
+  }
+
+  /* Off-canvas Conversation Sidebar */
+  .savi-conv-sidebar {
+    position: fixed !important;
+    top: 48px;
+    left: 0;
+    bottom: 60px;
+    width: 290px !important;
+    max-width: 88vw !important;
+    z-index: 1050;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    background: rgba(11, 19, 34, 0.96) !important;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-right: 1px solid var(--savi-border-glow);
+    box-shadow: 10px 0 35px rgba(0, 0, 0, 0.85);
+  }
+  .savi-conv-sidebar.open {
+    transform: translateX(0);
+  }
+
+  /* Main Workspace Spacing for Bottom Nav */
+  .savi-main-content {
+    padding: 10px 10px 74px 10px !important;
+    height: calc(100vh - 48px) !important;
+    height: calc(100dvh - 48px) !important;
+  }
+
+  /* Message Stream & Bubbles */
+  .savi-message {
+    max-width: 92% !important;
+    padding: 10px 14px !important;
+    font-size: 0.88rem !important;
+  }
+
+  /* Scaled Core Visualizer */
+  .savi-core-svg {
+    width: 140px !important;
+    height: 140px !important;
+  }
+  .savi-core-container {
+    padding: 12px !important;
+  }
+
+  /* Pinned Bottom Navigation Deck */
+  .savi-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: rgba(7, 11, 20, 0.95);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-top: 1px solid var(--savi-border-subtle);
+    z-index: 1000;
+    justify-content: space-around;
+    align-items: center;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.7);
+  }
+
+  .savi-bottom-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    flex: 1;
+    height: 100%;
+    color: var(--savi-text-dim);
+    text-decoration: none;
+    font-size: 0.64rem;
+    letter-spacing: 0.5px;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .savi-bottom-nav-item .nav-icon {
+    font-size: 1.15rem;
+    transition: transform 0.2s ease;
+  }
+  .savi-bottom-nav-item:hover,
+  .savi-bottom-nav-item.active {
+    color: var(--savi-cyan);
+    text-shadow: 0 0 10px rgba(0, 240, 255, 0.6);
+  }
+  .savi-bottom-nav-item.active .nav-icon {
+    transform: scale(1.15);
+    filter: drop-shadow(0 0 8px var(--savi-cyan));
+  }
+  .savi-bottom-nav-item.active::after {
+    content: '';
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--savi-cyan);
+    box-shadow: 0 0 6px var(--savi-cyan);
+    margin-top: 1px;
+  }
+}
+
+/* Smartphone Portrait Breakpoint (< 576px) */
+@media (max-width: 576px) {
+  .savi-glass-panel {
+    padding: 12px !important;
+    border-radius: 6px;
+  }
+  .savi-core-svg {
+    width: 110px !important;
+    height: 110px !important;
+  }
+  .savi-message {
+    max-width: 95% !important;
+    padding: 8px 12px !important;
+    font-size: 0.84rem !important;
+  }
+  .savi-btn {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+  }
+  .savi-btn-voice {
+    width: 38px;
+    height: 38px;
+  }
+  .savi-input-deck {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .savi-input-field {
+    font-size: 0.88rem;
+  }
+}
+

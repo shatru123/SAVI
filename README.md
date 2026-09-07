@@ -208,6 +208,15 @@ dotnet run --project src/SAVI.Api/SAVI.Api.csproj --urls "http://127.0.0.1:5210"
 docker compose -f docker/docker-compose.yml up --build
 ```
 
+### Deploy to Render (Free Plan)
+SAVI is fully pre-configured for **Render's Free Cloud Hosting Plan**:
+- Includes [`render.yaml`](render.yaml) Blueprint and root [`Dockerfile`](Dockerfile).
+- Built-in Health Checks on `/healthz` and `/health`.
+- Automatic dynamic `$PORT` environment variable binding.
+- Step-by-step deployment instructions: [`docs/render-deployment.md`](docs/render-deployment.md)
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
+
 ---
 
 ## 8. Documentation

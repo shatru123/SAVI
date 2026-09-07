@@ -1,41 +1,73 @@
-<div class="savi-glass-panel savi-hud-bracket" style="padding: 16px; height: 100%; display: flex; flex-direction: column; gap: 14px;">
+<div class="savi-glass-panel savi-hud-bracket" style="padding: 16px; height: 100%; display: flex; flex-direction: column; gap: 14px; box-sizing: border-box;">
     <!-- Logo & Brand -->
-    <div style="display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 14px;">
-        <div style="width: 14px; height: 14px; border-radius: 50%; background: var(--savi-cyan); box-shadow: 0 0 10px var(--savi-cyan);"></div>
-        <div>
-            <div class="savi-glow-text" style="font-weight: 700; font-size: 1.05rem; letter-spacing: 2px;">SAVI</div>
-            <div style="font-size: 0.68rem; color: var(--savi-text-dim); letter-spacing: 0.5px;">VIRTUAL INTELLIGENCE</div>
+    <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 14px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <SaviLogo Size="36" Animated="true" />
+            <div>
+                <div class="savi-glow-text" style="font-weight: 700; font-size: 1.1rem; letter-spacing: 2.5px;">SAVI</div>
+                <div style="font-size: 0.65rem; color: var(--savi-text-dim); letter-spacing: 0.6px;">VIRTUAL INTELLIGENCE</div>
+            </div>
         </div>
+        @if (ShowCloseButton)
+        {
+            <button class="savi-btn" style="padding: 4px 8px; font-size: 0.85rem; border-radius: 4px; line-height: 1;" @onclick="CloseDrawer" title="Close Menu">✕</button>
+        }
     </div>
 
     <!-- Navigation links -->
-    <nav style="display: flex; flex-direction: column; gap: 6px; flex: 1;">
-        <NavLink class="savi-nav-item" href="" Match="NavLinkMatch.All">
+    <nav style="display: flex; flex-direction: column; gap: 6px; flex: 1; overflow-y: auto;">
+        <NavLink class="savi-nav-item" href="" Match="NavLinkMatch.All" @onclick="HandleNavClick">
             <span class="savi-icon">◈</span> Command Deck
         </NavLink>
-        <NavLink class="savi-nav-item" href="memory">
+        <NavLink class="savi-nav-item" href="memory" @onclick="HandleNavClick">
             <span class="savi-icon">🧠</span> Long-Term Memory
         </NavLink>
-        <NavLink class="savi-nav-item" href="tasks">
+        <NavLink class="savi-nav-item" href="tasks" @onclick="HandleNavClick">
             <span class="savi-icon">⚙</span> Task Matrix
         </NavLink>
-        <NavLink class="savi-nav-item" href="providers">
+        <NavLink class="savi-nav-item" href="providers" @onclick="HandleNavClick">
             <span class="savi-icon">📡</span> Provider Registry
         </NavLink>
-        <NavLink class="savi-nav-item" href="audit">
+        <NavLink class="savi-nav-item" href="audit" @onclick="HandleNavClick">
             <span class="savi-icon">🛡</span> Security & Audit
         </NavLink>
-        <NavLink class="savi-nav-item" href="settings">
+        <NavLink class="savi-nav-item" href="settings" @onclick="HandleNavClick">
             <span class="savi-icon">⚙</span> Configuration
         </NavLink>
     </nav>
 
-    <!-- Bottom System Status -->
-    <div style="border-top: 1px solid var(--savi-border-subtle); padding-top: 12px; font-size: 0.72rem; color: var(--savi-text-secondary);">
-        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
-            <span style="color: var(--savi-success); font-size: 0.7rem;">●</span> ZERO-COST CORE
+    <!-- Creator Details & System Status -->
+    <div style="border-top: 1px solid var(--savi-border-subtle); padding-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="font-size: 0.62rem; letter-spacing: 1px; color: var(--savi-text-dim); text-transform: uppercase; display: flex; align-items: center; justify-content: space-between;">
+            <span>CREATOR</span>
+            <span style="color: var(--savi-success); font-size: 0.6rem;">● ARCHITECT</span>
         </div>
-        <div style="color: var(--savi-text-dim);">No paid APIs active</div>
+
+        <div style="background: rgba(0, 240, 255, 0.04); border: 1px solid var(--savi-border-subtle); border-radius: 6px; padding: 8px; display: flex; align-items: center; gap: 8px;">
+            <div style="width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #00f0ff, #7928ca); display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.75rem; color: #fff; box-shadow: 0 0 8px rgba(0, 240, 255, 0.4); flex-shrink: 0;">
+                SA
+            </div>
+            <div style="flex: 1; min-width: 0; line-height: 1.25;">
+                <div style="font-size: 0.78rem; font-weight: bold; color: var(--savi-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    Shatrughna Ambhore
+                </div>
+                <div style="font-size: 0.64rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    <a href="mailto:ambhoreshatrughna@gmail.com" style="color: var(--savi-cyan); text-decoration: none;" title="ambhoreshatrughna@gmail.com">
+                        ✉ ambhoreshatrughna@gmail.com
+                    </a>
+                </div>
+                <div style="font-size: 0.64rem;">
+                    <a href="tel:+919604466334" style="color: var(--savi-text-secondary); text-decoration: none;" title="+91 9604466334">
+                        📞 +91 9604466334
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div style="font-size: 0.68rem; color: var(--savi-text-dim); display: flex; align-items: center; justify-content: space-between;">
+            <span style="color: var(--savi-success);">● ZERO-COST CORE</span>
+            <span>.NET 10</span>
+        </div>
     </div>
 </div>
 
@@ -62,3 +94,30 @@
     font-size: 1rem;
 }
 </style>
+
+@code {
+    [Parameter]
+    public bool ShowCloseButton { get; set; } = false;
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    [Parameter]
+    public EventCallback OnNavigate { get; set; }
+
+    private async Task CloseDrawer()
+    {
+        if (OnClose.HasDelegate)
+        {
+            await OnClose.InvokeAsync();
+        }
+    }
+
+    private async Task HandleNavClick()
+    {
+        if (OnNavigate.HasDelegate)
+        {
+            await OnNavigate.InvokeAsync();
+        }
+    }
+}

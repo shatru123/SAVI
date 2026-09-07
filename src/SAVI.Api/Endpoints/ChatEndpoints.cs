@@ -52,9 +52,9 @@ public static class ChatEndpoints
         });
 
         // 2. Conversations
-        group.MapGet("/conversations", async (IConversationService service, [FromQuery] bool includeArchived, CancellationToken ct) =>
+        group.MapGet("/conversations", async (IConversationService service, [FromQuery] bool? includeArchived, CancellationToken ct) =>
         {
-            var list = await service.GetSummariesAsync(includeArchived, ct);
+            var list = await service.GetSummariesAsync(includeArchived ?? false, ct);
             return Results.Ok(list);
         });
 
@@ -82,9 +82,9 @@ public static class ChatEndpoints
             return Results.Content(json, "application/json");
         });
 
-        group.MapGet("/conversations/search", async ([FromQuery] string q, IConversationService service, CancellationToken ct) =>
+        group.MapGet("/conversations/search", async ([FromQuery] string? q, IConversationService service, CancellationToken ct) =>
         {
-            var list = await service.SearchAsync(q, ct);
+            var list = string.IsNullOrWhiteSpace(q) ? await service.GetSummariesAsync(false, ct) : await service.SearchAsync(q, ct);
             return Results.Ok(list);
         });
 
@@ -210,9 +210,9 @@ public static class ChatEndpoints
         });
 
         // 7. Audit Logs
-        group.MapGet("/audit", async (IAuditService service, [FromQuery] int limit, CancellationToken ct) =>
+        group.MapGet("/audit", async (IAuditService service, [FromQuery] int? limit, CancellationToken ct) =>
         {
-            var logs = await service.GetRecentLogsAsync(limit > 0 ? limit : 50, ct);
+            var logs = await service.GetRecentLogsAsync(limit.HasValue && limit.Value > 0 ? limit.Value : 50, ct);
             return Results.Ok(logs);
         });
 

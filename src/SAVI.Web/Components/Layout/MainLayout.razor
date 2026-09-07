@@ -1,32 +1,79 @@
 @inherits LayoutComponentBase
 
-<div style="display: flex; flex-direction: column; min-height: 100vh;">
+<div class="savi-app-shell">
     <!-- Top Futuristic Telemetry Banner -->
-    <header style="height: 48px; background: rgba(7, 11, 20, 0.95); border-bottom: 1px solid var(--savi-border-subtle); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; z-index: 100;">
-        <div style="display: flex; align-items: center; gap: 14px;">
-            <span class="savi-glow-text" style="font-weight: bold; font-size: 0.9rem; letter-spacing: 1.5px;">SAVI // HUD INTERFACE</span>
-            <span class="savi-badge" style="color: var(--savi-success); border-color: rgba(0,255,170,0.3);">
-                ● SYSTEM ONLINE
+    <header class="savi-app-header" style="height: 48px; background: rgba(7, 11, 20, 0.95); border-bottom: 1px solid var(--savi-border-subtle); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; z-index: 1000;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <!-- Mobile Hamburger Menu Button -->
+            <button class="savi-btn savi-mobile-only" style="padding: 4px 8px; font-size: 1rem; border-radius: 4px; line-height: 1;" @onclick="ToggleDrawer" title="Toggle Navigation Menu">
+                ☰
+            </button>
+            <SaviLogo Size="24" Animated="false" />
+            <span class="savi-glow-text" style="font-weight: bold; font-size: 0.9rem; letter-spacing: 1.5px;">SAVI // HUD</span>
+            <span class="savi-badge" style="color: var(--savi-success); border-color: rgba(0,255,170,0.3); font-size: 0.68rem; padding: 2px 6px;">
+                ● ONLINE
             </span>
         </div>
 
-        <div style="display: flex; align-items: center; gap: 16px; font-size: 0.75rem; color: var(--savi-text-secondary);">
+        <!-- Desktop Telemetry Badges -->
+        <div class="savi-desktop-only" style="align-items: center; gap: 16px; font-size: 0.75rem; color: var(--savi-text-secondary);">
             <span>HOST: <strong>@Environment.MachineName</strong></span>
-            <span>MODEL INDEPENDENT</span>
+            <span>ZERO-COST CORE</span>
             <span>ARCH: <strong>.NET 10</strong></span>
         </div>
     </header>
 
     <!-- Main Workspace -->
-    <div style="display: flex; flex: 1; overflow: hidden;">
-        <!-- Left Sidebar -->
-        <aside style="width: 260px; min-width: 260px; padding: 12px; height: calc(100vh - 48px); box-sizing: border-box;">
-            <NavMenu />
+    <div style="display: flex; flex: 1; overflow: hidden; position: relative;">
+        <!-- Backdrop Scrim for Mobile Drawer -->
+        <div class="savi-drawer-backdrop @(_mainDrawerOpen ? "active" : "")" @onclick="CloseDrawer"></div>
+
+        <!-- Left Sidebar (Responsive Drawer on Mobile / Static Aside on Desktop) -->
+        <aside class="savi-main-sidebar @(_mainDrawerOpen ? "open" : "")" style="width: 260px; min-width: 260px; padding: 12px; height: calc(100vh - 48px); height: calc(100dvh - 48px); box-sizing: border-box;">
+            <NavMenu ShowCloseButton="_mainDrawerOpen" OnClose="CloseDrawer" OnNavigate="CloseDrawer" />
         </aside>
 
         <!-- Main Center Stage -->
-        <main style="flex: 1; padding: 12px; height: calc(100vh - 48px); box-sizing: border-box; overflow-y: auto;">
+        <main class="savi-main-content" style="flex: 1; padding: 12px; height: calc(100vh - 48px); height: calc(100dvh - 48px); box-sizing: border-box; overflow-y: auto;">
             @Body
         </main>
     </div>
+
+    <!-- Cybernetic Mobile Bottom Navigation Bar (Docked Native App Bar) -->
+    <nav class="savi-bottom-nav">
+        <NavLink class="savi-bottom-nav-item" href="" Match="NavLinkMatch.All">
+            <span class="nav-icon">◈</span>
+            <span>Deck</span>
+        </NavLink>
+        <NavLink class="savi-bottom-nav-item" href="memory">
+            <span class="nav-icon">🧠</span>
+            <span>Memory</span>
+        </NavLink>
+        <NavLink class="savi-bottom-nav-item" href="tasks">
+            <span class="nav-icon">⚙</span>
+            <span>Tasks</span>
+        </NavLink>
+        <NavLink class="savi-bottom-nav-item" href="providers">
+            <span class="nav-icon">📡</span>
+            <span>Providers</span>
+        </NavLink>
+        <NavLink class="savi-bottom-nav-item" href="settings">
+            <span class="nav-icon">⚙</span>
+            <span>Config</span>
+        </NavLink>
+    </nav>
 </div>
+
+@code {
+    private bool _mainDrawerOpen = false;
+
+    private void ToggleDrawer()
+    {
+        _mainDrawerOpen = !_mainDrawerOpen;
+    }
+
+    private void CloseDrawer()
+    {
+        _mainDrawerOpen = false;
+    }
+}

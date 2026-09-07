@@ -7,11 +7,19 @@ using SAVI.Tools;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Dynamic PORT binding for container deployments
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrEmpty(port))
+{
+    builder.WebHost.UseUrls($"http://*:{port}");
+}
+
 // Add services to the container
 builder.Services.AddSaviInfrastructure(builder.Configuration);
 builder.Services.AddSaviTools();
 builder.Services.AddSaviAgent();
 
+builder.Services.AddHealthChecks();
 builder.Services.AddSignalR();
 builder.Services.AddCors(options =>
 {
@@ -29,6 +37,10 @@ var app = builder.Build();
 app.UseMiddleware<ErrorHandlingMiddleware>();
 
 app.UseCors("SaviCors");
+
+// Health Checks
+app.MapHealthChecks("/healthz");
+app.MapHealthChecks("/health");
 
 // Map Endpoints & Hubs
 app.MapSaviEndpoints();

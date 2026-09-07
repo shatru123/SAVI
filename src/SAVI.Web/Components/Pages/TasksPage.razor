@@ -5,15 +5,15 @@
 <PageTitle>SAVI — Task Execution Matrix</PageTitle>
 
 <div class="savi-glass-panel savi-hud-bracket" style="padding: 24px; min-height: calc(100vh - 80px);">
-    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 16px; margin-bottom: 20px;">
-        <div>
-            <h2 class="savi-glow-text" style="margin: 0; font-size: 1.3rem;">TASK EXECUTION MATRIX</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 16px; margin-bottom: 20px; flex-wrap: wrap; gap: 14px;">
+        <div style="flex: 1; min-width: 240px;">
+            <h2 class="savi-glow-text" style="margin: 0; font-size: 1.25rem;">TASK EXECUTION MATRIX</h2>
             <div style="font-size: 0.8rem; color: var(--savi-text-secondary); margin-top: 4px;">
                 State-machine driven execution for complex multi-step workflows. Dangerous steps pause for explicit confirmation.
             </div>
         </div>
 
-        <button class="savi-btn" @onclick="() => _showCreateModal = true">+ Create Multi-Step Task</button>
+        <button class="savi-btn" @onclick="() => _showCreateModal = true">+ Create Task</button>
     </div>
 
     @if (_tasks.Count == 0)

@@ -1,0 +1,19 @@
+# =========================================================
+# Render Blueprint Specification for SAVI
+# https://render.com/docs/blueprint-spec
+# =========================================================
+
+services:
+  - type: web
+    name: savi
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: DOTNET_RUNNING_IN_CONTAINER
+        value: "true"
