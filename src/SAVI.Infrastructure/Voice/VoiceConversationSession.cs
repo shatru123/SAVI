@@ -153,6 +153,19 @@ public class VoiceConversationSession : IVoiceConversationSession
     public async Task<VoiceTurnResult> ProcessUtteranceAsync(string text, bool isInterruption = false, CancellationToken cancellationToken = default)
     {
         var totalSw = Stopwatch.StartNew();
+
+        // Cancel-and-replace: if a previous turn is in progress, interrupt and cancel it immediately
+        var priorTurn = _currentTurn;
+        if (priorTurn != null && !priorTurn.IsCompleted && !priorTurn.TurnCts.IsCancellationRequested)
+        {
+            priorTurn.MarkInterrupted();
+            try
+            {
+                priorTurn.TurnCts.Cancel();
+            }
+            catch (ObjectDisposedException) { }
+        }
+
         var turnContext = new VoiceTurnContext
         {
             UserUtterance = text.Trim(),
@@ -237,14 +250,15 @@ public class VoiceConversationSession : IVoiceConversationSession
             var response = await _agentOrchestrator.ProcessAsync(agentReq, linkedCts.Token);
             var providerMs = totalSw.Elapsed.TotalMilliseconds;
 
-            if (linkedCts.IsCancellationRequested)
+            if (linkedCts.IsCancellationRequested || turnContext.IsInterrupted || _currentTurn != turnContext)
             {
                 turnContext.MarkInterrupted();
                 return new VoiceTurnResult
                 {
                     TurnId = turnContext.TurnId,
                     UserUtterance = cleanText,
-                    WasInterrupted = true
+                    WasInterrupted = true,
+                    AssistantResponse = response.Message
                 };
             }
 
@@ -257,18 +271,21 @@ public class VoiceConversationSession : IVoiceConversationSession
             session.LastAssistantResponse = response.Message;
             session.LastVoiceFriendlyResponse = voiceFriendly;
 
-            // 4. State Transition: Speaking
-            CurrentState = VoiceState.Speaking;
-            VoiceEventEmitted?.Invoke("voice.speaking", new
+            // 4. State Transition: Speaking (only if still active turn)
+            if (_currentTurn == turnContext)
             {
-                Message = voiceFriendly,
-                FullTextMessage = response.Message,
-                ChunksCount = chunks.Count
-            });
+                CurrentState = VoiceState.Speaking;
+                VoiceEventEmitted?.Invoke("voice.speaking", new
+                {
+                    Message = voiceFriendly,
+                    FullTextMessage = response.Message,
+                    ChunksCount = chunks.Count
+                });
+            }
 
             foreach (var chunk in chunks)
             {
-                if (linkedCts.IsCancellationRequested)
+                if (linkedCts.IsCancellationRequested || turnContext.IsInterrupted || _currentTurn != turnContext)
                 {
                     turnContext.MarkInterrupted();
                     break;
@@ -288,7 +305,7 @@ public class VoiceConversationSession : IVoiceConversationSession
             TelemetryRecorded?.Invoke(telemetry);
 
             // 5. State Transition: Loop back to Listening for Full-Duplex Continuous Conversation
-            if (_isActive && !turnContext.IsInterrupted)
+            if (_isActive && !turnContext.IsInterrupted && _currentTurn == turnContext)
             {
                 CurrentState = VoiceState.Listening;
                 VoiceEventEmitted?.Invoke("voice.listening", new { Timestamp = DateTimeOffset.UtcNow });
@@ -309,7 +326,7 @@ public class VoiceConversationSession : IVoiceConversationSession
         catch (OperationCanceledException)
         {
             turnContext.MarkInterrupted();
-            if (_isActive)
+            if (_isActive && _currentTurn == turnContext)
             {
                 CurrentState = VoiceState.Listening;
                 VoiceEventEmitted?.Invoke("voice.listening", new { Timestamp = DateTimeOffset.UtcNow });

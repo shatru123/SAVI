@@ -640,13 +640,28 @@
 
         var prompt = _userInput.Trim();
         _userInput = string.Empty;
+        await ProcessPromptAsync(prompt);
+    }
+
+    private async Task ProcessPromptAsync(string prompt)
+    {
+        if (string.IsNullOrWhiteSpace(prompt)) return;
+
+        // Cancel-and-replace: cancel any previous turn's processing
+        try
+        {
+            _processingCts?.Cancel();
+            _processingCts?.Dispose();
+        }
+        catch { }
+
+        _processingCts = new CancellationTokenSource();
+        var currentToken = _processingCts.Token;
+
         _isProcessing = true;
         _executionStep = 1;
         _voiceState = VoiceState.Processing;
         _wasInterrupted = false;
-
-        _processingCts?.Dispose();
-        _processingCts = new CancellationTokenSource();
 
         // Immediate user message in UI
         _messages.Add(new MessageDto
@@ -669,12 +684,15 @@
                 VerificationPolicyOverride = _activePolicy,
                 OnStepProgress = (step, label) =>
                 {
+                    if (currentToken.IsCancellationRequested) return;
                     _executionStep = step;
                     InvokeAsync(StateHasChanged);
                 }
             };
 
-            var res = await Orchestrator.ProcessAsync(req, _processingCts.Token);
+            var res = await Orchestrator.ProcessAsync(req, currentToken);
+
+            if (currentToken.IsCancellationRequested) return;
 
             _executionStep = 4;
             _currentConversationId = res.ConversationId;
@@ -696,7 +714,7 @@
             });
 
             // If talk-back is enabled, speak the answer aloud (using concise voice-friendly phrasing)
-            if (_talkBackEnabled && !_wasInterrupted)
+            if (_talkBackEnabled && !_wasInterrupted && !currentToken.IsCancellationRequested)
             {
                 _voiceState = VoiceState.Speaking;
                 var spokenText = !string.IsNullOrWhiteSpace(res.VoiceFriendlyMessage)
@@ -723,28 +741,38 @@
         catch (OperationCanceledException)
         {
             _wasInterrupted = true;
-            _voiceState = _continuousVoiceMode ? VoiceState.Listening : VoiceState.Idle;
-        }
-        catch (Exception ex)
-        {
-            _messages.Add(new MessageDto
-            {
-                Id = Guid.NewGuid().ToString(),
-                Role = MessageRole.Assistant,
-                Content = $"I encountered an unexpected issue: {ex.Message}. I've logged the technical details.",
-                Timestamp = DateTimeOffset.UtcNow
-            });
-            _voiceState = VoiceState.Error;
-        }
-        finally
-        {
-            _isProcessing = false;
-            _executionStep = 0;
-            if (_voiceState != VoiceState.Speaking && _voiceState != VoiceState.Listening && _voiceState != VoiceState.Interrupted)
+            if (_voiceState != VoiceState.Processing)
             {
                 _voiceState = _continuousVoiceMode ? VoiceState.Listening : VoiceState.Idle;
             }
-            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            if (!currentToken.IsCancellationRequested)
+            {
+                _messages.Add(new MessageDto
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Role = MessageRole.Assistant,
+                    Content = $"I encountered an unexpected issue: {ex.Message}. I've logged the technical details.",
+                    Timestamp = DateTimeOffset.UtcNow
+                });
+                _voiceState = VoiceState.Error;
+            }
+        }
+        finally
+        {
+            // Only reset if this turn is still the active one
+            if (_processingCts?.Token == currentToken)
+            {
+                _isProcessing = false;
+                _executionStep = 0;
+                if (_voiceState != VoiceState.Speaking && _voiceState != VoiceState.Listening && _voiceState != VoiceState.Interrupted)
+                {
+                    _voiceState = _continuousVoiceMode ? VoiceState.Listening : VoiceState.Idle;
+                }
+                StateHasChanged();
+            }
         }
     }
 
@@ -800,15 +828,21 @@
         if (string.IsNullOrWhiteSpace(transcript)) return;
 
         _liveInterimTranscript = string.Empty;
-        _userInput = transcript;
+        _userInput = string.Empty;
         if (!_continuousVoiceMode)
         {
             _isListening = false;
         }
-        _voiceState = VoiceState.Processing;
         _voiceError = null;
-        StateHasChanged();
-        await SendMessage();
+
+        // Immediately cancel prior turn and stop any TTS
+        if (_isProcessing)
+        {
+            try { _processingCts?.Cancel(); } catch { }
+            try { await JS.InvokeVoidAsync("saviVoice.stopSpeaking"); } catch { }
+        }
+
+        await ProcessPromptAsync(transcript.Trim());
     }
 
     [JSInvokable]

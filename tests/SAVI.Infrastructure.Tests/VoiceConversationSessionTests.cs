@@ -445,4 +445,83 @@ Answer: Done.";
         Assert.True(telemetry.TotalInterruptionLatencyMs <= 200, "Barge-in latency must be under 200ms target");
         Assert.True(telemetry.InterruptedTurn);
     }
+
+    [Fact]
+    public async Task ProcessUtteranceAsync_CancelAndReplace_CancelsPriorTurn_AndExecutesNewTurn()
+    {
+        await _session.StartAsync("conv_123");
+
+        var turn1Tcs = new TaskCompletionSource<AgentResponse>();
+        _orchestrator.Handler = (req, ct) =>
+        {
+            if (req.Message.Contains("long question"))
+            {
+                ct.Register(() => turn1Tcs.TrySetCanceled());
+                return turn1Tcs.Task;
+            }
+
+            return Task.FromResult(new AgentResponse
+            {
+                Message = "Turn 2 completed response",
+                VoiceFriendlyMessage = "Turn 2 voice response",
+                Success = true,
+                ConversationId = "conv_123"
+            });
+        };
+
+        // Start Turn 1 (long running)
+        var turn1Task = _session.ProcessUtteranceAsync("This is a long question that gets interrupted");
+
+        // User speaks Turn 2 while Turn 1 is running
+        await Task.Delay(20);
+        var turn2Result = await _session.ProcessUtteranceAsync("Wait, what about the weather in Pune?");
+
+        var turn1Result = await turn1Task;
+
+        // Verify Turn 1 was cancelled/interrupted
+        Assert.True(turn1Result.WasInterrupted);
+
+        // Verify Turn 2 succeeded seamlessly
+        Assert.True(turn2Result.Success);
+        Assert.Equal("Turn 2 completed response", turn2Result.AssistantResponse);
+        Assert.Equal("Turn 2 voice response", turn2Result.VoiceFriendlyResponse);
+        Assert.Equal(VoiceState.Listening, _session.CurrentState);
+    }
+
+    [Fact]
+    public void AudioRingBuffer_CircularBuffering_And_PreRollExtraction()
+    {
+        var ringBuffer = new AudioRingBuffer(capacityBytes: 100);
+
+        // Test writing bytes
+        var sampleBytes = new byte[60];
+        for (int i = 0; i < 60; i++) sampleBytes[i] = (byte)i;
+        ringBuffer.Write(sampleBytes);
+        Assert.Equal(60, ringBuffer.AvailableBytes);
+
+        // Write more bytes to force circular wrap
+        var moreBytes = new byte[70];
+        for (int i = 0; i < 70; i++) moreBytes[i] = (byte)(100 + i);
+        ringBuffer.Write(moreBytes);
+        Assert.Equal(100, ringBuffer.AvailableBytes);
+
+        var available = ringBuffer.ReadAvailable();
+        Assert.Equal(100, available.Length);
+        Assert.Equal(169, available[^1]);
+
+        // Test float pre-roll extraction (16kHz, 10ms = 160 samples = 320 bytes)
+        var audioBuffer = new AudioRingBuffer(capacityBytes: 4096);
+        var floatSamples = new float[500];
+        for (int i = 0; i < 500; i++) floatSamples[i] = 0.5f;
+        audioBuffer.Write(floatSamples);
+
+        // Extract 10ms at 16kHz = 160 samples
+        var preRoll = audioBuffer.ReadPreRoll(durationMs: 10, sampleRate: 16000);
+        Assert.Equal(160, preRoll.Length);
+        Assert.InRange(preRoll[0], 0.49f, 0.51f);
+
+        // Test clear
+        audioBuffer.Clear();
+        Assert.Equal(0, audioBuffer.AvailableBytes);
+    }
 }

@@ -12,6 +12,7 @@ public sealed class VoiceTurnContext
     public bool IsCorrection { get; set; }
     public DateTimeOffset StartedAt { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? FinishedAt { get; set; }
+    public bool IsCompleted => FinishedAt != null;
     public CancellationTokenSource TurnCts { get; } = new();
 
     public void MarkInterrupted(string? spokenTextSoFar = null)

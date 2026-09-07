@@ -21,6 +21,8 @@ window.saviVoice = {
     lastAudioLevel: 0,
     vadSpeechCounter: 0,
     turnTimer: null,
+    preRollRingBuffer: null,
+    preRollWritePtr: 0,
     immediateTriggerRegex: /^(?:wait|stop|hold on|actually|no|pause|keep it short)\b/i,
     trailingConjunctionRegex: /\b(?:and|or|because|if|whether|with|that|for|like|so|also|plus|then|but)$/i,
 
@@ -57,9 +59,12 @@ window.saviVoice = {
 
             this.recognition.onstart = function () {
                 self.isListening = true;
-                self.accumulatedTranscript = '';
-                self.interimTranscript = '';
-                self.hasDispatchedFinal = false;
+                // Only reset accumulated transcript if previous turn has already dispatched
+                if (self.hasDispatchedFinal) {
+                    self.accumulatedTranscript = '';
+                    self.interimTranscript = '';
+                    self.hasDispatchedFinal = false;
+                }
                 if (self.dotNetRef) {
                     self.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 1); // 1 = Listening
                 }
@@ -85,10 +90,11 @@ window.saviVoice = {
 
                 if (currentFinal) {
                     self.accumulatedTranscript += currentFinal;
+                    self.hasDispatchedFinal = false;
                 }
                 self.interimTranscript = currentInterim;
 
-                const fullText = (self.accumulatedTranscript + self.interimTranscript).trim();
+                const fullText = (self.accumulatedTranscript + ' ' + self.interimTranscript).trim();
 
                 if (currentInterim && self.dotNetRef) {
                     self.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 7); // 7 = DetectingSpeech
@@ -100,14 +106,18 @@ window.saviVoice = {
                     self.turnTimer = null;
                 }
 
-                if (currentFinal) {
-                    const candidateText = self.accumulatedTranscript.trim();
+                const candidateText = (self.accumulatedTranscript + ' ' + self.interimTranscript).trim();
+                if (candidateText) {
                     const trimmedUtterance = candidateText.replace(/[.,!?;:]+$/, '');
                     const endsWithConjunction = self.trailingConjunctionRegex.test(trimmedUtterance);
                     const isImmediate = self.immediateTriggerRegex.test(candidateText);
 
                     const dispatchFinal = function () {
-                        const finalUtterance = self.accumulatedTranscript.trim();
+                        if (self.turnTimer) {
+                            clearTimeout(self.turnTimer);
+                            self.turnTimer = null;
+                        }
+                        const finalUtterance = (self.accumulatedTranscript + ' ' + self.interimTranscript).trim();
                         self.accumulatedTranscript = '';
                         self.interimTranscript = '';
                         self.hasDispatchedFinal = true;
@@ -120,8 +130,8 @@ window.saviVoice = {
                         // Immediate voice commands (stop, wait, keep it short) trigger with zero turn delay
                         dispatchFinal();
                     } else {
-                        // Conjunction buffering gives user 1200ms to continue; standard pause is 700ms
-                        const delayMs = endsWithConjunction ? 1200 : 700;
+                        // Conjunction buffering gives user 1200ms to continue; standard pause is 700ms; interim fallback is 1000ms
+                        const delayMs = endsWithConjunction ? 1200 : (currentFinal ? 700 : 1000);
                         self.turnTimer = setTimeout(dispatchFinal, delayMs);
                     }
                 }
@@ -170,7 +180,21 @@ window.saviVoice = {
 
             this.recognition.onend = function () {
                 self.isListening = false;
-                const finalText = (self.accumulatedTranscript + self.interimTranscript).trim();
+                const finalText = (self.accumulatedTranscript + ' ' + self.interimTranscript).trim();
+
+                // If speech was spoken and not yet dispatched, dispatch it immediately!
+                if (finalText && !self.hasDispatchedFinal) {
+                    if (self.turnTimer) {
+                        clearTimeout(self.turnTimer);
+                        self.turnTimer = null;
+                    }
+                    self.accumulatedTranscript = '';
+                    self.interimTranscript = '';
+                    self.hasDispatchedFinal = true;
+                    if (self.dotNetRef) {
+                        self.dotNetRef.invokeMethodAsync('OnSpeechRecognized', finalText);
+                    }
+                }
 
                 // If in continuous voice mode and not deliberately stopped, restart listening seamlessly
                 if (self.continuousVoiceMode) {
@@ -180,15 +204,11 @@ window.saviVoice = {
                                 self.recognition.start();
                                 self.isListening = true;
                             }
-                        }, 100);
+                        }, 50);
                     } catch (_) {}
                 } else {
                     if (self.dotNetRef) {
                         self.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 0); // 0 = Idle
-                        if (finalText && !self.hasDispatchedFinal) {
-                            self.hasDispatchedFinal = true;
-                            self.dotNetRef.invokeMethodAsync('OnSpeechRecognized', finalText);
-                        }
                     }
                 }
             };
@@ -247,6 +267,32 @@ window.saviVoice = {
             this.analyserNode.fftSize = 128;
             this.analyserNode.smoothingTimeConstant = 0.8;
             source.connect(this.analyserNode);
+
+            // Web Audio circular ring buffer (retains ~300ms of pre-roll audio frames)
+            try {
+                if (this.audioContext.createScriptProcessor) {
+                    const proc = this.audioContext.createScriptProcessor(1024, 1, 1);
+                    const ringSamples = Math.round(this.audioContext.sampleRate * 0.3);
+                    this.preRollRingBuffer = new Float32Array(ringSamples);
+                    this.preRollWritePtr = 0;
+
+                    const self = this;
+                    proc.onaudioprocess = function (e) {
+                        const input = e.inputBuffer.getChannelData(0);
+                        const len = input.length;
+                        for (let i = 0; i < len; i++) {
+                            self.preRollRingBuffer[self.preRollWritePtr] = input[i];
+                            self.preRollWritePtr = (self.preRollWritePtr + 1) % ringSamples;
+                        }
+                    };
+
+                    const silentGain = this.audioContext.createGain();
+                    silentGain.gain.value = 0;
+                    source.connect(proc);
+                    proc.connect(silentGain);
+                    silentGain.connect(this.audioContext.destination);
+                }
+            } catch (_) {}
 
             this.startVisualizerLoop();
         } catch (err) {
@@ -373,6 +419,10 @@ window.saviVoice = {
         this.chunkQueue = [];
         this.isChunkSpeaking = false;
 
+        // Instant acoustic ducking (<5ms)
+        if (this.currentUtterance) {
+            try { this.currentUtterance.volume = 0; } catch (_) {}
+        }
         if (window.speechSynthesis) {
             window.speechSynthesis.cancel();
         }
@@ -396,9 +446,21 @@ window.saviVoice = {
 
         try {
             // Cancel any prior speech
+            if (this.currentUtterance) {
+                try { this.currentUtterance.volume = 0; } catch (_) {}
+            }
             window.speechSynthesis.cancel();
             this.chunkQueue = [];
             this.isChunkSpeaking = false;
+
+            // Purge leftover transcripts from prior turns
+            this.accumulatedTranscript = '';
+            this.interimTranscript = '';
+            this.hasDispatchedFinal = false;
+            if (this.turnTimer) {
+                clearTimeout(this.turnTimer);
+                this.turnTimer = null;
+            }
 
             // Strip code blocks for speech, replacing them with a natural cue
             let cleanText = text.replace(/```[\s\S]*?```/g, ' The code solution is displayed on screen. ');
@@ -488,6 +550,9 @@ window.saviVoice = {
         this.isSpeaking = false;
         this.chunkQueue = [];
         this.isChunkSpeaking = false;
+        if (this.currentUtterance) {
+            try { this.currentUtterance.volume = 0; } catch (_) {}
+        }
         if (window.speechSynthesis) {
             window.speechSynthesis.cancel();
         }

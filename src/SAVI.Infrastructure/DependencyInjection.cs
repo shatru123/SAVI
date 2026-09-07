@@ -59,6 +59,7 @@ public static class DependencyInjection
         // Voice Conversation & Audio Subsystem
         services.AddSingleton<IVoiceResponseFormatter, VoiceResponseFormatter>();
         services.AddTransient<IVoiceActivityDetector, VoiceActivityDetector>();
+        services.AddTransient<IAudioRingBuffer, AudioRingBuffer>();
         services.AddSingleton<VoiceSessionStore>();
         services.AddScoped<IVoiceConversationSession, VoiceConversationSession>();
 
