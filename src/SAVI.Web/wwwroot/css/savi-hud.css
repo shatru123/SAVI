@@ -543,3 +543,146 @@ body {
   }
 }
 
+/* Voice Talk-Back Active Button */
+.active-voice-btn {
+  background: rgba(0, 240, 255, 0.15) !important;
+  border-color: var(--savi-cyan) !important;
+  color: var(--savi-cyan) !important;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.3) !important;
+}
+
+/* Agentic Step-by-Step Progress Card */
+.savi-agent-progress-card {
+  background: rgba(11, 19, 34, 0.85);
+  border: 1px solid var(--savi-border-subtle);
+  border-left: 3px solid var(--savi-cyan);
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin: 10px 0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), 0 0 12px rgba(0, 240, 255, 0.1);
+  animation: savi-fade-in 0.25s ease-out;
+}
+
+.savi-agent-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+}
+
+.savi-agent-progress-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--savi-cyan);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.savi-agent-progress-badge {
+  font-size: 0.65rem;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(0, 255, 170, 0.15);
+  color: var(--savi-success);
+  border: 1px solid rgba(0, 255, 170, 0.35);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+}
+
+.savi-agent-steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.savi-agent-step-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.78rem;
+  transition: all 0.2s ease;
+}
+
+.savi-agent-step-item.completed {
+  color: var(--savi-text-secondary);
+}
+
+.savi-agent-step-item.completed .step-icon {
+  color: var(--savi-success);
+  font-weight: bold;
+}
+
+.savi-agent-step-item.active {
+  color: var(--savi-cyan);
+  font-weight: 600;
+}
+
+.savi-agent-step-item.active .step-icon {
+  color: var(--savi-cyan);
+  animation: savi-spin-slow 1.5s linear infinite;
+  display: inline-block;
+}
+
+.savi-agent-step-item.pending {
+  color: var(--savi-text-dim);
+}
+
+.savi-agent-step-item.pending .step-icon {
+  color: var(--savi-text-dim);
+}
+
+/* Collapsible Execution Workflow Log Under Message */
+.savi-workflow-details {
+  margin-top: 10px;
+  border-top: 1px dashed var(--savi-border-subtle);
+  padding-top: 8px;
+  font-size: 0.76rem;
+}
+
+.savi-workflow-summary {
+  cursor: pointer;
+  color: var(--savi-text-secondary);
+  font-weight: 500;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.15s ease;
+}
+
+.savi-workflow-summary:hover {
+  color: var(--savi-cyan);
+}
+
+.savi-workflow-box {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: rgba(7, 11, 20, 0.6);
+  border: 1px solid rgba(0, 240, 255, 0.12);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.savi-workflow-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.72rem;
+  color: var(--savi-text-secondary);
+}
+
+.savi-workflow-check {
+  color: var(--savi-success);
+  font-size: 0.75rem;
+}
+
+

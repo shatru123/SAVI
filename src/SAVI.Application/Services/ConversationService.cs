@@ -67,6 +67,7 @@ public class ConversationService : IConversationService
         MessageType type = MessageType.Text,
         string? sourcesJson = null,
         string? toolsJson = null,
+        string? metadataJson = null,
         CancellationToken cancellationToken = default)
     {
         var message = new Message
@@ -78,6 +79,7 @@ public class ConversationService : IConversationService
             MessageType = type,
             SourcesJson = sourcesJson,
             ToolExecutionsJson = toolsJson,
+            MetadataJson = metadataJson,
             Timestamp = DateTimeOffset.UtcNow
         };
 
@@ -170,7 +172,8 @@ public class ConversationService : IConversationService
                 Timestamp = m.Timestamp,
                 MessageType = m.MessageType,
                 Sources = string.IsNullOrWhiteSpace(m.SourcesJson) ? null : JsonSerializer.Deserialize<List<SourceReference>>(m.SourcesJson),
-                ToolExecutions = string.IsNullOrWhiteSpace(m.ToolExecutionsJson) ? null : JsonSerializer.Deserialize<List<ToolExecutionResult>>(m.ToolExecutionsJson)
+                ToolExecutions = string.IsNullOrWhiteSpace(m.ToolExecutionsJson) ? null : JsonSerializer.Deserialize<List<ToolExecutionResult>>(m.ToolExecutionsJson),
+                ActivityLogs = string.IsNullOrWhiteSpace(m.MetadataJson) ? null : JsonSerializer.Deserialize<List<string>>(m.MetadataJson)
             }).ToList() ?? new List<MessageDto>()
         };
     }

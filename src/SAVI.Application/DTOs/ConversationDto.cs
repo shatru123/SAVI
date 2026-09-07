@@ -23,6 +23,7 @@ public sealed record MessageDto
     public MessageType MessageType { get; init; }
     public IReadOnlyList<SourceReference>? Sources { get; init; }
     public IReadOnlyList<ToolExecutionResult>? ToolExecutions { get; init; }
+    public IReadOnlyList<string>? ActivityLogs { get; init; }
 }
 
 public sealed record ConversationDetailDto

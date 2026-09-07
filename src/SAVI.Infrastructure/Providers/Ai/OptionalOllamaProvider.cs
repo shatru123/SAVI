@@ -43,7 +43,9 @@ public class OptionalOllamaProvider : ICapabilityProvider
             };
 
             using var content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
-            using var response = await _httpClient.PostAsync($"{_baseUrl}/api/generate", content, cancellationToken);
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
+            using var response = await _httpClient.PostAsync($"{_baseUrl}/api/generate", content, linked.Token);
 
             if (!response.IsSuccessStatusCode)
             {

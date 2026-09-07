@@ -226,11 +226,12 @@ public class AgentOrchestrator : IAgentOrchestrator
             providerResults.Add(res);
         }
 
-        // If primary succeeded, cross-verify with verification providers.
+        // If primary succeeded, only query verification providers if it is a search task requiring multi-source synthesis.
         // If primary failed, fall back to verification/alternative providers!
-        if (plan.VerificationProviders.Count > 0)
+        var primarySucceeded = providerResults.Any(r => r.Success);
+        if (plan.VerificationProviders.Count > 0 && (!primarySucceeded || intent.Capability == SaviConstants.Capabilities.Search))
         {
-            var isFallback = !providerResults.Any(r => r.Success);
+            var isFallback = !primarySucceeded;
             foreach (var vp in plan.VerificationProviders)
             {
                 LogActivity(isFallback ? $"Falling back to: {vp.Name}" : $"Cross-verifying with: {vp.Name}");
@@ -259,12 +260,13 @@ public class AgentOrchestrator : IAgentOrchestrator
             catch { }
         });
 
-        // 13. Persist assistant response
-        var sourcesJson = JsonSerializer.Serialize(verification.Sources);
-        await _conversationService.AppendMessageAsync(conversationId, MessageRole.Assistant, finalContent, MessageType.Text, sourcesJson: sourcesJson, cancellationToken: cancellationToken);
-
         sw.Stop();
         LogActivity($"Completed in {sw.ElapsedMilliseconds} ms (Confidence: {verification.Confidence:P0})");
+
+        // 13. Persist assistant response with activity logs
+        var sourcesJson = JsonSerializer.Serialize(verification.Sources);
+        var metadataJson = JsonSerializer.Serialize(activityLogs);
+        await _conversationService.AppendMessageAsync(conversationId, MessageRole.Assistant, finalContent, MessageType.Text, sourcesJson: sourcesJson, metadataJson: metadataJson, cancellationToken: cancellationToken);
 
         return new AgentResponse
         {

@@ -224,20 +224,23 @@ window.saviVoice = {
         try {
             window.speechSynthesis.cancel(); // Stop prior speech
 
-            // Strip any raw markdown formatting for natural speech
-            const cleanText = text
+            // Strip code blocks for speech, replacing them with a natural cue
+            let cleanText = text.replace(/```[\s\S]*?```/g, ' The code solution is provided below. ');
+
+            // Strip markdown formatting, symbols, and links
+            cleanText = cleanText
                 .replace(/\*\*(.*?)\*\*/g, '$1')
                 .replace(/\*(.*?)\*/g, '$1')
                 .replace(/`{1,3}[^`]*`{1,3}/g, '')
                 .replace(/\[(.*?)\]\([^)]+\)/g, '$1')
-                .replace(/[#*_~]/g, '')
+                .replace(/[#*_~>]/g, '')
+                .replace(/\n+/g, '. ')
                 .trim();
 
             if (!cleanText) return;
 
-            const utterance = new SpeechSynthesisUtterance(cleanText);
-            utterance.rate = rate || 1.0;
-            utterance.pitch = 1.0;
+            // Split into sentences / manageable chunks to prevent Chrome 15s cutoff bug
+            const chunks = cleanText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [cleanText];
 
             if (!this.availableVoices || this.availableVoices.length === 0) {
                 this.loadVoices();
@@ -248,30 +251,52 @@ window.saviVoice = {
                 (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Daniel') || v.name.includes('Samantha') || v.name.includes('Karen') || v.name.includes('Siri'))
             ) || this.availableVoices.find(v => v.lang.startsWith('en'));
 
-            if (preferredVoice) {
-                utterance.voice = preferredVoice;
+            const self = this;
+            if (self.dotNetRef) self.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 5); // Speaking
+
+            let chunkIndex = 0;
+
+            function speakNextChunk() {
+                if (chunkIndex >= chunks.length) {
+                    if (self.dotNetRef) self.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 0); // Idle
+                    return;
+                }
+
+                const chunk = chunks[chunkIndex++].trim();
+                if (!chunk) {
+                    speakNextChunk();
+                    return;
+                }
+
+                const utterance = new SpeechSynthesisUtterance(chunk);
+                utterance.rate = rate || 1.0;
+                utterance.pitch = 1.0;
+                if (preferredVoice) utterance.voice = preferredVoice;
+
+                utterance.onend = function () {
+                    speakNextChunk();
+                };
+
+                utterance.onerror = function () {
+                    if (self.dotNetRef) self.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 0);
+                };
+
+                window.speechSynthesis.speak(utterance);
             }
 
-            const self = this;
-            utterance.onstart = function () {
-                if (self.dotNetRef) self.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 5); // Speaking
-            };
-            utterance.onend = function () {
-                if (self.dotNetRef) self.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 0); // Idle
-            };
-            utterance.onerror = function () {
-                if (self.dotNetRef) self.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 0); // Idle
-            };
-
-            window.speechSynthesis.speak(utterance);
+            speakNextChunk();
         } catch (e) {
             console.error("SAVI speak error:", e);
+            if (this.dotNetRef) this.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 0);
         }
     },
 
     stopSpeaking: function () {
         if (window.speechSynthesis) {
             window.speechSynthesis.cancel();
+        }
+        if (this.dotNetRef) {
+            try { this.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 0); } catch (_) {}
         }
     },
 

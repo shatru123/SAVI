@@ -81,6 +81,10 @@
             </div>
 
             <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                <!-- Voice Talk-Back Toggle Button -->
+                <button class="savi-btn @(_talkBackEnabled ? "active-voice-btn" : "")" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="ToggleTalkBack" title="Toggle Voice Talk-Back (Speech Synthesis)">
+                    @(_talkBackEnabled ? "🔊 Voice: ON" : "🔇 Voice: OFF")
+                </button>
                 @if (!string.IsNullOrEmpty(_currentConversationId))
                 {
                     <button class="savi-btn" style="padding: 4px 8px; font-size: 0.75rem; border-color: rgba(255, 0, 85, 0.4); color: #ff6688;" @onclick="() => DeleteConversation(_currentConversationId)" title="Delete active chat">
@@ -137,16 +141,60 @@
                                 }
                             </div>
                         }
+
+                        @if (msg.Role == MessageRole.Assistant && msg.ActivityLogs != null && msg.ActivityLogs.Count > 0)
+                        {
+                            <details class="savi-workflow-details">
+                                <summary class="savi-workflow-summary">
+                                    <span>◈ Execution Workflow (@msg.ActivityLogs.Count steps)</span>
+                                </summary>
+                                <div class="savi-workflow-box">
+                                    @foreach (var log in msg.ActivityLogs)
+                                    {
+                                        <div class="savi-workflow-row">
+                                            <span class="savi-workflow-check">✓</span>
+                                            <span>@log</span>
+                                        </div>
+                                    }
+                                </div>
+                            </details>
+                        }
                     </div>
                 }
             }
 
             @if (_isProcessing)
             {
-                <div class="savi-message savi-message-assistant">
-                    <div class="savi-glow-text" style="display: flex; align-items: center; gap: 8px;">
-                        <span style="animation: savi-spin-slow 2s linear infinite; display: inline-block;">◈</span>
-                        SAVI is reasoning...
+                <div class="savi-message savi-message-assistant" style="padding: 10px 14px; max-width: 90%;">
+                    <div class="savi-agent-progress-card">
+                        <div class="savi-agent-progress-header">
+                            <div class="savi-agent-progress-title">
+                                <span style="animation: savi-spin-slow 2s linear infinite; display: inline-block;">◈</span>
+                                <span>Agentic Task Execution</span>
+                            </div>
+                            <span class="savi-agent-progress-badge">
+                                <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--savi-success); animation: savi-pulse 1.2s infinite; display: inline-block;"></span>
+                                ACTIVE
+                            </span>
+                        </div>
+                        <div class="savi-agent-steps-list">
+                            <div class="savi-agent-step-item @(_executionStep >= 1 ? (_executionStep == 1 ? "active" : "completed") : "pending")">
+                                <span class="step-icon">@(_executionStep > 1 ? "✓" : (_executionStep == 1 ? "◈" : "○"))</span>
+                                <span>1. Analyzing prompt intent &amp; task requirements</span>
+                            </div>
+                            <div class="savi-agent-step-item @(_executionStep >= 2 ? (_executionStep == 2 ? "active" : "completed") : "pending")">
+                                <span class="step-icon">@(_executionStep > 2 ? "✓" : (_executionStep == 2 ? "◈" : "○"))</span>
+                                <span>2. Routing to optimal AI neural engine &amp; tools</span>
+                            </div>
+                            <div class="savi-agent-step-item @(_executionStep >= 3 ? (_executionStep == 3 ? "active" : "completed") : "pending")">
+                                <span class="step-icon">@(_executionStep > 3 ? "✓" : (_executionStep == 3 ? "◈" : "○"))</span>
+                                <span>3. Executing task &amp; synthesizing code/solution</span>
+                            </div>
+                            <div class="savi-agent-step-item @(_executionStep >= 4 ? (_executionStep == 4 ? "active" : "completed") : "pending")">
+                                <span class="step-icon">@(_executionStep > 4 ? "✓" : (_executionStep == 4 ? "◈" : "○"))</span>
+                                <span>4. Verifying syntax, safety &amp; confidence boundaries</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             }
@@ -250,6 +298,9 @@
     private string _searchQuery = string.Empty;
     private string? _currentConversationId;
     private string _activeTitle = "New Conversation";
+    private bool _talkBackEnabled = true;
+    private int _executionStep = 0;
+    private CancellationTokenSource? _stepCts;
     private bool _isProcessing = false;
     private bool _isListening = false;
     private bool _showActivity = false;
@@ -264,6 +315,21 @@
     private List<string> _activityLogs = new();
     private ActionApprovalRequest? _pendingApproval;
     private DotNetObjectReference<Home>? _dotNetRef;
+
+    private async Task ToggleTalkBack()
+    {
+        _talkBackEnabled = !_talkBackEnabled;
+        if (!_talkBackEnabled)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("saviVoice.stopSpeaking");
+            }
+            catch { }
+            _voiceState = VoiceState.Idle;
+        }
+        StateHasChanged();
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -383,6 +449,7 @@
         var prompt = _userInput.Trim();
         _userInput = string.Empty;
         _isProcessing = true;
+        _executionStep = 1;
         _voiceState = VoiceState.Processing;
 
         // Immediate user message in UI
@@ -396,17 +463,42 @@
 
         StateHasChanged();
 
+        // Launch background agentic step progress simulator while orchestrator runs
+        _stepCts?.Cancel();
+        _stepCts = new CancellationTokenSource();
+        var stepToken = _stepCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(500, stepToken);
+                _executionStep = 2;
+                await InvokeAsync(StateHasChanged);
+
+                await Task.Delay(800, stepToken);
+                _executionStep = 3;
+                await InvokeAsync(StateHasChanged);
+
+                await Task.Delay(1100, stepToken);
+                _executionStep = 4;
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (OperationCanceledException) { }
+        }, stepToken);
+
         try
         {
             var req = new AgentRequest
             {
                 Message = prompt,
                 ConversationId = _currentConversationId ?? string.Empty,
-                VoiceActive = _isListening
+                VoiceActive = _talkBackEnabled || _isListening
             };
 
             var res = await Orchestrator.ProcessAsync(req);
 
+            _stepCts.Cancel();
+            _executionStep = 4;
             _currentConversationId = res.ConversationId;
             _activityLogs = res.ActivityLogs.ToList();
 
@@ -421,25 +513,30 @@
                 Role = MessageRole.Assistant,
                 Content = res.Message,
                 Timestamp = DateTimeOffset.UtcNow,
-                Sources = res.Sources
+                Sources = res.Sources,
+                ActivityLogs = res.ActivityLogs.ToList()
             });
 
-            _voiceState = res.ActiveVoiceState;
-
-            // If voice mode active, speak the result
-            if (res.ActiveVoiceState == VoiceState.Speaking)
+            // If talk-back is enabled, speak the answer aloud
+            if (_talkBackEnabled)
             {
+                _voiceState = VoiceState.Speaking;
                 try
                 {
                     await JS.InvokeVoidAsync("saviVoice.speak", res.Message);
                 }
                 catch { }
             }
+            else
+            {
+                _voiceState = VoiceState.Idle;
+            }
 
             await LoadConversations();
         }
         catch (Exception ex)
         {
+            _stepCts.Cancel();
             _messages.Add(new MessageDto
             {
                 Id = Guid.NewGuid().ToString(),
@@ -452,6 +549,7 @@
         finally
         {
             _isProcessing = false;
+            _executionStep = 0;
             if (_voiceState != VoiceState.Speaking)
             {
                 _voiceState = VoiceState.Idle;
@@ -520,9 +618,12 @@
 
     public async ValueTask DisposeAsync()
     {
+        _stepCts?.Cancel();
+        _stepCts?.Dispose();
         try
         {
             await JS.InvokeVoidAsync("saviVoice.stopListening");
+            await JS.InvokeVoidAsync("saviVoice.stopSpeaking");
         }
         catch { }
         _dotNetRef?.Dispose();
@@ -558,13 +659,27 @@
                 Role = MessageRole.Assistant,
                 Content = res.Message,
                 Timestamp = DateTimeOffset.UtcNow,
-                Sources = res.Sources
+                Sources = res.Sources,
+                ActivityLogs = res.ActivityLogs.ToList()
             });
+
+            if (_talkBackEnabled)
+            {
+                _voiceState = VoiceState.Speaking;
+                try
+                {
+                    await JS.InvokeVoidAsync("saviVoice.speak", res.Message);
+                }
+                catch { }
+            }
         }
         finally
         {
             _isProcessing = false;
-            _voiceState = VoiceState.Idle;
+            if (_voiceState != VoiceState.Speaking)
+            {
+                _voiceState = VoiceState.Idle;
+            }
             StateHasChanged();
         }
     }

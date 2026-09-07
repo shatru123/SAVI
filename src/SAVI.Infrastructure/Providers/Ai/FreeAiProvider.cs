@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -15,9 +16,10 @@ public class FreeAiProvider : ICapabilityProvider
     private static readonly string[] FreeOvhModels = new[]
     {
         "Mistral-7B-Instruct-v0.3",
-        "Mistral-Nemo-Instruct-2407",
-        "gpt-oss-20b"
+        "Mistral-Nemo-Instruct-2407"
     };
+
+    private static readonly ConcurrentDictionary<string, (string Content, IReadOnlyList<SourceReference> Sources, DateTime ExpireAt)> Cache = new();
 
     private const string SystemPrompt =
         "You are SAVI (Shatru's Adaptive Virtual Intelligence), an advanced, helpful, and realistic AI assistant created and architected by Shatrughna Ambhore (Email: ambhoreshatrughna@gmail.com, Phone: +91 9604466334). " +
@@ -57,6 +59,13 @@ public class FreeAiProvider : ICapabilityProvider
         if (string.IsNullOrWhiteSpace(prompt))
         {
             return ProviderResult.Failed(Id, Name, "Prompt is empty.");
+        }
+
+        // Cache Check (sub-10ms response for repeat prompts)
+        var cacheKey = prompt.Trim().ToLowerInvariant();
+        if (Cache.TryGetValue(cacheKey, out var cached) && DateTime.UtcNow < cached.ExpireAt)
+        {
+            return ProviderResult.Succeeded(Id, Name, cached.Content, confidence: 0.98, sources: cached.Sources);
         }
 
         // 1. Check optional authenticated provider keys if user provided any in env vars
@@ -152,7 +161,7 @@ public class FreeAiProvider : ICapabilityProvider
     {
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
 
             var messages = new List<object>
@@ -223,7 +232,9 @@ public class FreeAiProvider : ICapabilityProvider
                             ReliabilityScore = 0.95
                         };
 
-                        return ProviderResult.Succeeded(Id, Name, text, confidence: 0.95, sources: new[] { source });
+                        var sources = new[] { source };
+                        Cache[prompt.Trim().ToLowerInvariant()] = (text, sources, DateTime.UtcNow.AddMinutes(10));
+                        return ProviderResult.Succeeded(Id, Name, text, confidence: 0.95, sources: sources);
                     }
                 }
             }
