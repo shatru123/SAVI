@@ -226,14 +226,17 @@ public class AgentOrchestrator : IAgentOrchestrator
             providerResults.Add(res);
         }
 
-        // Query verification provider if primary returned and verification provider exists
-        if (providerResults.Any(r => r.Success) && plan.VerificationProviders.Count > 0)
+        // If primary succeeded, cross-verify with verification providers.
+        // If primary failed, fall back to verification/alternative providers!
+        if (plan.VerificationProviders.Count > 0)
         {
+            var isFallback = !providerResults.Any(r => r.Success);
             foreach (var vp in plan.VerificationProviders)
             {
-                LogActivity($"Cross-verifying with: {vp.Name}");
+                LogActivity(isFallback ? $"Falling back to: {vp.Name}" : $"Cross-verifying with: {vp.Name}");
                 var vres = await vp.ExecuteAsync(taskRequest, cancellationToken);
                 providerResults.Add(vres);
+                if (isFallback && vres.Success) break;
             }
         }
 

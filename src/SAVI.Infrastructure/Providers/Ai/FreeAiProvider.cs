@@ -130,6 +130,14 @@ public class FreeAiProvider : ICapabilityProvider
             }
         }
 
+        // 3. Resilient Fallback: If AI model endpoints are rate-limited on shared cloud IPs,
+        // synthesize answers directly from live knowledge sources so SAVI always answers.
+        var fallback = await TryKnowledgeFallbackAsync(prompt, cancellationToken);
+        if (fallback != null)
+        {
+            return fallback;
+        }
+
         return ProviderResult.Failed(Id, Name, "Free AI models currently unavailable or rate-limited. Falling back to knowledge retrieval.");
     }
 
@@ -226,6 +234,91 @@ public class FreeAiProvider : ICapabilityProvider
         {
             return null;
         }
+    }
+
+    private async Task<ProviderResult?> TryKnowledgeFallbackAsync(string query, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
+
+            var cleanTerm = query
+                .Replace("what is", "", StringComparison.OrdinalIgnoreCase)
+                .Replace("who is", "", StringComparison.OrdinalIgnoreCase)
+                .Replace("explain", "", StringComparison.OrdinalIgnoreCase)
+                .Replace("tell me about", "", StringComparison.OrdinalIgnoreCase)
+                .Trim(' ', '?', '.', '"');
+
+            if (string.IsNullOrWhiteSpace(cleanTerm)) cleanTerm = query;
+
+            // 1. Wikipedia Summary REST API
+            try
+            {
+                var wikiUrl = $"https://en.wikipedia.org/api/rest_v1/page/summary/{Uri.EscapeDataString(cleanTerm)}";
+                using var wikiReq = new HttpRequestMessage(HttpMethod.Get, wikiUrl);
+                wikiReq.Headers.UserAgent.ParseAdd("SAVI-Agent/1.0 (https://savi-4grt.onrender.com)");
+                using var wikiResp = await _httpClient.SendAsync(wikiReq, linked.Token);
+
+                if (wikiResp.IsSuccessStatusCode)
+                {
+                    var wikiJson = await wikiResp.Content.ReadAsStringAsync(linked.Token);
+                    using var doc = JsonDocument.Parse(wikiJson);
+                    var root = doc.RootElement;
+                    if (root.TryGetProperty("extract", out var extractProp))
+                    {
+                        var extract = extractProp.GetString();
+                        if (!string.IsNullOrWhiteSpace(extract))
+                        {
+                            var title = root.TryGetProperty("title", out var tProp) ? tProp.GetString() ?? cleanTerm : cleanTerm;
+                            var source = new SourceReference
+                            {
+                                Title = $"{title} — Wikipedia",
+                                Url = $"https://en.wikipedia.org/wiki/{Uri.EscapeDataString(title)}",
+                                SourceName = "Wikipedia Knowledge Engine",
+                                Snippet = extract.Length > 160 ? extract[..157] + "..." : extract,
+                                ReliabilityScore = 0.92
+                            };
+                            return ProviderResult.Succeeded(Id, Name, extract, confidence: 0.90, sources: new[] { source });
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            // 2. DuckDuckGo Instant Answer API
+            try
+            {
+                var ddgUrl = $"https://api.duckduckgo.com/?q={Uri.EscapeDataString(query)}&format=json&no_html=1&skip_disambig=1";
+                using var ddgResp = await _httpClient.GetAsync(ddgUrl, linked.Token);
+                if (ddgResp.IsSuccessStatusCode)
+                {
+                    var ddgJson = await ddgResp.Content.ReadAsStringAsync(linked.Token);
+                    using var doc = JsonDocument.Parse(ddgJson);
+                    var root = doc.RootElement;
+                    if (root.TryGetProperty("AbstractText", out var absProp))
+                    {
+                        var absText = absProp.GetString();
+                        if (!string.IsNullOrWhiteSpace(absText))
+                        {
+                            var source = new SourceReference
+                            {
+                                Title = query,
+                                Url = "https://duckduckgo.com",
+                                SourceName = "DuckDuckGo Instant Answers",
+                                Snippet = absText.Length > 160 ? absText[..157] + "..." : absText,
+                                ReliabilityScore = 0.88
+                            };
+                            return ProviderResult.Succeeded(Id, Name, absText, confidence: 0.88, sources: new[] { source });
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+        catch { }
+
+        return null;
     }
 
     public async Task<bool> HealthCheckAsync(CancellationToken cancellationToken = default)

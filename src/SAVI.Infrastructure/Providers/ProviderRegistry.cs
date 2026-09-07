@@ -48,14 +48,15 @@ public class ProviderRegistry : IProviderRegistry
 
     public async Task<IReadOnlyList<ProviderMetadata>> GetMetadataAsync(CancellationToken cancellationToken = default)
     {
-        var list = new List<ProviderMetadata>();
-        foreach (var p in _providers.Values)
+        var tasks = _providers.Values.Select(async p =>
         {
             var isHealthy = false;
             var sw = global::System.Diagnostics.Stopwatch.StartNew();
             try
             {
-                isHealthy = await p.HealthCheckAsync(cancellationToken);
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
+                isHealthy = await p.HealthCheckAsync(linked.Token);
             }
             catch
             {
@@ -63,7 +64,7 @@ public class ProviderRegistry : IProviderRegistry
             }
             sw.Stop();
 
-            list.Add(new ProviderMetadata
+            return new ProviderMetadata
             {
                 Id = p.Id,
                 Name = p.Name,
@@ -74,8 +75,10 @@ public class ProviderRegistry : IProviderRegistry
                 IsPaid = false,
                 RequiresAuth = false,
                 ReliabilityScore = isHealthy ? 1.0 : 0.2
-            });
-        }
-        return list;
+            };
+        });
+
+        var results = await Task.WhenAll(tasks);
+        return results.OrderBy(m => m.Priority).ToList();
     }
 }

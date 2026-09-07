@@ -67,7 +67,7 @@ public class ExecutionPlanner
 
         var matched = _providerRegistry.RankProviders(taskReq);
         var primary = matched.Take(1).ToList();
-        var verification = matched.Skip(1).Take(1).ToList(); // Second provider for multi-source verification if available
+        var verification = matched.Skip(1).Take(2).ToList(); // Fallback & verification providers
 
         return new ExecutionPlan(intent.Capability, primary, verification, false, null, null);
     }

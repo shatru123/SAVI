@@ -17,8 +17,10 @@ builder.Services.AddSaviInfrastructure(builder.Configuration);
 builder.Services.AddSaviTools();
 builder.Services.AddSaviAgent();
 
-// Add Health Checks
+// Add Health Checks & HttpClient
 builder.Services.AddHealthChecks();
+builder.Services.AddHttpClient();
+builder.Services.AddScoped(sp => sp.GetRequiredService<IHttpClientFactory>().CreateClient());
 
 // Add Blazor Interactive Server Components
 builder.Services.AddRazorComponents()
