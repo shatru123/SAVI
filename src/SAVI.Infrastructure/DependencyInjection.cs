@@ -24,6 +24,7 @@ using SAVI.Infrastructure.Providers.Weather;
 using SAVI.Infrastructure.Repositories;
 using SAVI.Infrastructure.Resilience;
 using SAVI.Infrastructure.Speech;
+using SAVI.Infrastructure.Voice;
 
 namespace SAVI.Infrastructure;
 
@@ -54,6 +55,12 @@ public static class DependencyInjection
         services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddSingleton<ISpeechService, SystemSpeechService>();
+
+        // Voice Conversation & Audio Subsystem
+        services.AddSingleton<IVoiceResponseFormatter, VoiceResponseFormatter>();
+        services.AddTransient<IVoiceActivityDetector, VoiceActivityDetector>();
+        services.AddSingleton<VoiceSessionStore>();
+        services.AddScoped<IVoiceConversationSession, VoiceConversationSession>();
 
         // Resilience & Caching
         services.AddMemoryCache();

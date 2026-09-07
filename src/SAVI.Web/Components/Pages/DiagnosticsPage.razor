@@ -110,6 +110,50 @@
             </tbody>
         </table>
     </div>
+
+    <!-- Real-Time Conversational Voice Telemetry -->
+    <h3 style="font-size: 1rem; color: var(--savi-text-primary); margin: 28px 0 12px 0;">Real-Time Conversational Voice Subsystem</h3>
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-bottom: 24px;">
+        <div class="savi-glass-panel" style="padding: 16px;">
+            <div style="font-size: 0.75rem; color: var(--savi-text-dim); text-transform: uppercase;">Voice Architecture</div>
+            <div class="savi-glow-text" style="font-size: 1.15rem; font-weight: bold; margin: 6px 0;">
+                Full-Duplex
+            </div>
+            <div style="font-size: 0.72rem; color: var(--savi-text-secondary);">
+                Continuous listening &amp; VAD
+            </div>
+        </div>
+
+        <div class="savi-glass-panel" style="padding: 16px;">
+            <div style="font-size: 0.75rem; color: var(--savi-text-dim); text-transform: uppercase;">Barge-In Latency</div>
+            <div style="font-size: 1.15rem; font-weight: bold; margin: 6px 0; color: var(--savi-success);">
+                &lt; 150 ms
+            </div>
+            <div style="font-size: 0.72rem; color: var(--savi-text-secondary);">
+                Immediate cancellation of TTS
+            </div>
+        </div>
+
+        <div class="savi-glass-panel" style="padding: 16px;">
+            <div style="font-size: 0.75rem; color: var(--savi-text-dim); text-transform: uppercase;">Acoustic Echo Cancellation</div>
+            <div class="savi-glow-text" style="font-size: 1.15rem; font-weight: bold; margin: 6px 0;">
+                Hardware / WebRTC
+            </div>
+            <div style="font-size: 0.72rem; color: var(--savi-text-secondary);">
+                Prevents hearing self speech
+            </div>
+        </div>
+
+        <div class="savi-glass-panel" style="padding: 16px;">
+            <div style="font-size: 0.75rem; color: var(--savi-text-dim); text-transform: uppercase;">Turn-Taking &amp; Commands</div>
+            <div style="font-size: 1.15rem; font-weight: bold; margin: 6px 0; color: var(--savi-cyan);">
+                Native State Machine
+            </div>
+            <div style="font-size: 0.72rem; color: var(--savi-text-secondary);">
+                Stop, Repeat, Continue, Corrections
+            </div>
+        </div>
+    </div>
 </div>
 
 @code {

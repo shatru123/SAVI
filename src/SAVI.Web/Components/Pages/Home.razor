@@ -95,6 +95,10 @@
                 <button class="savi-btn @(_talkBackEnabled ? "active-voice-btn" : "")" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="ToggleTalkBack" title="Toggle Voice Talk-Back (Speech Synthesis)">
                     @(_talkBackEnabled ? "🔊 Voice: ON" : "🔇 Voice: OFF")
                 </button>
+                <!-- Continuous Conversational Voice Mode Button -->
+                <button class="savi-btn @(_continuousVoiceMode ? "active-voice-btn" : "")" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="ToggleContinuousVoice" title="Toggle Real-Time Conversational Voice Mode (Continuous Full-Duplex)">
+                    @(_continuousVoiceMode ? "🎙 Voice Mode: LIVE" : "🎙 Voice: Standard")
+                </button>
                 @if (!string.IsNullOrEmpty(_currentConversationId))
                 {
                     <button class="savi-btn" style="padding: 4px 8px; font-size: 0.75rem; border-color: rgba(255, 0, 85, 0.4); color: #ff6688;" @onclick="() => DeleteConversation(_currentConversationId)" title="Delete active chat">
@@ -233,7 +237,35 @@
         </div>
 
         <!-- Voice Status & Error Alerts -->
-        @if (_isListening)
+        @if (_continuousVoiceMode)
+        {
+            <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.74rem; margin-top: 8px; padding: 5px 12px; background: rgba(0, 240, 255, 0.08); border: 1px solid var(--savi-border-subtle); border-radius: 6px; color: var(--savi-cyan);">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="core-center-pulse" style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #00f0ff;"></span>
+                    <span class="savi-glow-text" style="font-weight: 700; letter-spacing: 0.5px;">LIVE FULL-DUPLEX VOICE</span>
+                    <span style="color: var(--savi-text-dim);">• Continuous listening active</span>
+                </div>
+                <div style="font-size: 0.68rem; color: var(--savi-text-secondary); display: flex; gap: 10px;">
+                    <span>[Space] Push-to-Talk</span>
+                    <span>[Esc] Silence</span>
+                </div>
+            </div>
+        }
+        @if (_wasInterrupted)
+        {
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 0.78rem; margin-top: 6px; padding: 4px 10px; background: rgba(255, 170, 0, 0.12); border: 1px solid rgba(255, 170, 0, 0.4); border-radius: 5px; color: #ffbb33;">
+                <span>⚡</span>
+                <span>Interrupted — SAVI stopped speaking. Listening for your correction...</span>
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(_liveInterimTranscript))
+        {
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; margin-top: 6px; padding: 6px 12px; background: rgba(0, 255, 136, 0.09); border: 1px solid rgba(0, 255, 136, 0.35); border-radius: 6px; color: #aaffcc;">
+                <span style="animation: savi-pulse 1s infinite; display: inline-block;">🎙</span>
+                <span style="font-style: italic;">"@_liveInterimTranscript"</span>
+            </div>
+        }
+        else if (_isListening && !_continuousVoiceMode)
         {
             <div style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; margin-top: 8px; color: var(--savi-cyan);">
                 <span class="core-center-pulse" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #00f0ff;"></span>
@@ -313,6 +345,9 @@
     private string? _currentConversationId;
     private string _activeTitle = "New Conversation";
     private bool _talkBackEnabled = true;
+    private bool _continuousVoiceMode = false;
+    private bool _wasInterrupted = false;
+    private string _liveInterimTranscript = string.Empty;
     private int _executionStep = 0;
     private bool _isProcessing = false;
     private bool _isListening = false;
@@ -324,12 +359,32 @@
     private VoiceState _voiceState = VoiceState.Idle;
     private VerificationPolicy _activePolicy = VerificationPolicy.Balanced;
     private CancellationTokenSource? _searchCts;
+    private CancellationTokenSource? _processingCts;
 
     private List<ConversationSummaryDto> _conversations = new();
     private List<MessageDto> _messages = new();
     private List<string> _activityLogs = new();
     private ActionApprovalRequest? _pendingApproval;
     private DotNetObjectReference<Home>? _dotNetRef;
+
+    private async Task ToggleContinuousVoice()
+    {
+        _continuousVoiceMode = !_continuousVoiceMode;
+        _talkBackEnabled = true;
+        _wasInterrupted = false;
+        try
+        {
+            await JS.InvokeVoidAsync("saviVoice.setContinuousMode", _continuousVoiceMode);
+            _isListening = _continuousVoiceMode;
+            _voiceState = _continuousVoiceMode ? VoiceState.Listening : VoiceState.Idle;
+        }
+        catch (Exception ex)
+        {
+            _continuousVoiceMode = false;
+            _voiceError = $"Continuous voice mode error: {ex.Message}";
+        }
+        StateHasChanged();
+    }
 
     private void CycleVerificationPolicy()
     {
@@ -485,6 +540,10 @@
         _isProcessing = true;
         _executionStep = 1;
         _voiceState = VoiceState.Processing;
+        _wasInterrupted = false;
+
+        _processingCts?.Dispose();
+        _processingCts = new CancellationTokenSource();
 
         // Immediate user message in UI
         _messages.Add(new MessageDto
@@ -503,7 +562,7 @@
             {
                 Message = prompt,
                 ConversationId = _currentConversationId ?? string.Empty,
-                VoiceActive = _talkBackEnabled || _isListening,
+                VoiceActive = _talkBackEnabled || _isListening || _continuousVoiceMode,
                 VerificationPolicyOverride = _activePolicy,
                 OnStepProgress = (step, label) =>
                 {
@@ -512,7 +571,7 @@
                 }
             };
 
-            var res = await Orchestrator.ProcessAsync(req);
+            var res = await Orchestrator.ProcessAsync(req, _processingCts.Token);
 
             _executionStep = 4;
             _currentConversationId = res.ConversationId;
@@ -533,15 +592,23 @@
                 ActivityLogs = res.ActivityLogs.ToList()
             });
 
-            // If talk-back is enabled, speak the answer aloud
-            if (_talkBackEnabled)
+            // If talk-back is enabled, speak the answer aloud (using concise voice-friendly phrasing)
+            if (_talkBackEnabled && !_wasInterrupted)
             {
                 _voiceState = VoiceState.Speaking;
+                var spokenText = !string.IsNullOrWhiteSpace(res.VoiceFriendlyMessage)
+                    ? res.VoiceFriendlyMessage
+                    : res.Message;
+
                 try
                 {
-                    await JS.InvokeVoidAsync("saviVoice.speak", res.Message);
+                    await JS.InvokeVoidAsync("saviVoice.speak", spokenText);
                 }
                 catch { }
+            }
+            else if (_continuousVoiceMode)
+            {
+                _voiceState = VoiceState.Listening;
             }
             else
             {
@@ -549,6 +616,11 @@
             }
 
             await LoadConversations();
+        }
+        catch (OperationCanceledException)
+        {
+            _wasInterrupted = true;
+            _voiceState = _continuousVoiceMode ? VoiceState.Listening : VoiceState.Idle;
         }
         catch (Exception ex)
         {
@@ -565,9 +637,9 @@
         {
             _isProcessing = false;
             _executionStep = 0;
-            if (_voiceState != VoiceState.Speaking)
+            if (_voiceState != VoiceState.Speaking && _voiceState != VoiceState.Listening && _voiceState != VoiceState.Interrupted)
             {
-                _voiceState = VoiceState.Idle;
+                _voiceState = _continuousVoiceMode ? VoiceState.Listening : VoiceState.Idle;
             }
             StateHasChanged();
         }
@@ -591,11 +663,25 @@
     }
 
     [JSInvokable]
+    public void OnUserInterrupted()
+    {
+        _wasInterrupted = true;
+        try
+        {
+            _processingCts?.Cancel();
+        }
+        catch { }
+        _voiceState = VoiceState.Interrupted;
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
     public void OnSpeechInterim(string text)
     {
         if (!string.IsNullOrWhiteSpace(text))
         {
-            _userInput = text;
+            _liveInterimTranscript = text;
+            _voiceState = VoiceState.DetectingSpeech;
             _voiceError = null;
             InvokeAsync(StateHasChanged);
         }
@@ -606,8 +692,12 @@
     {
         if (string.IsNullOrWhiteSpace(transcript)) return;
 
+        _liveInterimTranscript = string.Empty;
         _userInput = transcript;
-        _isListening = false;
+        if (!_continuousVoiceMode)
+        {
+            _isListening = false;
+        }
         _voiceState = VoiceState.Processing;
         _voiceError = null;
         StateHasChanged();

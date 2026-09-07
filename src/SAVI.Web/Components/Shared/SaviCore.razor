@@ -58,11 +58,14 @@
     private string GetStatusCaption() => VoiceState switch
     {
         VoiceState.Idle => "System Online • Standing By",
-        VoiceState.Listening => "Listening • Audio Active",
+        VoiceState.Listening => "Listening • Continuous Audio Active",
+        VoiceState.DetectingSpeech => "Speech Detected • Transcribing",
         VoiceState.Processing => "Processing Intent • Reasoning",
         VoiceState.Searching => "Querying Knowledge Base",
         VoiceState.Executing => "Executing Tool Pipeline",
         VoiceState.Speaking => "Speaking • Transmitting",
+        VoiceState.Interrupted => "Interrupted • Listening Resumed",
+        VoiceState.Stopping => "Stopping Voice Session",
         VoiceState.Error => "Attention • Diagnostics Logged",
         _ => "SAVI Core Active"
     };

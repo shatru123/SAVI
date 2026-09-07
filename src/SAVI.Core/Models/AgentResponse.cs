@@ -6,6 +6,7 @@ namespace SAVI.Core.Models;
 public sealed record AgentResponse
 {
     public string Message { get; init; } = string.Empty;
+    public string? VoiceFriendlyMessage { get; init; }
     public string ConversationId { get; init; } = string.Empty;
     public bool Success { get; init; } = true;
     public IReadOnlyList<SourceReference> Sources { get; init; } = Array.Empty<SourceReference>();

@@ -8,5 +8,8 @@ public enum VoiceState
     Searching = 3,
     Executing = 4,
     Speaking = 5,
-    Error = 6
+    Error = 6,
+    DetectingSpeech = 7,
+    Interrupted = 8,
+    Stopping = 9
 }

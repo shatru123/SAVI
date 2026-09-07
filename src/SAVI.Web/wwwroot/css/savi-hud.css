@@ -163,6 +163,13 @@ body {
   stroke: var(--savi-success);
 }
 
+.core-state-detectingspeech .core-center-pulse {
+  stroke: var(--savi-success);
+  transform: scale(calc(1 + var(--savi-audio-level, 0) * 0.45));
+  transition: transform 0.08s ease-out;
+  filter: drop-shadow(0 0 calc(6px + var(--savi-audio-level, 0) * 16px) #00f0ff);
+}
+
 .core-state-processing .core-ring-outer {
   animation-duration: 6s;
   stroke: var(--savi-cyan);
@@ -174,7 +181,16 @@ body {
 
 .core-state-speaking .core-center-pulse {
   animation-duration: 1.2s;
-  fill: rgba(0, 240, 255, 0.35);
+  fill: rgba(0, 240, 255, 0.45);
+  transform: scale(calc(1 + var(--savi-audio-level, 0.15) * 0.3));
+  transition: transform 0.08s ease-out;
+  filter: drop-shadow(0 0 calc(8px + var(--savi-audio-level, 0.1) * 20px) #00f0ff);
+}
+
+.core-state-interrupted .core-center-pulse {
+  stroke: #ff9900;
+  fill: rgba(255, 153, 0, 0.4);
+  animation: savi-pulse 0.3s ease-out 2;
 }
 
 .core-state-error .core-center-pulse {

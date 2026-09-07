@@ -12,15 +12,18 @@ public class SaviHub : Hub
     private readonly IAgentOrchestrator _agentOrchestrator;
     private readonly IConversationService _conversationService;
     private readonly ITaskService _taskService;
+    private readonly IVoiceConversationSession _voiceSession;
 
     public SaviHub(
         IAgentOrchestrator agentOrchestrator,
         IConversationService conversationService,
-        ITaskService taskService)
+        ITaskService taskService,
+        IVoiceConversationSession voiceSession)
     {
         _agentOrchestrator = agentOrchestrator;
         _conversationService = conversationService;
         _taskService = taskService;
+        _voiceSession = voiceSession;
     }
 
     public async Task JoinConversation(string conversationId)
@@ -121,5 +124,58 @@ public class SaviHub : Hub
     public async Task UpdateVoiceState(VoiceState state)
     {
         await Clients.Caller.SendAsync("ReceiveVoiceState", state);
+    }
+
+    // --- Real-time Voice Session Management ---
+
+    public async Task StartVoiceSession(string conversationId)
+    {
+        var caller = Clients.Caller;
+
+        _voiceSession.StateChanged += state =>
+        {
+            _ = caller.SendAsync("ReceiveVoiceState", state);
+        };
+
+        _voiceSession.VoiceEventEmitted += (evt, payload) =>
+        {
+            _ = caller.SendAsync("ReceiveVoiceEvent", new { Event = evt, Payload = payload });
+        };
+
+        await _voiceSession.StartAsync(conversationId, Context.ConnectionAborted);
+        await caller.SendAsync("ReceiveVoiceSessionStarted", new
+        {
+            SessionId = _voiceSession.SessionId,
+            ConversationId = conversationId
+        });
+    }
+
+    public async Task StopVoiceSession()
+    {
+        await _voiceSession.StopAsync(Context.ConnectionAborted);
+        await Clients.Caller.SendAsync("ReceiveVoiceSessionStopped", new
+        {
+            SessionId = _voiceSession.SessionId
+        });
+    }
+
+    public async Task InterruptVoiceSession()
+    {
+        await _voiceSession.InterruptAsync(Context.ConnectionAborted);
+    }
+
+    public async Task ProcessVoiceUtterance(string text, bool isInterruption)
+    {
+        var result = await _voiceSession.ProcessUtteranceAsync(text, isInterruption, Context.ConnectionAborted);
+        await Clients.Caller.SendAsync("ReceiveVoiceTurnResult", result);
+    }
+
+    public async Task SendVoicePartialTranscript(string interimText)
+    {
+        await Clients.Caller.SendAsync("ReceiveVoiceEvent", new
+        {
+            Event = "voice.transcript.partial",
+            Payload = new { Text = interimText }
+        });
     }
 }

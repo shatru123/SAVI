@@ -27,6 +27,7 @@ public class AgentOrchestrator : IAgentOrchestrator
     private readonly IToolRegistry _toolRegistry;
     private readonly IPermissionGuard _permissionGuard;
     private readonly IProviderCache _providerCache;
+    private readonly IVoiceResponseFormatter? _voiceResponseFormatter;
 
     public AgentOrchestrator(
         IContextBuilder contextBuilder,
@@ -40,7 +41,8 @@ public class AgentOrchestrator : IAgentOrchestrator
         ISettingsService settingsService,
         IToolRegistry toolRegistry,
         IPermissionGuard permissionGuard,
-        IProviderCache providerCache)
+        IProviderCache providerCache,
+        IVoiceResponseFormatter? voiceResponseFormatter = null)
     {
         _contextBuilder = contextBuilder;
         _intentDetector = intentDetector;
@@ -54,6 +56,7 @@ public class AgentOrchestrator : IAgentOrchestrator
         _toolRegistry = toolRegistry;
         _permissionGuard = permissionGuard;
         _providerCache = providerCache;
+        _voiceResponseFormatter = voiceResponseFormatter;
     }
 
     public async Task<AgentResponse> ProcessAsync(AgentRequest request, CancellationToken cancellationToken = default)
@@ -88,16 +91,45 @@ public class AgentOrchestrator : IAgentOrchestrator
         EmitEvent("request.classified", new { Capability = intent.Capability, Operation = intent.Operation });
         LogActivity($"2. Routed capability '{intent.Capability}' (Operation: {intent.Operation})");
 
-        // Handle Chit-Chat & System Greetings
-        if (intent.Capability == "chitchat")
+        // Handle Voice Control Commands (Stop, Repeat, Continue)
+        if (intent.Capability == "voice_control")
         {
-            var reply = _personalityEngine.FormatChitChat(intent.Operation, request.Message);
+            string reply = intent.Operation switch
+            {
+                "stop" => "Stopped. I'm listening.",
+                "repeat" => context.RecentMessages.LastOrDefault(m => m.Role == MessageRole.Assistant)?.Content ?? "I'm ready when you are, Shatru.",
+                "continue" => "Continuing from where we left off.",
+                _ => "Understood."
+            };
+
+            var voiceReply = _voiceResponseFormatter?.FormatForSpeech(reply) ?? reply;
             await _conversationService.AppendMessageAsync(conversationId, MessageRole.Assistant, reply, MessageType.Text, cancellationToken: cancellationToken);
             EmitEvent("response.completed", new { Message = reply });
 
             return new AgentResponse
             {
                 Message = reply,
+                VoiceFriendlyMessage = voiceReply,
+                ConversationId = conversationId,
+                Success = true,
+                Confidence = 1.0,
+                ActiveVoiceState = VoiceState.Speaking,
+                ActivityLogs = activityLogs
+            };
+        }
+
+        // Handle Chit-Chat & System Greetings
+        if (intent.Capability == "chitchat")
+        {
+            var reply = _personalityEngine.FormatChitChat(intent.Operation, request.Message);
+            var voiceReply = _voiceResponseFormatter?.FormatForSpeech(reply) ?? reply;
+            await _conversationService.AppendMessageAsync(conversationId, MessageRole.Assistant, reply, MessageType.Text, cancellationToken: cancellationToken);
+            EmitEvent("response.completed", new { Message = reply });
+
+            return new AgentResponse
+            {
+                Message = reply,
+                VoiceFriendlyMessage = voiceReply,
                 ConversationId = conversationId,
                 Success = true,
                 Confidence = 1.0,
@@ -289,9 +321,12 @@ public class AgentOrchestrator : IAgentOrchestrator
             catch { }
         });
 
+        var voiceFriendlyText = _voiceResponseFormatter?.FormatForSpeech(finalContent, intent.Capability) ?? finalContent;
+
         return new AgentResponse
         {
             Message = finalContent,
+            VoiceFriendlyMessage = voiceFriendlyText,
             ConversationId = conversationId,
             Success = verification.IsVerified,
             Sources = verification.Sources,

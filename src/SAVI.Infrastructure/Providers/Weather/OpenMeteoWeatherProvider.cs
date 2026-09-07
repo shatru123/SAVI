@@ -80,8 +80,8 @@ public class OpenMeteoWeatherProvider : ICapabilityProvider
                 GeoCache.TryAdd(city.Trim(), (lat, lon, resolvedName, country));
             }
 
-            // 2. Fetch current weather
-            var weatherUrl = $"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto";
+            // 2. Fetch current and daily weather
+            var weatherUrl = $"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=auto";
             using var weatherResponse = await _httpClient.GetAsync(weatherUrl, cancellationToken);
             if (!weatherResponse.IsSuccessStatusCode)
             {
@@ -90,34 +90,72 @@ public class OpenMeteoWeatherProvider : ICapabilityProvider
 
             var weatherJson = await weatherResponse.Content.ReadAsStringAsync(cancellationToken);
             using var weatherDoc = JsonDocument.Parse(weatherJson);
-            var current = weatherDoc.RootElement.GetProperty("current");
+            var isTomorrow = (request.Parameters.GetValueOrDefault("timeframe")?.Equals("tomorrow", StringComparison.OrdinalIgnoreCase) == true) ||
+                             request.Operation.Equals("forecast", StringComparison.OrdinalIgnoreCase);
 
-            var temp = current.GetProperty("temperature_2m").GetDouble();
-            var humidity = current.GetProperty("relative_humidity_2m").GetInt32();
-            var feelsLike = current.GetProperty("apparent_temperature").GetDouble();
-            var windSpeed = current.GetProperty("wind_speed_10m").GetDouble();
-            var weatherCode = current.GetProperty("weather_code").GetInt32();
-            var conditionDesc = MapWeatherCode(weatherCode);
+            object weatherData;
+            string conditionDesc;
+            SourceReference source;
 
-            var weatherData = new
+            if (isTomorrow && weatherDoc.RootElement.TryGetProperty("daily", out var daily))
             {
-                Location = $"{resolvedName}{(string.IsNullOrEmpty(country) ? "" : ", " + country)}",
-                TemperatureCelsius = temp,
-                TemperatureFahrenheit = Math.Round(temp * 9 / 5 + 32, 1),
-                FeelsLikeCelsius = feelsLike,
-                HumidityPercentage = humidity,
-                WindSpeedKmh = windSpeed,
-                Condition = conditionDesc
-            };
+                var maxTemps = daily.GetProperty("temperature_2m_max");
+                var minTemps = daily.GetProperty("temperature_2m_min");
+                var codes = daily.GetProperty("weather_code");
 
-            var source = new SourceReference
+                var maxT = maxTemps.GetArrayLength() > 1 ? maxTemps[1].GetDouble() : 25.0;
+                var minT = minTemps.GetArrayLength() > 1 ? minTemps[1].GetDouble() : 18.0;
+                var wCode = codes.GetArrayLength() > 1 ? codes[1].GetInt32() : 0;
+                conditionDesc = MapWeatherCode(wCode);
+
+                weatherData = new
+                {
+                    Location = $"{resolvedName}{(string.IsNullOrEmpty(country) ? "" : ", " + country)}",
+                    Timeframe = "Tomorrow",
+                    MaxTemperatureCelsius = maxT,
+                    MinTemperatureCelsius = minT,
+                    Condition = conditionDesc
+                };
+
+                source = new SourceReference
+                {
+                    Title = $"Open-Meteo Forecast for {resolvedName}",
+                    Url = "https://open-meteo.com",
+                    SourceName = "Open-Meteo",
+                    Snippet = $"Tomorrow in {resolvedName}: {conditionDesc}, high of {maxT}°C, low of {minT}°C.",
+                    ReliabilityScore = 0.95
+                };
+            }
+            else
             {
-                Title = $"Open-Meteo Current Weather for {resolvedName}",
-                Url = "https://open-meteo.com",
-                SourceName = "Open-Meteo",
-                Snippet = $"{conditionDesc}, {temp}°C (feels like {feelsLike}°C), humidity {humidity}%, wind {windSpeed} km/h.",
-                ReliabilityScore = 0.95
-            };
+                var current = weatherDoc.RootElement.GetProperty("current");
+                var temp = current.GetProperty("temperature_2m").GetDouble();
+                var humidity = current.GetProperty("relative_humidity_2m").GetInt32();
+                var feelsLike = current.GetProperty("apparent_temperature").GetDouble();
+                var windSpeed = current.GetProperty("wind_speed_10m").GetDouble();
+                var weatherCode = current.GetProperty("weather_code").GetInt32();
+                conditionDesc = MapWeatherCode(weatherCode);
+
+                weatherData = new
+                {
+                    Location = $"{resolvedName}{(string.IsNullOrEmpty(country) ? "" : ", " + country)}",
+                    TemperatureCelsius = temp,
+                    TemperatureFahrenheit = Math.Round(temp * 9 / 5 + 32, 1),
+                    FeelsLikeCelsius = feelsLike,
+                    HumidityPercentage = humidity,
+                    WindSpeedKmh = windSpeed,
+                    Condition = conditionDesc
+                };
+
+                source = new SourceReference
+                {
+                    Title = $"Open-Meteo Current Weather for {resolvedName}",
+                    Url = "https://open-meteo.com",
+                    SourceName = "Open-Meteo",
+                    Snippet = $"{conditionDesc}, {temp}°C (feels like {feelsLike}°C), humidity {humidity}%, wind {windSpeed} km/h.",
+                    ReliabilityScore = 0.95
+                };
+            }
 
             return ProviderResult.Succeeded(Id, Name, weatherData, confidence: 0.95, sources: new[] { source });
         }

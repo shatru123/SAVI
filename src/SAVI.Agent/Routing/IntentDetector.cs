@@ -57,9 +57,71 @@ public class IntentDetector
             policyOverride = VerificationPolicy.Verified;
         }
 
-        // 1. Coreference / Follow-up resolution
-        if (context?.RecentMessages.Count > 0)
+        // 1. Voice Control Commands (Immediate)
+        if (lower is "stop" or "wait" or "hold on" or "pause" or "stop speaking" or "silence")
         {
+            return new DetectedIntent("voice_control", "stop", new(), 1.0, policyOverride);
+        }
+        if (lower is "say that again" or "repeat that" or "repeat" or "can you repeat that" or "what did you say")
+        {
+            return new DetectedIntent("voice_control", "repeat", new(), 1.0, policyOverride);
+        }
+        if (lower is "continue" or "go on" or "keep going")
+        {
+            return new DetectedIntent("voice_control", "continue", new(), 1.0, policyOverride);
+        }
+
+        // 2. Correction Handling: "no, I meant Pune, not Patna", "actually Pune", "I said Pune"
+        var correctionMatch = Regex.Match(clean, @"^(?:no,? (?:i meant|actually)|actually,? (?:i meant)?|i said)\s+(.+)", RegexOptions.IgnoreCase);
+        if (correctionMatch.Success)
+        {
+            var target = correctionMatch.Groups[1].Value.Trim();
+            var lastWeatherMsg = context?.RecentMessages?.LastOrDefault(m => WeatherRegex.IsMatch(m.Content));
+            if (lastWeatherMsg != null)
+            {
+                var cleanCity = Regex.Replace(target, @"(?:\s*,\s*|\s+)not\s+[a-zA-Z\s]+.*$", "", RegexOptions.IgnoreCase).Trim();
+                cleanCity = cleanCity.TrimEnd(',', '.', '?', '!', ' ');
+                return new DetectedIntent(SaviConstants.Capabilities.Weather, "current",
+                    new Dictionary<string, string> { ["city"] = cleanCity }, 0.95, policyOverride);
+            }
+        }
+
+        // 3. Conversational Follow-up Resolution (e.g. "what about tomorrow?", "and what about Mumbai?")
+        if (context?.RecentMessages?.Count > 0)
+        {
+            var isTomorrow = lower.Contains("tomorrow") || lower.Contains("forecast") || lower.Contains("next week");
+            var locationFollowup = Regex.Match(clean, @"^(?:and\s+)?(?:what about|how about|and in|and for)\s+([a-zA-Z\s]+)", RegexOptions.IgnoreCase);
+
+            var candidate = locationFollowup.Success ? locationFollowup.Groups[1].Value.Replace("?", "").Trim() : "";
+            var isTimeframeOnly = candidate.Equals("tomorrow", StringComparison.OrdinalIgnoreCase) ||
+                                  candidate.Equals("today", StringComparison.OrdinalIgnoreCase) ||
+                                  candidate.Equals("next week", StringComparison.OrdinalIgnoreCase);
+
+            var lastWeatherMsg = context.RecentMessages
+                .OrderByDescending(m => m.Timestamp)
+                .FirstOrDefault(m => WeatherRegex.IsMatch(m.Content));
+
+            if (lastWeatherMsg != null)
+            {
+                var prevWeatherMatch = WeatherRegex.Match(lastWeatherMsg.Content);
+                var prevCity = prevWeatherMatch.Groups[1].Success && !string.IsNullOrWhiteSpace(prevWeatherMatch.Groups[1].Value)
+                    ? prevWeatherMatch.Groups[1].Value.Trim()
+                    : "Pune";
+
+                if (isTomorrow && (isTimeframeOnly || !locationFollowup.Success))
+                {
+                    return new DetectedIntent(SaviConstants.Capabilities.Weather, "forecast",
+                        new Dictionary<string, string> { ["city"] = prevCity, ["timeframe"] = "tomorrow" }, 0.95, policyOverride);
+                }
+
+                if (locationFollowup.Success && !isTimeframeOnly)
+                {
+                    var newCity = candidate;
+                    return new DetectedIntent(SaviConstants.Capabilities.Weather, isTomorrow ? "forecast" : "current",
+                        new Dictionary<string, string> { ["city"] = newCity, ["timeframe"] = isTomorrow ? "tomorrow" : "today" }, 0.95, policyOverride);
+                }
+            }
+
             if (lower.StartsWith("which one") || lower.StartsWith("what about the second") || lower.StartsWith("open the second") || lower.StartsWith("open it"))
             {
                 var lastAssistant = context.RecentMessages.LastOrDefault(m => m.Role == MessageRole.Assistant);
