@@ -4,6 +4,7 @@
 @inject IConversationService ConversationService
 @inject ISettingsService SettingsService
 @inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <PageTitle>SAVI — Shatru's Adaptive Virtual Intelligence</PageTitle>
 
@@ -120,7 +121,7 @@
 
             <!-- Microphone Button -->
             <button class="savi-btn savi-btn-voice @(_isListening ? "listening" : "")" 
-                    title="@(_isListening ? "Stop Listening" : "Voice Input (Web Speech API)")" 
+                    title="@(!_voiceSupported ? "Web Speech recognition not supported in this browser" : (_isListening ? "Listening... Click to stop & send" : "Voice Input (Web Speech API)"))" 
                     @onclick="ToggleVoiceInput">
                 @(_isListening ? "⏹" : "🎙")
             </button>
@@ -130,6 +131,25 @@
                 Send ↵
             </button>
         </div>
+
+        <!-- Voice Status & Error Alerts -->
+        @if (_isListening)
+        {
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; margin-top: 8px; color: var(--savi-cyan);">
+                <span class="core-center-pulse" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #00f0ff;"></span>
+                <span class="savi-glow-text">Listening... Speak now (click ⏹ to finish &amp; send)</span>
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(_voiceError))
+        {
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; margin-top: 8px; padding: 8px 12px; background: rgba(255, 68, 68, 0.12); border: 1px solid rgba(255, 68, 68, 0.35); border-radius: 4px; color: #ff8888;">
+                <span style="display: flex; align-items: center; gap: 6px;">
+                    <span>⚠️</span>
+                    <span>@_voiceError</span>
+                </span>
+                <button style="background: none; border: none; color: #ff8888; cursor: pointer; font-size: 0.9rem; padding: 0 4px;" @onclick="() => _voiceError = null" title="Dismiss">✕</button>
+            </div>
+        }
     </div>
 
     <!-- Telemetry Activity Panel Drawer -->
@@ -168,6 +188,8 @@
     private bool _isListening = false;
     private bool _showActivity = false;
     private bool _reducedMotion = false;
+    private bool _voiceSupported = true;
+    private string? _voiceError;
     private VoiceState _voiceState = VoiceState.Idle;
 
     private List<ConversationSummaryDto> _conversations = new();
@@ -190,9 +212,13 @@
             _dotNetRef = DotNetObjectReference.Create(this);
             try
             {
-                await JS.InvokeVoidAsync("saviVoice.init", _dotNetRef);
+                _voiceSupported = await JS.InvokeAsync<bool>("saviVoice.init", _dotNetRef);
             }
-            catch { }
+            catch
+            {
+                _voiceSupported = false;
+            }
+            StateHasChanged();
         }
     }
 
@@ -332,25 +358,41 @@
 
     private async Task ToggleVoiceInput()
     {
+        _voiceError = null;
         try
         {
             var listening = await JS.InvokeAsync<bool>("saviVoice.toggleListening");
             _isListening = listening;
             _voiceState = _isListening ? VoiceState.Listening : VoiceState.Idle;
         }
-        catch
+        catch (Exception ex)
         {
             _isListening = false;
             _voiceState = VoiceState.Idle;
+            _voiceError = $"Voice input initialization failed: {ex.Message}";
+        }
+    }
+
+    [JSInvokable]
+    public void OnSpeechInterim(string text)
+    {
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            _userInput = text;
+            _voiceError = null;
+            InvokeAsync(StateHasChanged);
         }
     }
 
     [JSInvokable]
     public async Task OnSpeechRecognized(string transcript)
     {
+        if (string.IsNullOrWhiteSpace(transcript)) return;
+
         _userInput = transcript;
         _isListening = false;
         _voiceState = VoiceState.Processing;
+        _voiceError = null;
         StateHasChanged();
         await SendMessage();
     }
@@ -361,6 +403,25 @@
         _voiceState = (VoiceState)stateCode;
         _isListening = _voiceState == VoiceState.Listening;
         InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnVoiceError(string errorMessage)
+    {
+        _voiceError = errorMessage;
+        _isListening = false;
+        _voiceState = VoiceState.Error;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("saviVoice.stopListening");
+        }
+        catch { }
+        _dotNetRef?.Dispose();
     }
 
     private void ToggleActivityDrawer()
