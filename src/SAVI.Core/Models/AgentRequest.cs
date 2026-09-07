@@ -11,4 +11,5 @@ public sealed record AgentRequest
     public string ClientType { get; init; } = "Web";
     public string? ApprovedActionId { get; init; }
     public bool ActionApproved { get; init; }
+    public Action<int, string>? OnStepProgress { get; init; }
 }

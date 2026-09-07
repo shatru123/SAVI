@@ -16,12 +16,28 @@ public class VerificationEngine : IVerificationEngine
 
         if (successful.Count == 0)
         {
+            var lowerQuery = query.ToLowerInvariant();
+            string fallbackSynthesis;
+
+            if (lowerQuery.Contains("help") || lowerQuery.Contains("what can you do") || lowerQuery.Contains("capability") || lowerQuery.Contains("capabilities"))
+            {
+                fallbackSynthesis = "I am SAVI (Shatru's Adaptive Virtual Intelligence). I can help you with writing and debugging code, running autonomous multi-step tasks, checking live weather, converting currencies, performing calculations, inspecting host diagnostics, and remembering your preferences.";
+            }
+            else if (lowerQuery.Contains("code") || lowerQuery.Contains("program") || lowerQuery.Contains("function") || lowerQuery.Contains("class") || lowerQuery.Contains("write ") || lowerQuery.Contains("implement") || lowerQuery.Contains("algorithm"))
+            {
+                fallbackSynthesis = $"The public serverless neural model experienced momentary network saturation while processing your code request for \"{query}\". Please try re-sending your prompt, or specify the programming language (e.g. C#, Python, TypeScript).";
+            }
+            else
+            {
+                fallbackSynthesis = $"I searched for information on \"{query}\", but couldn't retrieve verified live results at this moment. You can try rephrasing your question, or ask me to check system stats, weather, currency, or files.";
+            }
+
             return Task.FromResult(new VerificationResult
             {
                 IsVerified = false,
                 Confidence = 0.0,
                 HasContradictions = false,
-                Synthesis = $"I looked into that for you, but couldn't find specific live information matching \"{query}\". Could you please rephrase, or would you like me to check system stats, weather, currency, or files?",
+                Synthesis = fallbackSynthesis,
                 Sources = Array.Empty<SourceReference>()
             });
         }

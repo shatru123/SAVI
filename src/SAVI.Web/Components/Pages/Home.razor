@@ -300,7 +300,6 @@
     private string _activeTitle = "New Conversation";
     private bool _talkBackEnabled = true;
     private int _executionStep = 0;
-    private CancellationTokenSource? _stepCts;
     private bool _isProcessing = false;
     private bool _isListening = false;
     private bool _showActivity = false;
@@ -463,41 +462,22 @@
 
         StateHasChanged();
 
-        // Launch background agentic step progress simulator while orchestrator runs
-        _stepCts?.Cancel();
-        _stepCts = new CancellationTokenSource();
-        var stepToken = _stepCts.Token;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(500, stepToken);
-                _executionStep = 2;
-                await InvokeAsync(StateHasChanged);
-
-                await Task.Delay(800, stepToken);
-                _executionStep = 3;
-                await InvokeAsync(StateHasChanged);
-
-                await Task.Delay(1100, stepToken);
-                _executionStep = 4;
-                await InvokeAsync(StateHasChanged);
-            }
-            catch (OperationCanceledException) { }
-        }, stepToken);
-
         try
         {
             var req = new AgentRequest
             {
                 Message = prompt,
                 ConversationId = _currentConversationId ?? string.Empty,
-                VoiceActive = _talkBackEnabled || _isListening
+                VoiceActive = _talkBackEnabled || _isListening,
+                OnStepProgress = (step, label) =>
+                {
+                    _executionStep = step;
+                    InvokeAsync(StateHasChanged);
+                }
             };
 
             var res = await Orchestrator.ProcessAsync(req);
 
-            _stepCts.Cancel();
             _executionStep = 4;
             _currentConversationId = res.ConversationId;
             _activityLogs = res.ActivityLogs.ToList();
@@ -536,7 +516,6 @@
         }
         catch (Exception ex)
         {
-            _stepCts.Cancel();
             _messages.Add(new MessageDto
             {
                 Id = Guid.NewGuid().ToString(),
@@ -618,8 +597,6 @@
 
     public async ValueTask DisposeAsync()
     {
-        _stepCts?.Cancel();
-        _stepCts?.Dispose();
         try
         {
             await JS.InvokeVoidAsync("saviVoice.stopListening");

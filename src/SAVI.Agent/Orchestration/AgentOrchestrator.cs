@@ -64,6 +64,7 @@ public class AgentOrchestrator : IAgentOrchestrator
         }
 
         LogActivity("Understanding request & retrieving context");
+        request.OnStepProgress?.Invoke(1, "Analyzing prompt intent & task requirements");
 
         // 1. Ensure conversation exists
         var conv = await _conversationService.GetOrCreateAsync(request.ConversationId, cancellationToken);
@@ -148,6 +149,7 @@ public class AgentOrchestrator : IAgentOrchestrator
 
         // 7. Execution Planning
         LogActivity($"Selecting providers for '{intent.Capability}'");
+        request.OnStepProgress?.Invoke(2, "Routing to optimal AI neural engine & tools");
         var plan = _executionPlanner.CreatePlan(intent, request);
 
         // 8. Tool Execution
@@ -219,6 +221,8 @@ public class AgentOrchestrator : IAgentOrchestrator
             Context = context
         };
 
+        request.OnStepProgress?.Invoke(3, "Executing task & synthesizing code/solution");
+
         foreach (var p in plan.PrimaryProviders)
         {
             LogActivity($"Querying provider: {p.Name}");
@@ -243,6 +247,7 @@ public class AgentOrchestrator : IAgentOrchestrator
 
         // 10. Verification Engine
         LogActivity("Synthesizing and verifying source results");
+        request.OnStepProgress?.Invoke(4, "Verifying syntax, safety & confidence boundaries");
         var verification = await _verificationEngine.VerifyAndCompareAsync(request.Message, providerResults, cancellationToken);
 
         // 11. Personality Engine Response Formatting

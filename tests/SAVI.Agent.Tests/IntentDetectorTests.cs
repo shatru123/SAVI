@@ -76,4 +76,18 @@ public class IntentDetectorTests
         Assert.Equal(SaviConstants.Capabilities.Search, intent.Capability);
         Assert.Equal("coreference_search", intent.Operation);
     }
+
+    [Theory]
+    [InlineData("What kind of help you can provide?")]
+    [InlineData("How can you help me?")]
+    [InlineData("What are your capabilities?")]
+    [InlineData("What help can you provide?")]
+    [InlineData("What can you do?")]
+    public void Detect_HelpAndCapabilitiesQueries_ShouldRouteToChitchatIdentity(string prompt)
+    {
+        var intent = _detector.Detect(prompt);
+        Assert.Equal("chitchat", intent.Capability);
+        Assert.Equal("identity", intent.Operation);
+        Assert.True(intent.Confidence >= 0.95);
+    }
 }

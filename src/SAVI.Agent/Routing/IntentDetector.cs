@@ -29,6 +29,7 @@ public class IntentDetector
     private static readonly Regex StatusCheckRegex = new(@"(?:how are you|how's it going|how are things|are you okay)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex GratitudeRegex = new(@"(?:thank you|thanks|great job|awesome|perfect|nice work)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex IdentityRegex = new(@"(?:who are you|what is your name|what can you do|introduce yourself|tell me about yourself)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex HelpRegex = new(@"(?:what (?:kind of |type of |sort of )?help (?:can you|you can) (?:provide|give)|how can you help(?: me)?|what help can you (?:provide|give)|what are your capabilities|what features do you have|what can i ask(?: you)?|^help\b|^commands\b|give me a list of commands)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex CreatorRegex = new(@"(?:who (?:created|made|built|developed|programmed) (?:you|savi)|who is (?:your creator|the author|the developer|shatrughna(?:\s+ambhore)?)|creator details|developer info)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex GreetingRegex = new(@"(?:^|[\s,])(?:hi|hello|hey|greetings|good morning|good afternoon|good evening|savi)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
@@ -175,9 +176,9 @@ public class IntentDetector
             return new DetectedIntent("chitchat", "creator", new Dictionary<string, string>(), 0.98);
         }
 
-        if (IdentityRegex.IsMatch(clean))
+        if (HelpRegex.IsMatch(clean) || IdentityRegex.IsMatch(clean))
         {
-            return new DetectedIntent("chitchat", "identity", new Dictionary<string, string>(), 0.95);
+            return new DetectedIntent("chitchat", "identity", new Dictionary<string, string>(), 0.98);
         }
 
         if (GreetingRegex.IsMatch(clean) || lower == "hi" || lower == "hello" || lower == "hey")
