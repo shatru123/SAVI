@@ -12,12 +12,12 @@
 
 <PageTitle>SAVI — Shatru's Adaptive Virtual Intelligence</PageTitle>
 
-<div style="display: flex; height: 100%; gap: 14px; position: relative;">
+<div class="savi-chat-workspace" style="display: flex; height: 100%; gap: 14px; position: relative;">
     <!-- Backdrop for Mobile Conversations Drawer -->
     <div class="savi-drawer-backdrop @(_mobileConvDrawerOpen ? "active" : "")" @onclick="() => _mobileConvDrawerOpen = false"></div>
 
     <!-- Conversations Sidebar (Static Aside on Desktop / Slide-over Drawer on Mobile) -->
-    <div class="savi-glass-panel savi-hud-bracket savi-conv-sidebar @(_mobileConvDrawerOpen ? "open" : "")" style="width: 240px; min-width: 240px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+    <div class="savi-glass-panel savi-hud-bracket savi-conv-sidebar @(_mobileConvDrawerOpen ? "open" : "")" data-testid="conversation-list" style="width: 240px; min-width: 240px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
         <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
             <button class="savi-btn" style="flex: 1; justify-content: center; font-size: 0.8rem; padding: 6px 12px;" @onclick="StartNewChat">
                 + New Chat
@@ -69,7 +69,7 @@
     </div>
 
     <!-- Central Stage: Core & Chat Stream -->
-    <div class="savi-glass-panel savi-hud-bracket" style="flex: 1; display: flex; flex-direction: column; padding: 14px; min-width: 0;">
+    <div class="savi-glass-panel savi-hud-bracket savi-chat-panel" style="flex: 1; display: flex; flex-direction: column; padding: 14px; min-width: 0;">
         <!-- Top Toolbar (Mobile Responsive) -->
         <div class="savi-top-toolbar">
             <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
@@ -124,7 +124,7 @@
         </div>
 
         <!-- Messages Stream -->
-        <div class="savi-messages-stream" id="messages-container">
+        <div class="savi-messages-stream" id="messages-container" data-testid="chat-messages" tabindex="0" aria-live="polite">
             @if (_messages.Count == 0)
             {
                 <div style="text-align: center; color: var(--savi-text-secondary); margin-top: 36px; font-size: 0.9rem; max-width: 540px; margin-left: auto; margin-right: auto;">
@@ -227,18 +227,18 @@
 
         <!-- Input Deck -->
         <div class="savi-input-deck" style="margin-top: 12px;">
-            <input type="text" class="savi-input-field" placeholder="Ask SAVI anything or issue a command..."
+            <input type="text" class="savi-input-field" data-testid="chat-input" inputmode="text" autocomplete="off" autocapitalize="sentences" enterkeyhint="send" aria-label="Message SAVI" placeholder="Ask SAVI anything or issue a command..."
                    @bind="_userInput" @bind:event="oninput" @onkeydown="HandleKeyDown" disabled="@_isProcessing" />
 
             <!-- Microphone Button -->
-            <button class="savi-btn savi-btn-voice @(_isListening ? "listening" : "")" 
+            <button class="savi-btn savi-btn-voice @(_isListening ? "listening" : "")" data-testid="chat-voice-toggle" disabled="@(!_voiceSupported)"
                     title="@(!_voiceSupported ? "Web Speech recognition not supported in this browser" : (_isListening ? "Listening... Click to stop & send" : "Voice Input (Web Speech API)"))" 
                     @onclick="ToggleVoiceInput">
                 @(_isListening ? "⏹" : "🎙")
             </button>
 
             <!-- Send Button -->
-            <button class="savi-btn" @onclick="SendMessage" disabled="@(string.IsNullOrWhiteSpace(_userInput) || _isProcessing)">
+            <button class="savi-btn" data-testid="chat-send" @onclick="SendMessage" disabled="@(string.IsNullOrWhiteSpace(_userInput) || _isProcessing)">
                 Send ↵
             </button>
         </div>
@@ -265,6 +265,12 @@
                     <span>[Space] Push-to-Talk</span>
                     <span>[Esc] Silence</span>
                 </div>
+            </div>
+        }
+        @if (!_voiceSupported)
+        {
+            <div class="savi-voice-fallback" role="status">
+                Voice input is not available in this browser. Text chat remains fully available.
             </div>
         }
         @if (_wasInterrupted)
@@ -435,6 +441,7 @@
     private bool _showActivity = false;
     private bool _reducedMotion = false;
     private bool _voiceSupported = true;
+    private bool _voiceJsReady = false;
     private bool _mobileConvDrawerOpen = false;
     private string? _voiceError;
     private VoiceState _voiceState = VoiceState.Idle;
@@ -561,9 +568,18 @@
         _wasInterrupted = false;
         try
         {
-            await JS.InvokeVoidAsync("saviVoice.setContinuousMode", _continuousVoiceMode);
-            _isListening = _continuousVoiceMode;
-            _voiceState = _continuousVoiceMode ? VoiceState.Listening : VoiceState.Idle;
+            var started = await JS.InvokeAsync<bool>("saviVoice.setContinuousMode", _continuousVoiceMode);
+            if (_continuousVoiceMode && !started)
+            {
+                _continuousVoiceMode = false;
+                _isListening = false;
+                _voiceState = VoiceState.Error;
+            }
+            else
+            {
+                _isListening = _continuousVoiceMode;
+                _voiceState = _continuousVoiceMode ? VoiceState.Listening : VoiceState.Idle;
+            }
         }
         catch (Exception ex)
         {
@@ -621,9 +637,8 @@
             _dotNetRef = DotNetObjectReference.Create(this);
             try
             {
-                _voiceSupported = await JS.InvokeAsync<bool>("saviVoice.init", _dotNetRef);
-                var greeting = "Hello Shatru! I am SAVI, your Smart Adaptive Virtual Intelligence, developed by Shatrughna Ambhore. All neural systems are online and ready. How can I help you today?";
-                await JS.InvokeVoidAsync("saviVoice.autoSpeakGreeting", greeting);
+                _voiceSupported = await JS.InvokeAsync<bool>("saviVoice.init", _dotNetRef, _currentConversationId ?? string.Empty);
+                _voiceJsReady = true;
             }
             catch
             {
@@ -686,6 +701,10 @@
     {
         _mobileConvDrawerOpen = false;
         _currentConversationId = id;
+        if (_voiceJsReady)
+        {
+            await JS.InvokeVoidAsync("saviVoice.setConversationId", id);
+        }
         var detail = await ConversationService.GetByIdAsync(id);
         if (detail != null)
         {
@@ -700,6 +719,10 @@
         _mobileConvDrawerOpen = false;
         var newConv = await ConversationService.GetOrCreateAsync(null);
         _currentConversationId = newConv.Id;
+        if (_voiceJsReady)
+        {
+            await JS.InvokeVoidAsync("saviVoice.setConversationId", _currentConversationId);
+        }
         _activeTitle = newConv.Title;
         _messages.Clear();
         await LoadConversations();
@@ -798,6 +821,7 @@
 
             _executionStep = 4;
             _currentConversationId = res.ConversationId;
+            await JS.InvokeVoidAsync("saviVoice.setConversationId", _currentConversationId);
             _activityLogs = res.ActivityLogs.ToList();
 
             if (res.RequiresApproval && res.PendingApprovalAction != null)
@@ -987,8 +1011,7 @@
     {
         try
         {
-            await JS.InvokeVoidAsync("saviVoice.stopListening");
-            await JS.InvokeVoidAsync("saviVoice.stopSpeaking");
+            await JS.InvokeVoidAsync("saviVoice.shutdown");
         }
         catch { }
         _dotNetRef?.Dispose();

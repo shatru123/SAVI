@@ -9,6 +9,7 @@
 @inject ISettingsService SettingsService
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
+@inject IWebHostEnvironment HostEnvironment
 @implements IAsyncDisposable
 
 <PageTitle>SAVI — Real-Time Voice Conversation</PageTitle>
@@ -45,6 +46,10 @@
             <button class="telemetry-pill" style="cursor: pointer; background: rgba(0, 240, 255, 0.1); border-color: rgba(0, 240, 255, 0.3); color: #00f0ff;" @onclick="ToggleAudioOutputMode" title="Toggle Speaker Mode (echo filter active) vs Headphone Mode">
                 @(_audioOutputMode == "speaker" ? "🔊 Speaker" : "🎧 Headphone")
             </button>
+            @if (HostEnvironment.IsDevelopment())
+            {
+                <button class="telemetry-pill" @onclick="RefreshDiagnostics" title="Show browser and audio diagnostics">Diagnostics</button>
+            }
         </div>
 
         <!-- Back to Chat Button -->
@@ -164,6 +169,19 @@
                 <span>⚠️ @_voiceError</span>
                 <button class="voice-error-dismiss" @onclick="() => _voiceError = null">✕</button>
             </div>
+        }
+        @if (!_voiceSupported)
+        {
+            <div class="voice-error-banner" role="status">
+                <span>Voice recognition is not available in this browser. You can continue this conversation in Chat mode.</span>
+            </div>
+        }
+        @if (_showDiagnostics)
+        {
+            <details class="voice-diagnostics" open>
+                <summary>Browser diagnostics</summary>
+                <pre>@_browserDiagnosticsJson</pre>
+            </details>
         }
     </main>
 
@@ -589,6 +607,24 @@
         font-size: 0.9rem;
     }
 
+    .voice-diagnostics {
+        width: min(760px, 100%);
+        max-height: 220px;
+        overflow: auto;
+        padding: 8px 12px;
+        border: 1px solid rgba(0, 240, 255, 0.25);
+        border-radius: 8px;
+        background: rgba(3, 7, 18, 0.8);
+        color: #9fefff;
+        font-size: 0.72rem;
+    }
+
+    .voice-diagnostics pre {
+        margin: 8px 0 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
     /* Bottom Toolbar */
     .voice-page-footer {
         padding: 18px 24px 24px;
@@ -678,6 +714,12 @@
         .transcript-text { font-size: 0.9rem; }
         .voice-controls-bar { gap: 8px; }
         .voice-ctl-btn { padding: 6px 12px; font-size: 0.76rem; }
+        .savi-voice-page-root {
+            min-height: calc(100svh - 48px);
+            min-height: calc(100dvh - 48px);
+            border-radius: 8px;
+        }
+        .voice-page-footer { padding: 12px 12px calc(16px + env(safe-area-inset-bottom, 0px)); }
     }
 </style>
 
@@ -697,6 +739,9 @@
     private bool _hardwareAgc = true;
     private double _lastAudioStopLatencyMs = 0;
     private string? _voiceError;
+    private bool _voiceSupported = true;
+    private bool _showDiagnostics = false;
+    private string _browserDiagnosticsJson = "Diagnostics unavailable.";
 
     private string _liveInterimTranscript = string.Empty;
     private string _lastUserUtterance = string.Empty;
@@ -741,12 +786,11 @@
             _dotNetRef = DotNetObjectReference.Create(this);
             try
             {
-                var ok = await JS.InvokeAsync<bool>("saviVoice.init", _dotNetRef);
-                if (ok)
+                _voiceSupported = await JS.InvokeAsync<bool>("saviVoice.init", _dotNetRef, _currentConversationId ?? string.Empty);
+                await JS.InvokeVoidAsync("saviVoice.setConversationId", _currentConversationId);
+                if (!_voiceSupported)
                 {
-                    await JS.InvokeVoidAsync("saviVoice.setContinuousMode", true);
-                    _isListening = true;
-                    _voiceState = VoiceState.Listening;
+                    _voiceError = "Voice recognition is not available in this browser. Press Back to Chat to continue with text.";
                 }
             }
             catch (Exception ex)
@@ -754,6 +798,20 @@
                 _voiceError = $"Voice initialization notice: {ex.Message}";
             }
             StateHasChanged();
+        }
+    }
+
+    private async Task RefreshDiagnostics()
+    {
+        try
+        {
+            _browserDiagnosticsJson = await JS.InvokeAsync<string>("saviVoice.getDiagnosticsJson");
+            _showDiagnostics = true;
+        }
+        catch (Exception ex)
+        {
+            _browserDiagnosticsJson = $"Diagnostics unavailable: {ex.Message}";
+            _showDiagnostics = true;
         }
     }
 
@@ -975,8 +1033,7 @@
     {
         try
         {
-            await JS.InvokeVoidAsync("saviVoice.stopListening");
-            await JS.InvokeVoidAsync("saviVoice.stopSpeaking");
+            await JS.InvokeVoidAsync("saviVoice.shutdown");
         }
         catch { }
         _dotNetRef?.Dispose();

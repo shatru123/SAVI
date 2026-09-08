@@ -314,6 +314,17 @@ class AudioPlaybackController {
 class AudioCaptureController {
     constructor(saviVoice) {
         this.saviVoice = saviVoice;
+        this.capabilities = saviVoice.capabilities;
+        this.pipelineInitialized = false;
+        this.intentionalStop = false;
+        this.recognitionGeneration = 0;
+        this.recognitionWatchdog = null;
+        this.recognitionRestartTimer = null;
+        this.recognitionRestartBackoffMs = 250;
+        this.recognitionRestartCount = 0;
+        this.recognitionErrors = [];
+        this.lastSttEvent = null;
+        this.lastError = null;
         this.isListening = false;
         this.continuousVoiceMode = false;
         this.audioOutputMode = 'speaker'; // 'speaker' (aggressive echo filter) | 'headphone' (ultra-sensitive)
@@ -340,140 +351,118 @@ class AudioCaptureController {
         this.animFrameId = null;
         this.recognition = null;
         this.currentTurn = new UserTurnContext();
+        this.seenFinalTranscripts = new Set();
         this.turnTimer = null;
 
         this.immediateTriggerRegex = /^(?:wait|stop|hold on|actually|no|pause|keep it short|listen|cancel)\b/i;
         this.trailingConjunctionRegex = /\b(?:and|or|because|if|whether|with|that|for|like|so|also|plus|then|but)$/i;
     }
 
-    async initAudioPipeline() {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return false;
+    notifyError(message) {
+        if (this.saviVoice.dotNetRef) {
+            try { this.saviVoice.dotNetRef.invokeMethodAsync('OnVoiceError', message); } catch (_) {}
+        }
+    }
+
+    recordStt(event, detail = {}) {
+        this.lastSttEvent = { event, at: new Date().toISOString(), ...detail };
+        this.saviVoice.browserSession?.recordStt(event, detail);
+    }
+
+    clearRecognitionWatchdog() {
+        if (this.recognitionWatchdog) {
+            clearTimeout(this.recognitionWatchdog);
+            this.recognitionWatchdog = null;
+        }
+    }
+
+    armRecognitionWatchdog(generation) {
+        this.clearRecognitionWatchdog();
+        this.recognitionWatchdog = setTimeout(() => {
+            if (generation !== this.recognitionGeneration || this.intentionalStop || !this.isListening) return;
+            this.recordStt('stalled', { timeoutMs: 15000 });
+            this.restartRecognition('stalled');
+        }, 15000);
+    }
+
+    restartRecognition(reason = 'ended') {
+        if (!this.recognition || this.intentionalStop || !this.continuousVoiceMode) return;
+        if (this.recognitionRestartTimer) return;
+        const delay = this.recognitionRestartBackoffMs;
+        this.recognitionRestartBackoffMs = Math.min(8000, this.recognitionRestartBackoffMs * 2);
+        this.recognitionRestartTimer = setTimeout(() => {
+            this.recognitionRestartTimer = null;
+            if (this.intentionalStop || !this.continuousVoiceMode) return;
+            try {
+                this.recognition.start();
+                this.isListening = true;
+                this.recordStt('restart', { reason, delayMs: delay });
+                this.saviVoice.browserSession.restartCount = ++this.recognitionRestartCount;
+                this.armRecognitionWatchdog(this.recognitionGeneration);
+            } catch (error) {
+                this.recordStt('restart-error', { reason, name: error?.name });
+                this.restartRecognition('retry');
+            }
+        }, delay);
+    }
+
+    async initAudioPipeline(requestPermission = false) {
+        const caps = this.saviVoice.capabilities;
+        if (!caps?.speechRecognition) return false;
+        if (!requestPermission) {
+            this.initSpeechRecognition();
+            return true;
+        }
+        if (this.pipelineInitialized) return true;
+
         try {
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            if (!AudioCtx) return false;
+            const audio = this.saviVoice.browserAudio;
+            const diagnostics = await audio.acquire();
+            this.micStream = audio.stream;
+            this.audioContext = audio.context;
+            this.analyserNode = audio.analyser;
+            this.audioWorkletActive = audio.audioWorkletActive;
 
-            if (!this.audioContext) {
-                this.audioContext = new AudioCtx();
-            }
-
-            if (this.audioContext.state === 'suspended') {
-                const resumeHandler = () => {
-                    if (this.audioContext && this.audioContext.state === 'suspended') {
-                        this.audioContext.resume();
-                    }
-                    ['click', 'touchstart', 'keydown'].forEach(e => window.removeEventListener(e, resumeHandler, true));
-                };
-                ['click', 'touchstart', 'keydown'].forEach(e => window.addEventListener(e, resumeHandler, { once: true, capture: true }));
-            }
-
-            if (!this.micStream) {
-                this.micStream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true
-                    }
-                });
-            }
-
-            // Inspect actual MediaStreamTrack settings to verify hardware AEC & NS
-            const audioTracks = this.micStream.getAudioTracks();
-            if (audioTracks && audioTracks.length > 0) {
-                const track = audioTracks[0];
-                const settings = track.getSettings ? track.getSettings() : {};
-                this.hardwareAecEnabled = settings.echoCancellation !== false;
-                this.hardwareNsEnabled = settings.noiseSuppression !== false;
-                this.hardwareAgcEnabled = settings.autoGainControl !== false;
-                console.log("SAVI Audio Diagnostics:", {
-                    echoCancellation: settings.echoCancellation,
-                    noiseSuppression: settings.noiseSuppression,
-                    autoGainControl: settings.autoGainControl,
-                    sampleRate: settings.sampleRate,
-                    channelCount: settings.channelCount
-                });
-
-                if (this.saviVoice.dotNetRef) {
-                    try {
-                        this.saviVoice.dotNetRef.invokeMethodAsync(
-                            'OnAudioSettingsDetected',
-                            !!this.hardwareAecEnabled,
-                            !!this.hardwareNsEnabled,
-                            !!this.hardwareAgcEnabled,
-                            settings.sampleRate || 48000
-                        );
-                    } catch (_) {}
-                }
-            }
-
-            const source = this.audioContext.createMediaStreamSource(this.micStream);
-            this.analyserNode = this.audioContext.createAnalyser();
-            this.analyserNode.fftSize = 256;
-            this.analyserNode.smoothingTimeConstant = 0.7;
-            source.connect(this.analyserNode);
-
-            // Circular Pre-Roll Ring Buffer: stores ~300ms of rolling audio samples
-            const sampleRate = this.audioContext.sampleRate || 48000;
-            this.preRollCapacity = Math.round(sampleRate * 0.3); // 300ms
+            const sampleRate = this.audioContext?.sampleRate || diagnostics.sampleRate || 48000;
+            this.preRollCapacity = Math.max(1, Math.round(sampleRate * 0.3));
             this.preRollRingBuffer = new Float32Array(this.preRollCapacity);
             this.preRollWritePtr = 0;
 
-            // Try AudioWorklet first for off-thread processing, with ScriptProcessor fallback
-            let workletSuccess = false;
-            if (this.audioContext.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
+            this.hardwareAecEnabled = diagnostics.aec === 'Enabled';
+            this.hardwareNsEnabled = diagnostics.ns === 'Enabled';
+            this.hardwareAgcEnabled = diagnostics.agc === 'Enabled';
+            this.saviVoice.browserSession.recordAudio('capture-acquired', diagnostics);
+
+            await audio.connectAnalyser(samples => this.handleAudioFrame(samples));
+            this.analyserNode = audio.analyser;
+            this.audioContext = audio.context;
+            this.audioWorkletActive = audio.audioWorkletActive;
+
+            if (this.saviVoice.dotNetRef) {
                 try {
-                    const workletCode = `
-                    class SaviAudioProcessor extends AudioWorkletProcessor {
-                        process(inputs, outputs, parameters) {
-                            const input = inputs[0];
-                            if (input && input.length > 0) {
-                                const channelData = input[0];
-                                this.port.postMessage(channelData);
-                            }
-                            return true;
-                        }
-                    }
-                    registerProcessor('savi-audio-processor', SaviAudioProcessor);
-                    `;
-                    const blob = new Blob([workletCode], { type: 'application/javascript' });
-                    const blobUrl = URL.createObjectURL(blob);
-                    await this.audioContext.audioWorklet.addModule(blobUrl);
-                    URL.revokeObjectURL(blobUrl);
-
-                    this.workletNode = new AudioWorkletNode(this.audioContext, 'savi-audio-processor');
-                    this.workletNode.port.onmessage = (e) => {
-                        this.handleAudioFrame(e.data);
-                    };
-
-                    source.connect(this.workletNode);
-                    workletSuccess = true;
-                    this.audioWorkletActive = true;
-                    console.log("SAVI AudioWorklet processor registered successfully on audio thread.");
-                } catch (workletErr) {
-                    console.warn("SAVI AudioWorklet fallback to ScriptProcessor:", workletErr.message);
-                }
-            }
-
-            if (!workletSuccess && this.audioContext.createScriptProcessor) {
-                const proc = this.audioContext.createScriptProcessor(1024, 1, 1);
-                const self = this;
-                proc.onaudioprocess = function (e) {
-                    const input = e.inputBuffer.getChannelData(0);
-                    self.handleAudioFrame(input);
-                };
-
-                const silentGain = this.audioContext.createGain();
-                silentGain.gain.value = 0;
-                source.connect(proc);
-                proc.connect(silentGain);
-                silentGain.connect(this.audioContext.destination);
-                console.log("SAVI ScriptProcessor initialized as audio processing pipeline.");
+                    await this.saviVoice.dotNetRef.invokeMethodAsync(
+                        'OnAudioSettingsDetected',
+                        this.hardwareAecEnabled,
+                        this.hardwareNsEnabled,
+                        this.hardwareAgcEnabled,
+                        sampleRate
+                    );
+                } catch (_) {}
             }
 
             this.startVadVisualizerLoop();
+            this.pipelineInitialized = true;
             this.initSpeechRecognition();
             return true;
         } catch (err) {
-            console.warn("SAVI AudioCaptureController initialization warning:", err.message);
+            this.lastError = err;
+            this.saviVoice.browserSession.recordAudio('capture-error', { name: err?.name, message: err?.message });
+            const message = err?.name === 'NotAllowedError' || err?.name === 'SecurityError'
+                ? 'Microphone permission was denied. Allow microphone access for SAVI, then press Start Voice again.'
+                : err?.name === 'NotSupportedError'
+                    ? 'Voice input is not available in this browser. Please use Chat mode or a supported browser.'
+                    : 'Voice input could not start. Press Start Voice to retry.';
+            this.notifyError(message);
             return false;
         }
     }
@@ -633,11 +622,15 @@ class AudioCaptureController {
     }
 
     initSpeechRecognition() {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const SpeechRecognition = this.capabilities?.speechRecognitionImplementation === 'SpeechRecognition'
+            ? window.SpeechRecognition
+            : window.webkitSpeechRecognition || window.SpeechRecognition;
         if (!SpeechRecognition) return;
+        if (this.recognition) return;
 
         try {
             this.recognition = new SpeechRecognition();
+            const generation = ++this.recognitionGeneration;
             this.recognition.continuous = true;
             this.recognition.interimResults = true;
             this.recognition.maxAlternatives = 1;
@@ -646,13 +639,22 @@ class AudioCaptureController {
             const self = this;
 
             this.recognition.onstart = function () {
+                if (generation !== self.recognitionGeneration) return;
                 self.isListening = true;
+                self.intentionalStop = false;
+                self.recognitionRestartBackoffMs = 250;
+                self.recordStt('start');
+                self.armRecognitionWatchdog(generation);
+                self.saviVoice.browserSession.listening();
                 if (self.saviVoice.dotNetRef) {
                     self.saviVoice.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 1); // 1 = Listening
                 }
             };
 
             this.recognition.onresult = function (event) {
+                if (generation !== self.recognitionGeneration) return;
+                self.recordStt('result', { resultIndex: event.resultIndex });
+                self.armRecognitionWatchdog(generation);
                 let interimText = '';
                 let finalChunk = '';
 
@@ -671,7 +673,11 @@ class AudioCaptureController {
                     }
 
                     if (res.isFinal) {
-                        finalChunk += rawText + ' ';
+                        const signature = `${self.currentTurn.turnId}:${rawText.trim().toLowerCase()}`;
+                        if (!self.seenFinalTranscripts.has(signature)) {
+                            self.seenFinalTranscripts.add(signature);
+                            finalChunk += rawText + ' ';
+                        }
                     } else {
                         interimText += rawText;
                     }
@@ -737,16 +743,31 @@ class AudioCaptureController {
             };
 
             this.recognition.onerror = function (event) {
-                if (event.error === 'no-speech') return; // Silence in continuous mode is normal
+                if (generation !== self.recognitionGeneration) return;
+                self.recordStt('error', { error: event.error });
+                self.recognitionErrors.push({ error: event.error, at: new Date().toISOString() });
+                self.saviVoice.browserSession.recognitionErrors = self.recognitionErrors.slice(-8);
+                if (event.error === 'no-speech') {
+                    self.armRecognitionWatchdog(generation);
+                    return;
+                }
                 console.warn("SAVI Speech Recognition Error:", event.error);
 
                 if (self.saviVoice.dotNetRef) {
-                    let msg = event.error === 'not-allowed' ? "Microphone permission denied." : "Voice error: " + event.error;
-                    self.saviVoice.dotNetRef.invokeMethodAsync('OnVoiceError', msg);
+                    let msg = event.error === 'not-allowed' || event.error === 'service-not-allowed'
+                        ? "Microphone permission was denied. Allow microphone access for SAVI, then press Start Voice again."
+                        : "Voice recognition encountered a temporary error. SAVI will retry safely.";
+                    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                        self.intentionalStop = true;
+                    }
+                    self.notifyError(msg);
                 }
             };
 
             this.recognition.onend = function () {
+                if (generation !== self.recognitionGeneration) return;
+                self.recordStt('end');
+                self.clearRecognitionWatchdog();
                 self.isListening = false;
                 const fullText = self.currentTurn.getFullText();
 
@@ -766,15 +787,8 @@ class AudioCaptureController {
                 }
 
                 // In continuous mode, restart STT stream seamlessly without touching microphone capture or AudioContext
-                if (self.continuousVoiceMode) {
-                    setTimeout(() => {
-                        if (self.continuousVoiceMode && !self.isListening) {
-                            try {
-                                self.recognition.start();
-                                self.isListening = true;
-                            } catch (_) {}
-                        }
-                    }, 50);
+                if (self.continuousVoiceMode && !self.intentionalStop) {
+                    self.restartRecognition('ended');
                 } else {
                     if (self.saviVoice.dotNetRef) {
                         self.saviVoice.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 0); // 0 = Idle
@@ -783,31 +797,54 @@ class AudioCaptureController {
             };
         } catch (err) {
             console.error("SAVI initSpeechRecognition error:", err);
+            this.notifyError('Voice recognition is unavailable in this browser. Please use Chat mode or a supported browser.');
         }
     }
 
-    start() {
-        if (this.audioContext && this.audioContext.state === 'suspended') {
-            try { this.audioContext.resume(); } catch (_) {}
+    async start() {
+        this.intentionalStop = false;
+        this.continuousVoiceMode = this.continuousVoiceMode || false;
+        this.saviVoice.browserSession.start(this.saviVoice.conversationId);
+        const ready = await this.initAudioPipeline(true);
+        if (!ready || !this.recognition) {
+            this.notifyError('Voice recognition isn\'t available in this browser. Please use Chat mode or a supported browser.');
+            return false;
         }
-
-        if (this.recognition && !this.isListening) {
+        if (this.audioContext?.state === 'suspended') {
+            try { await this.audioContext.resume(); } catch (_) {}
+        }
+        if (!this.isListening) {
             try {
                 this.currentTurn = new UserTurnContext();
                 this.recognition.start();
                 this.isListening = true;
+                this.saviVoice.browserSession.listening();
+                this.armRecognitionWatchdog(this.recognitionGeneration);
             } catch (e) {
-                if (e.name === 'InvalidStateError') this.isListening = true;
+                if (e.name === 'InvalidStateError') {
+                    this.isListening = true;
+                } else {
+                    this.notifyError('Voice recognition could not start. Press Start Voice to retry.');
+                    return false;
+                }
             }
         }
+        return true;
     }
 
     stop() {
         this.continuousVoiceMode = false;
+        this.intentionalStop = true;
+        this.clearRecognitionWatchdog();
+        if (this.recognitionRestartTimer) {
+            clearTimeout(this.recognitionRestartTimer);
+            this.recognitionRestartTimer = null;
+        }
         if (this.recognition && this.isListening) {
             try { this.recognition.stop(); } catch (_) {}
         }
         this.isListening = false;
+        this.saviVoice.browserSession.stop();
     }
 }
 
@@ -816,29 +853,52 @@ window.saviVoice = {
     dotNetRef: null,
     captureController: null,
     playbackController: null,
+    capabilities: null,
+    browserAudio: null,
+    browserSession: null,
+    conversationId: null,
+    lifecycleBound: false,
 
     isSupported: function () {
         return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
     },
 
-    init: async function (dotNetHelper) {
+    init: async function (dotNetHelper, conversationId = null) {
         this.dotNetRef = dotNetHelper;
-        this.playbackController = new AudioPlaybackController(this);
-        this.captureController = new AudioCaptureController(this);
+        const browser = window.saviBrowser.init();
+        this.capabilities = browser.capabilities.snapshot;
+        this.browserAudio = browser.audio;
+        this.browserSession = browser.voiceSession;
+        this.conversationId = conversationId || this.conversationId;
+        this.browserSession.conversationId = this.conversationId;
 
-        const ok = await this.captureController.initAudioPipeline();
+        this.playbackController ??= new AudioPlaybackController(this);
+        this.captureController ??= new AudioCaptureController(this);
+        this.captureController.capabilities = this.capabilities;
+
+        // Detect and prepare recognition without opening the microphone. A
+        // user gesture is required before getUserMedia() is called.
+        await this.captureController.initAudioPipeline(false);
+        await this.browserSession.capabilities.refreshPermissionState();
+        this.setupLifecycleHandlers();
         this.setupKeyboardShortcuts();
-        return ok;
+        return !!(this.capabilities.speechRecognition && this.capabilities.getUserMedia);
     },
 
-    setContinuousMode: function (enabled) {
-        if (!this.captureController) return;
+    setConversationId: function (conversationId) {
+        this.conversationId = conversationId || null;
+        if (this.browserSession) this.browserSession.conversationId = this.conversationId;
+    },
+
+    setContinuousMode: async function (enabled) {
+        if (!this.captureController) return false;
         this.captureController.continuousVoiceMode = enabled;
         if (enabled) {
-            this.captureController.start();
+            return await this.captureController.start();
         } else {
             this.captureController.stop();
-            this.playbackController.duckAndStop(false);
+            this.playbackController?.duckAndStop(false);
+            return true;
         }
     },
 
@@ -851,6 +911,9 @@ window.saviVoice = {
 
     getDiagnostics: function () {
         return {
+            ...(window.saviBrowser?.diagnostics?.() || {}),
+            session: this.browserSession?.diagnostics?.() || null,
+            audio: this.browserAudio?.diagnostics?.() || null,
             micActive: this.captureController?.isListening ?? false,
             speaking: this.playbackController?.isSpeaking ?? false,
             audioOutputMode: this.captureController?.audioOutputMode ?? 'speaker',
@@ -865,6 +928,10 @@ window.saviVoice = {
         };
     },
 
+    getDiagnosticsJson: function () {
+        return JSON.stringify(this.getDiagnostics(), null, 2);
+    },
+
     toggleListening: async function () {
         if (!this.captureController) {
             const ok = await this.init(this.dotNetRef);
@@ -875,15 +942,13 @@ window.saviVoice = {
             this.captureController.stop();
             return false;
         } else {
-            this.captureController.start();
-            return true;
+            return await this.captureController.start();
         }
     },
 
-    startListening: function () {
+    startListening: async function () {
         if (this.captureController) {
-            this.captureController.start();
-            return true;
+            return await this.captureController.start();
         }
         return false;
     },
@@ -894,6 +959,49 @@ window.saviVoice = {
             return false;
         }
         return false;
+    },
+
+    shutdown: async function () {
+        this.captureController?.stop();
+        this.playbackController?.duckAndStop(false);
+        await this.browserAudio?.close?.();
+        if (this.browserSession) this.browserSession.stop();
+        this.captureController = null;
+        this.playbackController = null;
+        this.browserAudio = null;
+        this.browserSession = null;
+    },
+
+    setupLifecycleHandlers: function () {
+        if (this.lifecycleBound) return;
+        this.lifecycleBound = true;
+        const record = (event, detail = {}) => {
+            this.browserSession?.recordAudio?.(event, detail);
+        };
+        document.addEventListener('visibilitychange', () => {
+            record(document.visibilityState === 'hidden' ? 'visibility-hidden' : 'visibility-visible');
+        });
+        window.addEventListener('pagehide', () => record('pagehide'));
+        window.addEventListener('pageshow', () => {
+            record('pageshow');
+            const track = this.browserAudio?.stream?.getAudioTracks?.()[0];
+            if (track && track.readyState === 'ended' && this.captureController?.isListening) {
+                this.captureController.notifyError('Microphone access ended. Press Start Voice to reconnect it.');
+            }
+        });
+        window.addEventListener('focus', () => record('focus'));
+        window.addEventListener('blur', () => record('blur'));
+        const updateViewport = () => {
+            if (this.capabilities?.viewport) {
+                this.capabilities.viewport.width = window.innerWidth;
+                this.capabilities.viewport.height = window.innerHeight;
+                this.capabilities.viewport.visualHeight = window.visualViewport?.height || window.innerHeight;
+                this.capabilities.viewport.orientation = window.screen?.orientation?.type || 'unknown';
+            }
+            record('viewport-change', { width: window.innerWidth, height: window.innerHeight });
+        };
+        window.addEventListener('resize', updateViewport, { passive: true });
+        window.addEventListener('orientationchange', updateViewport, { passive: true });
     },
 
     speak: function (text, rate = 1.0, turnId = null) {

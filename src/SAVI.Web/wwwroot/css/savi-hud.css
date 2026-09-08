@@ -724,4 +724,118 @@ body {
   font-size: 0.75rem;
 }
 
+/* Cross-browser viewport and touch behavior. Keep the visual shell inside
+   the dynamic viewport so mobile browser chrome and the software keyboard do
+   not cover the composer or voice controls. */
+:root {
+  --savi-safe-top: env(safe-area-inset-top, 0px);
+  --savi-safe-right: env(safe-area-inset-right, 0px);
+  --savi-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --savi-safe-left: env(safe-area-inset-left, 0px);
+}
+
+html,
+body {
+  min-height: 100%;
+  min-height: 100svh;
+  overscroll-behavior-y: none;
+}
+
+body {
+  padding-bottom: var(--savi-safe-bottom);
+}
+
+.savi-app-shell {
+  min-height: 100%;
+  min-height: 100svh;
+  min-height: 100dvh;
+}
+
+.savi-workspace,
+.savi-main-content,
+.savi-chat-workspace,
+.savi-chat-panel {
+  min-height: 0;
+}
+
+.savi-messages-stream {
+  min-height: 0;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.savi-input-deck {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  padding-bottom: calc(12px + var(--savi-safe-bottom));
+}
+
+.savi-btn,
+.savi-input-deck button,
+.voice-ctl-btn,
+.voice-back-btn,
+.telemetry-pill {
+  min-height: 44px;
+}
+
+.savi-voice-fallback {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 6px;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.08);
+  font-size: 0.76rem;
+}
+
+@media (max-width: 991px) {
+  .savi-main-content {
+    height: calc(100svh - 48px) !important;
+    height: calc(100dvh - 48px) !important;
+    min-height: 0;
+  }
+
+  .savi-chat-workspace {
+    height: 100% !important;
+    min-height: 0;
+  }
+
+  .savi-chat-panel {
+    min-height: 0;
+    padding-bottom: calc(10px + var(--savi-safe-bottom)) !important;
+  }
+
+  .savi-input-deck {
+    margin-left: calc(-1 * var(--savi-safe-left));
+    margin-right: calc(-1 * var(--savi-safe-right));
+    padding-left: calc(10px + var(--savi-safe-left));
+    padding-right: calc(10px + var(--savi-safe-right));
+  }
+}
+
+@media (max-width: 576px) {
+  .savi-chat-panel {
+    padding: 10px !important;
+  }
+
+  .savi-messages-stream {
+    padding: 10px 4px;
+    gap: 10px;
+  }
+
+  .savi-input-deck {
+    gap: 6px;
+    padding-top: 8px;
+  }
+
+  .savi-input-deck button {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .savi-input-field {
+    min-width: 0;
+  }
+}
 
