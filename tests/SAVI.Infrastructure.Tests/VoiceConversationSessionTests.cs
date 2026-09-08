@@ -70,6 +70,57 @@ public class VoiceConversationSessionTests
     }
 
     [Fact]
+    public async Task PauseAndResume_PreserveTheLongLivedVoiceSession()
+    {
+        await _session.StartAsync("conv_123");
+
+        await _session.PauseAsync();
+        Assert.Equal(VoiceState.Paused, _session.CurrentState);
+        Assert.True(_session.IsActive);
+        Assert.Equal("conv_123", _session.ConversationId);
+
+        await _session.ResumeAsync();
+        Assert.Equal(VoiceState.Listening, _session.CurrentState);
+        Assert.True(_session.IsActive);
+    }
+
+    [Fact]
+    public async Task CancelAndReplace_AssignsDistinctGenerations_AndIgnoresTheStaleTurn()
+    {
+        await _session.StartAsync("conv_123");
+        var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        _orchestrator.Handler = async (request, cancellationToken) =>
+        {
+            if (request.Message == "first")
+            {
+                firstStarted.SetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
+            return new AgentResponse
+            {
+                Message = request.Message == "second" ? "Second response" : "First response",
+                VoiceFriendlyMessage = request.Message == "second" ? "Second response" : "First response",
+                ConversationId = request.ConversationId,
+                Success = true,
+                Confidence = 1
+            };
+        };
+
+        var firstTask = _session.ProcessUtteranceAsync("first");
+        await firstStarted.Task;
+        var secondResult = await _session.ProcessUtteranceAsync("second");
+        var firstResult = await firstTask;
+
+        Assert.True(firstResult.WasInterrupted);
+        Assert.Equal("Second response", secondResult.AssistantResponse);
+        Assert.NotEqual(firstResult.GenerationId, secondResult.GenerationId);
+        Assert.Equal(secondResult.TurnId, _session.CurrentTurn?.TurnId);
+        Assert.Equal(VoiceState.Listening, _session.CurrentState);
+    }
+
+    [Fact]
     public async Task InterruptAsync_CancelsActiveTurn_AndReturnsToListening()
     {
         await _session.StartAsync("conv_123");

@@ -46,7 +46,8 @@
                 speechSynthesis: typeof window.speechSynthesis !== 'undefined' && typeof window.SpeechSynthesisUtterance === 'function',
                 getUserMedia: typeof media?.getUserMedia === 'function',
                 audioContext: typeof audioContext === 'function',
-                audioWorklet: !!(audioContext?.prototype && 'audioWorklet' in audioContext.prototype),
+                audioWorklet: typeof window.AudioWorkletNode === 'function' &&
+                    (typeof AudioContext !== 'undefined' || typeof window.webkitAudioContext !== 'undefined'),
                 mediaStream: typeof window.MediaStream === 'function',
                 webAudio: typeof audioContext === 'function',
                 echoCancellation: !!supportedConstraints.echoCancellation,
@@ -106,6 +107,7 @@
             this.audioWorkletActive = false;
             this.settings = {};
             this.lastError = null;
+            this.trackEnded = false;
         }
 
         async acquire(constraints = {}) {
@@ -119,10 +121,22 @@
                 ...constraints
             };
             try {
-                this.stream = this.stream && this.stream.active
-                    ? this.stream
-                    : await navigator.mediaDevices.getUserMedia({ audio: requested });
+                if (!this.stream || !this.stream.active) {
+                    try {
+                        this.stream = await navigator.mediaDevices.getUserMedia({ audio: requested });
+                    } catch (error) {
+                        // Some Safari/WebView implementations reject a constraint
+                        // instead of ignoring it. Retry with the portable minimum.
+                        if (error?.name !== 'OverconstrainedError' && error?.name !== 'TypeError') throw error;
+                        this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    }
+                }
                 const track = this.stream.getAudioTracks?.()[0];
+                this.trackEnded = false;
+                track?.addEventListener?.('ended', () => {
+                    this.trackEnded = true;
+                    this.lastError = new DOMException('Microphone track ended.', 'AbortError');
+                }, { once: true });
                 this.settings = track?.getSettings?.() || {};
                 await this.ensureContext();
                 return this.diagnostics();
@@ -194,6 +208,7 @@
                 audioWorklet: this.audioWorkletActive ? 'Active' : this.capabilities.snapshot.audioWorklet ? 'Fallback/Inactive' : 'Unsupported',
                 streamActive: !!this.stream?.active,
                 trackReadyState: this.stream?.getAudioTracks?.()[0]?.readyState || 'none',
+                trackEnded: this.trackEnded,
                 lastError: this.lastError?.name || null
             };
         }
@@ -209,6 +224,7 @@
             this.processor = null;
             this.workletNode = null;
             this.audioWorkletActive = false;
+            this.trackEnded = false;
             // The context is intentionally kept alive for the session; close it
             // only when the user explicitly exits Voice Mode.
         }
@@ -227,6 +243,8 @@
             this.sessionId = null;
             this.conversationId = null;
             this.turnId = null;
+            this.generationId = null;
+            this.generationCounter = 0;
             this.restartCount = 0;
             this.recognitionErrors = [];
             this.lastSttEvent = null;
@@ -253,7 +271,15 @@
 
         beginTurn(turnId) {
             this.turnId = turnId;
+            this.generationId = 'gen_' + Math.random().toString(36).slice(2) + Date.now();
             this.transition('USER_SPEAKING', { turnId });
+            return this.generationId;
+        }
+
+        nextGeneration(turnId = this.turnId) {
+            this.turnId = turnId;
+            this.generationId = `${this.sessionId || 'session'}:g${++this.generationCounter}`;
+            return this.generationId;
         }
 
         processing(turnId = this.turnId) { this.turnId = turnId; this.transition('PROCESSING', { turnId }); }
@@ -270,7 +296,9 @@
                 conversationId: this.conversationId,
                 state: this.state,
                 turnId: this.turnId,
+                generationId: this.generationId,
                 restartCount: this.restartCount,
+                generationCounter: this.generationCounter,
                 recognitionErrors: this.recognitionErrors.slice(-8),
                 lastSttEvent: this.lastSttEvent,
                 lastAudioEvent: this.lastAudioEvent,

@@ -24,6 +24,7 @@ public class VoiceConversationSession : IVoiceConversationSession
     private VoiceTurnContext? _currentTurn;
     private bool _isActive;
     private CancellationTokenSource? _sessionCts;
+    private long _generation;
 
     public string SessionId => _sessionId;
     public string ConversationId => _conversationId;
@@ -63,10 +64,12 @@ public class VoiceConversationSession : IVoiceConversationSession
         _conversationId = conversationId;
         _isActive = true;
         _sessionCts = new CancellationTokenSource();
+        _generation = 0;
 
         var session = _sessionStore.GetOrCreate(_sessionId, _conversationId);
         session.StartedAt = DateTimeOffset.UtcNow;
         session.CurrentState = VoiceState.Listening;
+        session.StateVersion = 0;
 
         CurrentState = VoiceState.Listening;
         VoiceEventEmitted?.Invoke("voice.session.started", new { SessionId = _sessionId, ConversationId = _conversationId });
@@ -149,7 +152,10 @@ public class VoiceConversationSession : IVoiceConversationSession
 
     public Task PauseAsync(CancellationToken cancellationToken = default)
     {
-        CurrentState = VoiceState.Idle;
+        if (_isActive)
+        {
+            CurrentState = VoiceState.Paused;
+        }
         VoiceEventEmitted?.Invoke("voice.paused", new { Timestamp = DateTimeOffset.UtcNow });
         return Task.CompletedTask;
     }
@@ -212,10 +218,12 @@ public class VoiceConversationSession : IVoiceConversationSession
 
         var cleanText = text.Trim();
 
+        var generationId = $"gen_{Interlocked.Increment(ref _generation)}";
         var turnContext = new VoiceTurnContext
         {
             SessionId = _sessionId,
             ConversationId = _conversationId,
+            GenerationId = generationId,
             TurnIndex = session.TurnsCount + 1,
             UserUtterance = cleanText,
             FinalTranscript = cleanText,
@@ -228,12 +236,14 @@ public class VoiceConversationSession : IVoiceConversationSession
 
         _currentTurn = turnContext;
         session.ActiveTurnId = turnContext.TurnId;
+        session.ActiveGenerationId = generationId;
         session.TurnsCount++;
         session.LastUserUtterance = text;
 
         VoiceEventEmitted?.Invoke("voice.turn.started", new
         {
             TurnId = turnContext.TurnId,
+            GenerationId = turnContext.GenerationId,
             SessionId = _sessionId,
             TurnIndex = turnContext.TurnIndex
         });
@@ -252,6 +262,7 @@ public class VoiceConversationSession : IVoiceConversationSession
             return new VoiceTurnResult
             {
                 TurnId = turnContext.TurnId,
+                GenerationId = turnContext.GenerationId,
                 UserUtterance = cleanText,
                 AssistantResponse = "Self-echo suppressed.",
                 VoiceFriendlyResponse = "Self-echo suppressed.",
@@ -267,6 +278,7 @@ public class VoiceConversationSession : IVoiceConversationSession
             return new VoiceTurnResult
             {
                 TurnId = turnContext.TurnId,
+                GenerationId = turnContext.GenerationId,
                 UserUtterance = cleanText,
                 AssistantResponse = "Stopped.",
                 VoiceFriendlyResponse = "Stopped.",
@@ -302,6 +314,7 @@ public class VoiceConversationSession : IVoiceConversationSession
             return new VoiceTurnResult
             {
                 TurnId = turnContext.TurnId,
+                GenerationId = turnContext.GenerationId,
                 UserUtterance = cleanText,
                 AssistantResponse = session.LastAssistantResponse ?? repeatSpeech,
                 VoiceFriendlyResponse = repeatSpeech,
@@ -331,13 +344,14 @@ public class VoiceConversationSession : IVoiceConversationSession
             var response = await _agentOrchestrator.ProcessAsync(agentReq, linkedCts.Token);
             var providerMs = totalSw.Elapsed.TotalMilliseconds;
 
-            if (linkedCts.IsCancellationRequested || turnContext.IsInterrupted || turnContext.IsSuperseded || session.ActiveTurnId != turnContext.TurnId || _currentTurn != turnContext)
+            if (linkedCts.IsCancellationRequested || turnContext.IsInterrupted || turnContext.IsSuperseded || session.ActiveTurnId != turnContext.TurnId || session.ActiveGenerationId != turnContext.GenerationId || _currentTurn != turnContext)
             {
                 turnContext.MarkInterrupted();
                 VoiceEventEmitted?.Invoke("voice.turn.cancelled", new { TurnId = turnContext.TurnId, Reason = "superseded_or_interrupted" });
                 return new VoiceTurnResult
                 {
                     TurnId = turnContext.TurnId,
+                    GenerationId = turnContext.GenerationId,
                     UserUtterance = cleanText,
                     WasInterrupted = true,
                     AssistantResponse = response.Message
@@ -354,7 +368,7 @@ public class VoiceConversationSession : IVoiceConversationSession
             session.LastVoiceFriendlyResponse = voiceFriendly;
 
             // 5. State Transition: Speaking (only if still active turn)
-            if (_currentTurn == turnContext)
+            if (_currentTurn == turnContext && session.ActiveGenerationId == turnContext.GenerationId)
             {
                 CurrentState = VoiceState.Speaking;
                 VoiceEventEmitted?.Invoke("assistant.speech.started", new
@@ -377,7 +391,7 @@ public class VoiceConversationSession : IVoiceConversationSession
 
             foreach (var chunk in chunks)
             {
-                if (linkedCts.IsCancellationRequested || turnContext.IsInterrupted || _currentTurn != turnContext)
+                if (linkedCts.IsCancellationRequested || turnContext.IsInterrupted || session.ActiveGenerationId != turnContext.GenerationId || _currentTurn != turnContext)
                 {
                     turnContext.MarkInterrupted();
                     VoiceEventEmitted?.Invoke("voice.turn.cancelled", new { TurnId = turnContext.TurnId, Reason = "interrupted_during_speech" });
@@ -417,6 +431,7 @@ public class VoiceConversationSession : IVoiceConversationSession
             return new VoiceTurnResult
             {
                 TurnId = turnContext.TurnId,
+                GenerationId = turnContext.GenerationId,
                 UserUtterance = cleanText,
                 AssistantResponse = response.Message,
                 VoiceFriendlyResponse = voiceFriendly,
@@ -440,6 +455,7 @@ public class VoiceConversationSession : IVoiceConversationSession
             return new VoiceTurnResult
             {
                 TurnId = turnContext.TurnId,
+                GenerationId = turnContext.GenerationId,
                 UserUtterance = cleanText,
                 WasInterrupted = true,
                 AssistantResponse = "Task cancelled on interruption."
@@ -452,6 +468,7 @@ public class VoiceConversationSession : IVoiceConversationSession
             return new VoiceTurnResult
             {
                 TurnId = turnContext.TurnId,
+                GenerationId = turnContext.GenerationId,
                 UserUtterance = cleanText,
                 Success = false,
                 AssistantResponse = $"Voice processing error: {ex.Message}"
@@ -468,10 +485,6 @@ public class VoiceConversationSession : IVoiceConversationSession
         var cleanA = Regex.Replace(assistantSpeech.ToLowerInvariant(), @"[^\w\s]", " ").Trim();
 
         if (string.IsNullOrWhiteSpace(cleanU) || string.IsNullOrWhiteSpace(cleanA))
-            return false;
-
-        // Barge-in override: never treat barge-in commands as echo
-        if (Regex.IsMatch(cleanU, @"^(?:wait|stop|hold on|actually|no|pause|listen|cancel|quiet|never mind|that's wrong|thats wrong|i meant|why|and tomorrow)\b", RegexOptions.IgnoreCase))
             return false;
 
         // Direct containment

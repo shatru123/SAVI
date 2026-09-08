@@ -223,7 +223,7 @@
         </div>
 
         <div class="voice-shortcuts-hint">
-            <span>💡 <strong>Tip:</strong> Speak freely without pressing buttons. Say <em>"Wait"</em>, <em>"Actually"</em>, <em>"Stop"</em>, or <em>"Keep it short"</em> anytime to interrupt instantly.</span>
+                <span>💡 <strong>Tip:</strong> Speak freely without pressing buttons. You can interrupt the assistant at any time.</span>
         </div>
     </footer>
 </div>
@@ -235,6 +235,9 @@
         justify-content: space-between;
         height: 100%;
         min-height: calc(100vh - 80px);
+        min-height: calc(100lvh - 80px);
+        min-height: calc(100svh - 80px);
+        min-height: calc(100dvh - 80px);
         background: radial-gradient(circle at 50% 35%, rgba(10, 26, 47, 0.95) 0%, rgba(3, 7, 18, 0.99) 100%);
         border: 1px solid var(--savi-border-subtle);
         border-radius: 12px;
@@ -715,6 +718,7 @@
         .voice-controls-bar { gap: 8px; }
         .voice-ctl-btn { padding: 6px 12px; font-size: 0.76rem; }
         .savi-voice-page-root {
+            min-height: calc(100lvh - 48px);
             min-height: calc(100svh - 48px);
             min-height: calc(100dvh - 48px);
             border-radius: 8px;
@@ -747,6 +751,8 @@
     private string _lastUserUtterance = string.Empty;
     private string _lastAssistantResponse = string.Empty;
     private string? _activeTurnId;
+    private string? _voiceSessionId;
+    private string? _voiceGenerationId;
     private CancellationTokenSource? _processingCts;
 
     private DotNetObjectReference<VoicePage>? _dotNetRef;
@@ -883,15 +889,17 @@
     }
 
     [JSInvokable]
-    public void OnVadSpeechStarted(double timestampMs)
+    public void OnVadSpeechStarted(double timestampMs, string? turnId = null, string? generationId = null, string? sessionId = null)
     {
+        if (!AcceptVoiceCallback(turnId, generationId, sessionId)) return;
         _voiceState = VoiceState.DetectingSpeech;
         InvokeAsync(StateHasChanged);
     }
 
     [JSInvokable]
-    public void OnUserInterrupted(double audioStopLatencyMs = 0)
+    public void OnUserInterrupted(double audioStopLatencyMs = 0, string? turnId = null, string? generationId = null, string? sessionId = null)
     {
+        if (!AcceptVoiceCallback(turnId, generationId, sessionId)) return;
         if (audioStopLatencyMs > 0)
         {
             _lastAudioStopLatencyMs = audioStopLatencyMs;
@@ -906,8 +914,9 @@
     }
 
     [JSInvokable]
-    public void OnSpeechInterim(string text)
+    public void OnSpeechInterim(string text, string? turnId = null, string? generationId = null, string? sessionId = null)
     {
+        if (!AcceptVoiceCallback(turnId, generationId, sessionId)) return;
         if (!string.IsNullOrWhiteSpace(text))
         {
             _liveInterimTranscript = text;
@@ -918,9 +927,10 @@
     }
 
     [JSInvokable]
-    public async Task OnSpeechRecognized(string transcript, string? turnId = null)
+    public async Task OnSpeechRecognized(string transcript, string? turnId = null, string? generationId = null, string? sessionId = null)
     {
         if (string.IsNullOrWhiteSpace(transcript)) return;
+        if (!AcceptVoiceCallback(turnId, generationId, sessionId)) return;
 
         _liveInterimTranscript = string.Empty;
         _lastUserUtterance = transcript.Trim();
@@ -997,8 +1007,10 @@
     }
 
     [JSInvokable]
-    public void OnVoiceStateChanged(int stateCode)
+    public void OnVoiceStateChanged(int stateCode, string? turnId = null, string? generationId = null, string? sessionId = null)
     {
+        if (!AcceptVoiceCallback(turnId, generationId, sessionId)) return;
+        if (!Enum.IsDefined(typeof(VoiceState), stateCode)) return;
         _voiceState = (VoiceState)stateCode;
         _isListening = _voiceState == VoiceState.Listening;
         InvokeAsync(StateHasChanged);
@@ -1011,6 +1023,24 @@
         _isListening = false;
         _voiceState = VoiceState.Error;
         InvokeAsync(StateHasChanged);
+    }
+
+    private bool AcceptVoiceCallback(string? turnId, string? generationId, string? sessionId)
+    {
+        if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            if (_voiceSessionId != null && !string.Equals(_voiceSessionId, sessionId, StringComparison.Ordinal)) return false;
+            _voiceSessionId = sessionId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(generationId))
+        {
+            if (_voiceGenerationId != null && !string.Equals(_voiceGenerationId, generationId, StringComparison.Ordinal) &&
+                _voiceState is VoiceState.Processing or VoiceState.Speaking) return false;
+            _voiceGenerationId = generationId;
+        }
+
+        return true;
     }
 
     [JSInvokable]

@@ -4,8 +4,9 @@
 // 300ms Pre-Roll & 150ms Post-Roll Ring Buffer, Adaptive VAD with Hysteresis, and Single Authoritative Barge-In
 
 class UserTurnContext {
-    constructor() {
-        this.turnId = 'turn_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+    constructor(turnId = null, generationId = null) {
+        this.turnId = turnId || ('turn_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now());
+        this.generationId = generationId || ('gen_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now());
         this.partialTranscript = '';
         this.finalTranscript = '';
         this.startTime = performance.now();
@@ -36,6 +37,9 @@ class AudioPlaybackController {
         this.recentSpokenSentences = []; // Rolling buffer of recent chunks with timestamps
         this.resumeHeartbeat = null;
         this.pendingSpeakTimeout = null;
+        this.playbackGeneration = 0;
+        this.utteranceSequence = 0;
+        this.activeUtteranceId = null;
 
         this.loadVoices();
         if (typeof window !== 'undefined' && window.speechSynthesis) {
@@ -85,6 +89,16 @@ class AudioPlaybackController {
         }
     }
 
+    notifyState(stateCode) {
+        const turn = this.saviVoice.captureController?.currentTurn;
+        this.saviVoice.dotNetRef?.invokeMethodAsync(
+            'OnVoiceStateChanged',
+            stateCode,
+            turn?.turnId || null,
+            turn?.generationId || null,
+            this.saviVoice.browserSession?.sessionId || null);
+    }
+
     speak(text, rate = 1.0, turnId = null) {
         if (typeof window === 'undefined' || !window.speechSynthesis) return;
 
@@ -115,6 +129,7 @@ class AudioPlaybackController {
 
             if (!cleanText) return;
 
+            const generation = ++this.playbackGeneration;
             this.currentTtsTurnId = turnId;
             this.allCurrentText = cleanText;
             this.recentSpokenSentences.push({ text: cleanText, timestamp: performance.now() });
@@ -143,7 +158,7 @@ class AudioPlaybackController {
             this.startResumeWatchdog();
 
             if (this.saviVoice.dotNetRef) {
-                this.saviVoice.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 5); // 5 = Speaking
+                this.notifyState(5); // 5 = Speaking
             }
 
             // If we previously called duckAndStop/cancel, give the browser speech daemon 25ms to settle IPC
@@ -151,8 +166,8 @@ class AudioPlaybackController {
             const self = this;
             this.pendingSpeakTimeout = setTimeout(() => {
                 self.pendingSpeakTimeout = null;
-                if (self.isSpeaking) {
-                    self.playNextChunk(rate);
+                if (self.isSpeaking && generation === self.playbackGeneration) {
+                    self.playNextChunk(rate, generation);
                 }
             }, delayMs);
 
@@ -164,13 +179,13 @@ class AudioPlaybackController {
             this.currentTtsTurnId = null;
             this.lastSpokenTimestamp = performance.now();
             if (this.saviVoice.dotNetRef) {
-                this.saviVoice.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 0);
+                this.notifyState(0);
             }
         }
     }
 
-    playNextChunk(rate) {
-        if (!this.isSpeaking) return;
+    playNextChunk(rate, generation = this.playbackGeneration) {
+        if (!this.isSpeaking || generation !== this.playbackGeneration) return;
 
         if (this.chunkQueue.length === 0) {
             this.isSpeaking = false;
@@ -180,7 +195,7 @@ class AudioPlaybackController {
             this.lastSpokenTimestamp = performance.now();
             if (this.saviVoice.dotNetRef) {
                 const state = this.saviVoice.captureController.continuousVoiceMode ? 1 : 0;
-                this.saviVoice.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', state);
+                this.notifyState(state);
             }
             return;
         }
@@ -191,6 +206,12 @@ class AudioPlaybackController {
         if (this.recentSpokenSentences.length > 10) this.recentSpokenSentences.shift();
 
         const utterance = new SpeechSynthesisUtterance(chunk);
+        const utteranceId = `utt_${++this.utteranceSequence}`;
+        this.activeUtteranceId = utteranceId;
+        utterance.saviSessionId = this.saviVoice.browserSession?.sessionId || null;
+        utterance.saviTurnId = this.currentTtsTurnId;
+        utterance.saviGenerationId = generation;
+        utterance.saviUtteranceId = utteranceId;
         utterance.rate = rate || 1.0;
         utterance.pitch = 1.0;
         utterance.volume = 1.0; // Guaranteed full audio volume
@@ -225,28 +246,29 @@ class AudioPlaybackController {
         const wordCount = chunk.split(/\s+/).length;
         const maxExpectedDurationMs = Math.max(4000, (wordCount / 2.0) * 1000 + 4000);
         const watchdog = setTimeout(() => {
-            if (!chunkHandled && self.isSpeaking && self.isChunkSpeaking) {
+            if (!chunkHandled && self.isSpeaking && self.isChunkSpeaking &&
+                generation === self.playbackGeneration && self.activeUtteranceId === utteranceId) {
                 console.warn("SAVI: Utterance completion watchdog fired, advancing chunk queue.");
                 chunkHandled = true;
                 window._saviActiveUtterances.delete(utterance);
                 self.isChunkSpeaking = false;
                 self.ensureSpeechActive();
-                self.playNextChunk(rate);
+                self.playNextChunk(rate, generation);
             }
         }, maxExpectedDurationMs);
 
         utterance.onend = function () {
-            if (chunkHandled) return;
+            if (chunkHandled || generation !== self.playbackGeneration || self.activeUtteranceId !== utteranceId) return;
             chunkHandled = true;
             clearTimeout(watchdog);
             window._saviActiveUtterances.delete(utterance);
             self.isChunkSpeaking = false;
             self.lastSpokenTimestamp = performance.now();
-            self.playNextChunk(rate);
+            self.playNextChunk(rate, generation);
         };
 
         utterance.onerror = function (err) {
-            if (chunkHandled) return;
+            if (chunkHandled || generation !== self.playbackGeneration || self.activeUtteranceId !== utteranceId) return;
             chunkHandled = true;
             clearTimeout(watchdog);
             window._saviActiveUtterances.delete(utterance);
@@ -254,7 +276,7 @@ class AudioPlaybackController {
             self.lastSpokenTimestamp = performance.now();
             console.warn("SAVI: Utterance error, resuming synthesis and playing next chunk:", err?.error || err);
             self.ensureSpeechActive();
-            self.playNextChunk(rate);
+            self.playNextChunk(rate, generation);
         };
 
         // Resume if paused and speak
@@ -272,6 +294,8 @@ class AudioPlaybackController {
         if (!this.isSpeaking && !window.speechSynthesis?.speaking) return;
 
         const stopStartTime = performance.now();
+        ++this.playbackGeneration;
+        this.activeUtteranceId = null;
         this.isSpeaking = false;
         this.isChunkSpeaking = false;
         this.stopResumeWatchdog();
@@ -299,11 +323,17 @@ class AudioPlaybackController {
 
         if (notifyDotNet && this.saviVoice.dotNetRef) {
             try {
-                this.saviVoice.dotNetRef.invokeMethodAsync('OnUserInterrupted', stopLatencyMs);
-                this.saviVoice.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 8); // 8 = Interrupted
+                const turn = this.saviVoice.captureController?.currentTurn;
+                this.saviVoice.dotNetRef.invokeMethodAsync(
+                    'OnUserInterrupted',
+                    stopLatencyMs,
+                    turn?.turnId || null,
+                    turn?.generationId || null,
+                    this.saviVoice.browserSession?.sessionId || null);
+                this.notifyState(8); // 8 = Interrupted
                 setTimeout(() => {
                     if (this.saviVoice.dotNetRef && !this.isSpeaking) {
-                        this.saviVoice.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 1); // 1 = Listening
+                        this.notifyState(1); // 1 = Listening
                     }
                 }, 100);
             } catch (_) {}
@@ -325,6 +355,12 @@ class AudioCaptureController {
         this.recognitionErrors = [];
         this.lastSttEvent = null;
         this.lastError = null;
+        this.lastVADActivityAt = null;
+        this.lastRecognitionStartAt = null;
+        this.lastRecognitionResultAt = null;
+        this.lastRecognitionEndAt = null;
+        this.lastRecognitionErrorAt = null;
+        this.recognitionRunId = 0;
         this.isListening = false;
         this.continuousVoiceMode = false;
         this.audioOutputMode = 'speaker'; // 'speaker' (aggressive echo filter) | 'headphone' (ultra-sensitive)
@@ -354,8 +390,14 @@ class AudioCaptureController {
         this.seenFinalTranscripts = new Set();
         this.turnTimer = null;
 
-        this.immediateTriggerRegex = /^(?:wait|stop|hold on|actually|no|pause|keep it short|listen|cancel)\b/i;
         this.trailingConjunctionRegex = /\b(?:and|or|because|if|whether|with|that|for|like|so|also|plus|then|but)$/i;
+    }
+
+    createTurn() {
+        const turnId = 'turn_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+        const generationId = this.saviVoice.browserSession?.nextGeneration(turnId) ||
+            ('gen_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now());
+        return new UserTurnContext(turnId, generationId);
     }
 
     notifyError(message) {
@@ -366,6 +408,11 @@ class AudioCaptureController {
 
     recordStt(event, detail = {}) {
         this.lastSttEvent = { event, at: new Date().toISOString(), ...detail };
+        const now = Date.now();
+        if (event === 'start' || event === 'restart') this.lastRecognitionStartAt = now;
+        if (event === 'result') this.lastRecognitionResultAt = now;
+        if (event === 'end') this.lastRecognitionEndAt = now;
+        if (event === 'error') this.lastRecognitionErrorAt = now;
         this.saviVoice.browserSession?.recordStt(event, detail);
     }
 
@@ -388,12 +435,18 @@ class AudioCaptureController {
     restartRecognition(reason = 'ended') {
         if (!this.recognition || this.intentionalStop || !this.continuousVoiceMode) return;
         if (this.recognitionRestartTimer) return;
-        const delay = this.recognitionRestartBackoffMs;
+            const delay = this.recognitionRestartBackoffMs;
         this.recognitionRestartBackoffMs = Math.min(8000, this.recognitionRestartBackoffMs * 2);
         this.recognitionRestartTimer = setTimeout(() => {
             this.recognitionRestartTimer = null;
             if (this.intentionalStop || !this.continuousVoiceMode) return;
             try {
+                const oldRecognition = this.recognition;
+                this.recognitionGeneration++;
+                this.recognition = null;
+                this.isListening = false;
+                try { oldRecognition?.abort?.(); } catch (_) {}
+                this.initSpeechRecognition();
                 this.recognition.start();
                 this.isListening = true;
                 this.recordStt('restart', { reason, delayMs: delay });
@@ -497,9 +550,8 @@ class AudioCaptureController {
         // Dynamic onset threshold:
         // - Speaker Mode while assistant speaks: threshold is elevated to 0.36 or baseline + 0.16
         // - Headphone Mode or assistant silent: sensitive threshold (0.12 or baseline + 0.04)
-        const onsetThreshold = isAssistantSpeaking
-            ? (this.audioOutputMode === 'headphone' ? Math.max(0.12, this.adaptiveNoiseFloor + 0.04) : Math.max(0.36, this.adaptiveNoiseFloor + 0.16))
-            : Math.max(0.12, this.adaptiveNoiseFloor + 0.04);
+        const onsetThreshold = Math.min(0.28, Math.max(0.10,
+            this.adaptiveNoiseFloor + (isAssistantSpeaking ? 0.06 : 0.04)));
 
         const continuationThreshold = onsetThreshold * 0.70;
 
@@ -514,6 +566,7 @@ class AudioCaptureController {
                     this.isSpeechActive = true;
                     this.vadSpeechOnsetStartTime = 0;
                     this.currentTurn.hasPreRollAudio = true;
+                    this.lastVADActivityAt = Date.now();
 
                     if (isAssistantSpeaking) {
                         console.log("SAVI VAD: Sustained user speech detected -> Instant barge-in halt!");
@@ -521,7 +574,12 @@ class AudioCaptureController {
                     }
 
                     if (this.saviVoice.dotNetRef) {
-                        this.saviVoice.dotNetRef.invokeMethodAsync('OnVadSpeechStarted', now);
+                        this.saviVoice.dotNetRef.invokeMethodAsync(
+                            'OnVadSpeechStarted',
+                            now,
+                            this.currentTurn.turnId,
+                            this.currentTurn.generationId,
+                            this.saviVoice.browserSession?.sessionId || null);
                     }
                 }
             } else {
@@ -577,12 +635,6 @@ class AudioCaptureController {
         const inEchoWindow = isSpeaking || (timeSinceSpeech < 1800);
 
         if (!inEchoWindow) return false;
-
-        // Explicit barge-in command words: NEVER treat as echo!
-        const isBargeInCommand = /^(?:wait|stop|hold on|actually|no|pause|listen|cancel|quiet|never mind|shh|shut up|hey savi|thats wrong|that's wrong|i meant|why|and tomorrow)\b/i.test(cleanT);
-        if (isBargeInCommand) {
-            return false;
-        }
 
         const tTokens = cleanT.split(' ').filter(w => w.length > 1);
         if (tTokens.length === 0) return false;
@@ -647,7 +699,7 @@ class AudioCaptureController {
                 self.armRecognitionWatchdog(generation);
                 self.saviVoice.browserSession.listening();
                 if (self.saviVoice.dotNetRef) {
-                    self.saviVoice.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 1); // 1 = Listening
+                    self.saviVoice.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 1, self.currentTurn.turnId, self.currentTurn.generationId, self.saviVoice.browserSession?.sessionId || null); // 1 = Listening
                 }
             };
 
@@ -699,8 +751,8 @@ class AudioCaptureController {
                 const fullText = self.currentTurn.getFullText();
 
                 if (interimText && self.saviVoice.dotNetRef) {
-                    self.saviVoice.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 7); // 7 = DetectingSpeech
-                    self.saviVoice.dotNetRef.invokeMethodAsync('OnSpeechInterim', fullText);
+                    self.saviVoice.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 7, self.currentTurn.turnId, self.currentTurn.generationId, self.saviVoice.browserSession?.sessionId || null); // 7 = DetectingSpeech
+                    self.saviVoice.dotNetRef.invokeMethodAsync('OnSpeechInterim', fullText, self.currentTurn.turnId, self.currentTurn.generationId, self.saviVoice.browserSession?.sessionId || null);
                 }
 
                 if (self.turnTimer) {
@@ -711,7 +763,6 @@ class AudioCaptureController {
                 if (fullText) {
                     const trimmedUtterance = fullText.replace(/[.,!?;:]+$/, '');
                     const endsWithConjunction = self.trailingConjunctionRegex.test(trimmedUtterance);
-                    const isImmediate = self.immediateTriggerRegex.test(fullText);
 
                     const dispatchFinalTurn = function () {
                         if (self.turnTimer) {
@@ -723,22 +774,19 @@ class AudioCaptureController {
 
                         if (finalUtterance && !self.currentTurn.hasDispatched) {
                             self.currentTurn.hasDispatched = true;
-                            self.currentTurn = new UserTurnContext(); // Fresh turn context for next interaction
+                            const generationId = self.currentTurn.generationId;
+                            self.currentTurn = self.createTurn(); // Fresh turn context for next interaction
 
                             if (self.saviVoice.dotNetRef) {
-                                self.saviVoice.dotNetRef.invokeMethodAsync('OnSpeechRecognized', finalUtterance, turnId);
+                                self.saviVoice.dotNetRef.invokeMethodAsync('OnSpeechRecognized', finalUtterance, turnId, generationId, self.saviVoice.browserSession?.sessionId || null);
                             }
                         }
                     };
 
-                    if (isImmediate && fullText.split(/\s+/).length <= 4) {
-                        // Instant commands (wait, stop, hold on) trigger with zero pause delay
-                        dispatchFinalTurn();
-                    } else {
-                        // 1200ms pause for conjunctions; 700ms standard pause; 1000ms interim-only pause
-                        const delayMs = endsWithConjunction ? 1200 : (finalChunk ? 700 : 1000);
-                        self.turnTimer = setTimeout(dispatchFinalTurn, delayMs);
-                    }
+                    // Finalization is timing-based. VAD performs the immediate
+                    // barge-in for any genuine speech, independent of wording.
+                    const delayMs = endsWithConjunction ? 1200 : (finalChunk ? 700 : 1000);
+                    self.turnTimer = setTimeout(dispatchFinalTurn, delayMs);
                 }
             };
 
@@ -770,6 +818,7 @@ class AudioCaptureController {
                 self.clearRecognitionWatchdog();
                 self.isListening = false;
                 const fullText = self.currentTurn.getFullText();
+                let dispatched = false;
 
                 // Dispatch any accumulated speech before restarting
                 if (fullText && !self.currentTurn.hasDispatched) {
@@ -778,11 +827,13 @@ class AudioCaptureController {
                         self.turnTimer = null;
                     }
                     const turnId = self.currentTurn.turnId;
+                    const generationId = self.currentTurn.generationId;
                     self.currentTurn.hasDispatched = true;
-                    self.currentTurn = new UserTurnContext();
+                    self.currentTurn = self.createTurn();
+                    dispatched = true;
 
                     if (self.saviVoice.dotNetRef) {
-                        self.saviVoice.dotNetRef.invokeMethodAsync('OnSpeechRecognized', fullText, turnId);
+                        self.saviVoice.dotNetRef.invokeMethodAsync('OnSpeechRecognized', fullText, turnId, generationId, self.saviVoice.browserSession?.sessionId || null);
                     }
                 }
 
@@ -790,8 +841,8 @@ class AudioCaptureController {
                 if (self.continuousVoiceMode && !self.intentionalStop) {
                     self.restartRecognition('ended');
                 } else {
-                    if (self.saviVoice.dotNetRef) {
-                        self.saviVoice.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 0); // 0 = Idle
+                    if (!dispatched && self.saviVoice.dotNetRef) {
+                        self.saviVoice.dotNetRef.invokeMethodAsync('OnVoiceStateChanged', 0, self.currentTurn.turnId, self.currentTurn.generationId, self.saviVoice.browserSession?.sessionId || null); // 0 = Idle
                     }
                 }
             };
@@ -815,7 +866,7 @@ class AudioCaptureController {
         }
         if (!this.isListening) {
             try {
-                this.currentTurn = new UserTurnContext();
+                this.currentTurn = this.createTurn();
                 this.recognition.start();
                 this.isListening = true;
                 this.saviVoice.browserSession.listening();
@@ -830,6 +881,35 @@ class AudioCaptureController {
             }
         }
         return true;
+    }
+
+    async recoverAfterLifecycle() {
+        if (!this.pipelineInitialized || !this.isListening) return false;
+
+        try {
+            if (this.audioContext?.state === 'suspended') {
+                await this.audioContext.resume();
+            }
+
+            const track = this.micStream?.getAudioTracks?.()[0];
+            if (track?.readyState === 'ended') {
+                const permission = this.saviVoice.browserAudio?.capabilities?.permissionState;
+                if (permission === 'denied') {
+                    this.notifyError('Microphone access ended. Allow microphone access, then press Start Voice again.');
+                    return false;
+                }
+                this.saviVoice.browserAudio.release();
+                this.pipelineInitialized = false;
+                return await this.initAudioPipeline(true);
+            }
+
+            this.armRecognitionWatchdog(this.recognitionGeneration);
+            return true;
+        } catch (error) {
+            this.lastError = error;
+            this.notifyError('Voice audio paused by the browser. Press Start Voice to reconnect.');
+            return false;
+        }
     }
 
     stop() {
@@ -923,6 +1003,17 @@ window.saviVoice = {
             selfEchoSuppressedCount: this.captureController?.falseSelfDetectionCount ?? 0,
             noiseFloor: this.captureController?.adaptiveNoiseFloor ?? 0.02,
             currentRms: this.captureController?.currentRms ?? 0.0,
+            lastVADActivityAt: this.captureController?.lastVADActivityAt ? new Date(this.captureController.lastVADActivityAt).toISOString() : null,
+            lastRecognitionStartAt: this.captureController?.lastRecognitionStartAt ? new Date(this.captureController.lastRecognitionStartAt).toISOString() : null,
+            lastRecognitionResultAt: this.captureController?.lastRecognitionResultAt ? new Date(this.captureController.lastRecognitionResultAt).toISOString() : null,
+            lastRecognitionEndAt: this.captureController?.lastRecognitionEndAt ? new Date(this.captureController.lastRecognitionEndAt).toISOString() : null,
+            lastRecognitionErrorAt: this.captureController?.lastRecognitionErrorAt ? new Date(this.captureController.lastRecognitionErrorAt).toISOString() : null,
+            recognitionGeneration: this.captureController?.recognitionGeneration ?? 0,
+            recognitionRunId: this.captureController?.recognitionRunId ?? 0,
+            currentTurnId: this.captureController?.currentTurn?.turnId ?? null,
+            currentTurnGenerationId: this.captureController?.currentTurn?.generationId ?? null,
+            playbackGeneration: this.playbackController?.playbackGeneration ?? 0,
+            activeUtteranceId: this.playbackController?.activeUtteranceId ?? null,
             lastInterruptionLatencyMs: this.playbackController?.lastStopLatencyMs ?? 0,
             audioWorkletActive: this.captureController?.audioWorkletActive ?? false
         };
@@ -980,14 +1071,14 @@ window.saviVoice = {
         };
         document.addEventListener('visibilitychange', () => {
             record(document.visibilityState === 'hidden' ? 'visibility-hidden' : 'visibility-visible');
+            if (document.visibilityState === 'visible') {
+                this.captureController?.recoverAfterLifecycle?.();
+            }
         });
         window.addEventListener('pagehide', () => record('pagehide'));
         window.addEventListener('pageshow', () => {
             record('pageshow');
-            const track = this.browserAudio?.stream?.getAudioTracks?.()[0];
-            if (track && track.readyState === 'ended' && this.captureController?.isListening) {
-                this.captureController.notifyError('Microphone access ended. Press Start Voice to reconnect it.');
-            }
+            this.captureController?.recoverAfterLifecycle?.();
         });
         window.addEventListener('focus', () => record('focus'));
         window.addEventListener('blur', () => record('blur'));

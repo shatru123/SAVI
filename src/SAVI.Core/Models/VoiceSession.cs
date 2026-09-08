@@ -20,6 +20,8 @@ public sealed class VoiceSession
     public string? LastLocation { get; set; }
 
     public string? ActiveTurnId { get; set; }
+    public string? ActiveGenerationId { get; set; }
+    public long StateVersion { get; set; }
     public string? InterruptedResponse { get; set; }
     public string? InterruptedTopic { get; set; }
     public string? InterruptedIntent { get; set; }

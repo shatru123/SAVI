@@ -3,6 +3,7 @@ namespace SAVI.Core.Models;
 public sealed record VoiceTurnResult
 {
     public string TurnId { get; init; } = string.Empty;
+    public string GenerationId { get; init; } = string.Empty;
     public string UserUtterance { get; init; } = string.Empty;
     public string AssistantResponse { get; init; } = string.Empty;
     public string VoiceFriendlyResponse { get; init; } = string.Empty;

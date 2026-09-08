@@ -449,6 +449,8 @@
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _processingCts;
     private string? _activeTurnId;
+    private string? _voiceSessionId;
+    private string? _voiceGenerationId;
     private string _audioOutputMode = "speaker";
     private int _falseSelfDetectionCount = 0;
     private bool _hardwareAec = true;
@@ -920,16 +922,18 @@
     }
 
     [JSInvokable]
-    public void OnVadSpeechStarted(double timestampMs)
+    public void OnVadSpeechStarted(double timestampMs, string? turnId = null, string? generationId = null, string? sessionId = null)
     {
+        if (!AcceptVoiceCallback(turnId, generationId, sessionId)) return;
         _wasInterrupted = true;
         _voiceState = VoiceState.DetectingSpeech;
         InvokeAsync(StateHasChanged);
     }
 
     [JSInvokable]
-    public void OnUserInterrupted(double audioStopLatencyMs = 0)
+    public void OnUserInterrupted(double audioStopLatencyMs = 0, string? turnId = null, string? generationId = null, string? sessionId = null)
     {
+        if (!AcceptVoiceCallback(turnId, generationId, sessionId)) return;
         _wasInterrupted = true;
         if (audioStopLatencyMs > 0)
         {
@@ -945,8 +949,9 @@
     }
 
     [JSInvokable]
-    public void OnSpeechInterim(string text)
+    public void OnSpeechInterim(string text, string? turnId = null, string? generationId = null, string? sessionId = null)
     {
+        if (!AcceptVoiceCallback(turnId, generationId, sessionId)) return;
         if (!string.IsNullOrWhiteSpace(text))
         {
             _liveInterimTranscript = text;
@@ -957,9 +962,10 @@
     }
 
     [JSInvokable]
-    public async Task OnSpeechRecognized(string transcript, string? turnId = null)
+    public async Task OnSpeechRecognized(string transcript, string? turnId = null, string? generationId = null, string? sessionId = null)
     {
         if (string.IsNullOrWhiteSpace(transcript)) return;
+        if (!AcceptVoiceCallback(turnId, generationId, sessionId)) return;
 
         _liveInterimTranscript = string.Empty;
         _userInput = string.Empty;
@@ -974,8 +980,10 @@
     }
 
     [JSInvokable]
-    public void OnVoiceStateChanged(int stateCode)
+    public void OnVoiceStateChanged(int stateCode, string? turnId = null, string? generationId = null, string? sessionId = null)
     {
+        if (!AcceptVoiceCallback(turnId, generationId, sessionId)) return;
+        if (!Enum.IsDefined(typeof(VoiceState), stateCode)) return;
         _voiceState = (VoiceState)stateCode;
         _isListening = _voiceState == VoiceState.Listening;
         InvokeAsync(StateHasChanged);
@@ -988,6 +996,24 @@
         _isListening = false;
         _voiceState = VoiceState.Error;
         InvokeAsync(StateHasChanged);
+    }
+
+    private bool AcceptVoiceCallback(string? turnId, string? generationId, string? sessionId)
+    {
+        if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            if (_voiceSessionId != null && !string.Equals(_voiceSessionId, sessionId, StringComparison.Ordinal)) return false;
+            _voiceSessionId = sessionId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(generationId))
+        {
+            if (_voiceGenerationId != null && !string.Equals(_voiceGenerationId, generationId, StringComparison.Ordinal) &&
+                _voiceState is VoiceState.Processing or VoiceState.Speaking) return false;
+            _voiceGenerationId = generationId;
+        }
+
+        return true;
     }
 
     [JSInvokable]

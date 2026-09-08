@@ -3,6 +3,7 @@ namespace SAVI.Core.Models;
 public sealed class VoiceTurnContext
 {
     public string TurnId { get; init; } = Guid.NewGuid().ToString();
+    public string GenerationId { get; init; } = Guid.NewGuid().ToString("N");
     public string SessionId { get; set; } = string.Empty;
     public string ConversationId { get; set; } = string.Empty;
     public int TurnIndex { get; set; }
