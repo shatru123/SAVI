@@ -193,4 +193,53 @@ public class ProviderRoutingAndIntelligenceTests
         Assert.True(_cache.CacheHits > 0);
         Assert.True(_cache.HitRatio > 0.0);
     }
+
+    [Fact]
+    public void EvidenceAggregator_NormalizesProviderResults()
+    {
+        var aggregator = new SAVI.Agent.Synthesis.EvidenceAggregator();
+        var results = new[]
+        {
+            ProviderResult.Succeeded("wiki", "Wikipedia", new { Title = "C#", Summary = "A language", Url = "https://wiki.org/csharp" }, confidence: 0.95),
+            ProviderResult.Succeeded("wikidata", "Wikidata", new { Title = "C#", Description = "Programming language", Formatted = "C#: Programming language" }, confidence: 0.90)
+        };
+
+        var evidence = aggregator.Aggregate(results);
+
+        Assert.Equal(2, evidence.Count);
+        Assert.Equal("wiki", evidence[0].ProviderId);
+        Assert.Equal("A language", evidence[0].Content);
+        Assert.Equal("https://wiki.org/csharp", evidence[0].SourceUrl);
+        Assert.Equal("wikidata", evidence[1].ProviderId);
+        Assert.Contains("Programming language", evidence[1].Content);
+    }
+
+    [Fact]
+    public void MultipleProviders_AreAggregated()
+    {
+        var aggregator = new SAVI.Agent.Synthesis.EvidenceAggregator();
+        var results = new[]
+        {
+            ProviderResult.Succeeded("p1", "Provider 1", "Fact 1", confidence: 0.8),
+            ProviderResult.Failed("p2", "Provider 2", "Timeout"),
+            ProviderResult.Succeeded("p3", "Provider 3", "Fact 3", confidence: 0.9)
+        };
+
+        var evidence = aggregator.Aggregate(results);
+
+        Assert.Equal(2, evidence.Count);
+        Assert.Contains(evidence, e => e.ProviderId == "p1" && e.Content == "Fact 1");
+        Assert.Contains(evidence, e => e.ProviderId == "p3" && e.Content == "Fact 3");
+    }
+
+    [Fact]
+    public void CSharp_RoutesToKnowledgeWithCanonicalQuery()
+    {
+        var intent = _detector.Detect("What is C#?");
+
+        Assert.Equal(SaviConstants.Capabilities.Knowledge, intent.Capability);
+        Assert.Equal("summary", intent.Operation);
+        Assert.Contains("C# programming language", intent.Parameters["topic"]);
+        Assert.Equal("C#", intent.Parameters["entity"]);
+    }
 }

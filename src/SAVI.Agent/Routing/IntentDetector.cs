@@ -3,6 +3,8 @@ using SAVI.Core.Constants;
 using SAVI.Core.Enums;
 using SAVI.Core.Models;
 
+using SAVI.Core.Interfaces;
+
 namespace SAVI.Agent.Routing;
 
 public record DetectedIntent(
@@ -14,6 +16,13 @@ public record DetectedIntent(
 
 public class IntentDetector
 {
+    private readonly IQueryUnderstandingService _queryUnderstanding;
+
+    public IntentDetector(IQueryUnderstandingService? queryUnderstanding = null)
+    {
+        _queryUnderstanding = queryUnderstanding ?? new Understanding.QueryUnderstandingService();
+    }
+
     private static readonly Regex WeatherRegex = new(@"(?:weather|forecast|temperature|rain|climate|snow)\s+(?:like in|in|for|at)?\s*([a-zA-Z\s]+)?", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex CurrencyRegex = new(@"(?:convert|exchange|rate|how much is)\s+([\d\.]+)?\s*([a-zA-Z]{3})\s+(?:to|in)\s+([a-zA-Z]{3})", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex CryptoRegex = new(@"(?:crypto|bitcoin|\bbtc\b|ethereum|\beth\b|solana|\bsol\b|dogecoin|\bdoge\b|cardano|\bada\b|price of|crypto rate)\s*(.*)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -409,17 +418,58 @@ public class IntentDetector
                 new Dictionary<string, string> { ["topic"] = $"population of {city}", ["query"] = clean }, 0.95, policyOverride);
         }
 
+        var analysis = _queryUnderstanding.Analyze(clean, context);
+
+        // Multi-part questions handling (e.g. "What is C#, who created it, when was it released, and why is it popular?")
+        if (analysis.SubQuestions.Count > 1)
+        {
+            var primary = analysis.Entities.FirstOrDefault() ?? analysis.Topic;
+            return new DetectedIntent(SaviConstants.Capabilities.Knowledge, "multi_part",
+                new Dictionary<string, string>
+                {
+                    ["topic"] = analysis.CanonicalLookupQuery,
+                    ["entity"] = primary,
+                    ["query"] = clean
+                }, 0.95, policyOverride ?? analysis.PolicyOverride);
+        }
+
+        // Technical Entity Recognition (e.g. "What is C#?", "Tell me about ASP.NET Core", "Explain .NET")
+        if (analysis.IsTechnical)
+        {
+            var primary = analysis.Entities.FirstOrDefault() ?? analysis.Topic;
+            return new DetectedIntent(SaviConstants.Capabilities.Knowledge, "summary",
+                new Dictionary<string, string>
+                {
+                    ["topic"] = analysis.CanonicalLookupQuery,
+                    ["entity"] = primary,
+                    ["query"] = analysis.ResolvedContextQuery ?? clean
+                }, 0.95, policyOverride ?? analysis.PolicyOverride);
+        }
+
+        // Context follow-up resolution (e.g. "Who created it?", "When was it released?")
+        if (!string.IsNullOrWhiteSpace(analysis.ResolvedContextQuery))
+        {
+            var primary = analysis.Entities.FirstOrDefault() ?? analysis.Topic;
+            return new DetectedIntent(SaviConstants.Capabilities.Knowledge, "summary",
+                new Dictionary<string, string>
+                {
+                    ["topic"] = analysis.CanonicalLookupQuery,
+                    ["entity"] = primary,
+                    ["query"] = analysis.ResolvedContextQuery
+                }, 0.95, policyOverride ?? analysis.PolicyOverride);
+        }
+
         if (lower.StartsWith("who is ") || lower.StartsWith("what is ") || lower.StartsWith("define ") ||
             lower.StartsWith("explain ") || lower.StartsWith("tell me about "))
         {
-            var topic = clean.Replace("who is", "", StringComparison.OrdinalIgnoreCase)
-                             .Replace("what is", "", StringComparison.OrdinalIgnoreCase)
-                             .Replace("define", "", StringComparison.OrdinalIgnoreCase)
-                             .Replace("explain", "", StringComparison.OrdinalIgnoreCase)
-                             .Trim(' ', '?', '.');
-
+            var topic = analysis.Topic;
             return new DetectedIntent(SaviConstants.Capabilities.Knowledge, "summary",
-                new Dictionary<string, string> { ["topic"] = topic, ["query"] = clean }, 0.90, policyOverride);
+                new Dictionary<string, string>
+                {
+                    ["topic"] = analysis.CanonicalLookupQuery,
+                    ["entity"] = analysis.Entities.FirstOrDefault() ?? topic,
+                    ["query"] = clean
+                }, 0.90, policyOverride ?? analysis.PolicyOverride);
         }
 
         // Default: Web Search abstraction (DuckDuckGo fallback)

@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Text.Json;
 using SAVI.Agent.Planning;
 using SAVI.Agent.Routing;
+using SAVI.Agent.Synthesis;
+using SAVI.Agent.Understanding;
 using SAVI.Application.DTOs;
 using SAVI.Application.Interfaces;
 using SAVI.Core.Constants;
@@ -27,6 +29,9 @@ public class AgentOrchestrator : IAgentOrchestrator
     private readonly IToolRegistry _toolRegistry;
     private readonly IPermissionGuard _permissionGuard;
     private readonly IProviderCache _providerCache;
+    private readonly IQueryUnderstandingService _queryUnderstandingService;
+    private readonly IAnswerSynthesisService _answerSynthesisService;
+    private readonly EvidenceAggregator _evidenceAggregator;
     private readonly IVoiceResponseFormatter? _voiceResponseFormatter;
 
     public AgentOrchestrator(
@@ -42,6 +47,9 @@ public class AgentOrchestrator : IAgentOrchestrator
         IToolRegistry toolRegistry,
         IPermissionGuard permissionGuard,
         IProviderCache providerCache,
+        IQueryUnderstandingService? queryUnderstandingService = null,
+        IAnswerSynthesisService? answerSynthesisService = null,
+        EvidenceAggregator? evidenceAggregator = null,
         IVoiceResponseFormatter? voiceResponseFormatter = null)
     {
         _contextBuilder = contextBuilder;
@@ -56,6 +64,9 @@ public class AgentOrchestrator : IAgentOrchestrator
         _toolRegistry = toolRegistry;
         _permissionGuard = permissionGuard;
         _providerCache = providerCache;
+        _queryUnderstandingService = queryUnderstandingService ?? new Understanding.QueryUnderstandingService();
+        _answerSynthesisService = answerSynthesisService ?? new Synthesis.AnswerSynthesisService();
+        _evidenceAggregator = evidenceAggregator ?? new Synthesis.EvidenceAggregator();
         _voiceResponseFormatter = voiceResponseFormatter;
     }
 
@@ -87,9 +98,10 @@ public class AgentOrchestrator : IAgentOrchestrator
         EmitEvent("context.ready", new { ConversationId = conversationId, MemoryCount = context.RelevantMemories.Count });
 
         // Stage 3 & 4: Intent Detection & Capability Routing
+        var analysis = _queryUnderstandingService.Analyze(request.Message, context);
         var intent = _intentDetector.Detect(request.Message, context);
-        EmitEvent("request.classified", new { Capability = intent.Capability, Operation = intent.Operation });
-        LogActivity($"2. Routed capability '{intent.Capability}' (Operation: {intent.Operation})");
+        EmitEvent("request.classified", new { Capability = intent.Capability, Operation = intent.Operation, IsTechnical = analysis.IsTechnical, Topic = analysis.Topic });
+        LogActivity($"2. Analyzed query '{analysis.Topic}' (Domain: {analysis.Domain}) -> Routed capability '{intent.Capability}' (Operation: {intent.Operation})");
 
         // Handle Voice Control Commands (Stop, Repeat, Continue, Wait, Go Back, Keep It Short, etc.)
         if (intent.Capability == "voice_control")
@@ -293,24 +305,45 @@ public class AgentOrchestrator : IAgentOrchestrator
             providerResults.AddRange(verifyBatch);
         }
 
-        // Stage 7: Verification Engine
-        request.OnStepProgress?.Invoke(4, "Cross-verifying source accuracy & boundaries");
-        LogActivity("Synthesizing and cross-verifying provider outputs");
+        // Stage 7: Evidence Aggregation & Answer Synthesis
+        request.OnStepProgress?.Invoke(4, "Aggregating provider evidence & synthesizing natural answer");
+        LogActivity("Aggregating evidence from providers and synthesizing natural answer");
         EmitEvent("verification.started");
 
+        var evidenceList = _evidenceAggregator.Aggregate(providerResults);
+        var synthesized = await _answerSynthesisService.SynthesizeAsync(
+            request.Message,
+            analysis,
+            evidenceList,
+            context,
+            request.VoiceActive,
+            cancellationToken);
+
         var verification = await _verificationEngine.VerifyAndCompareAsync(request.Message, providerResults, cancellationToken);
-        EmitEvent("verification.completed", new { IsVerified = verification.IsVerified, Confidence = verification.Confidence });
+        var isVerified = synthesized.IsVerified && verification.IsVerified;
+        var confidence = Math.Max(synthesized.Confidence, verification.Confidence);
+        var combinedSources = synthesized.Sources.Concat(verification.Sources)
+            .GroupBy(s => string.IsNullOrWhiteSpace(s.Url) ? s.SourceName : s.Url)
+            .Select(g => g.First())
+            .ToList();
+
+        EmitEvent("verification.completed", new { IsVerified = isVerified, Confidence = confidence });
 
         // Stage 8: Personality Engine Response Formatting
         var settings = await _settingsService.GetSettingsAsync(cancellationToken);
         var activePersonality = request.PersonalityOverride ?? settings.ActivePersonality;
-        var finalContent = _personalityEngine.FormatResponse(verification.Synthesis, activePersonality, context.RelevantMemories, request.VoiceActive);
+
+        var baseContent = !string.IsNullOrWhiteSpace(synthesized.MainContent)
+            ? synthesized.MainContent
+            : verification.Synthesis;
+
+        var finalContent = _personalityEngine.FormatResponse(baseContent, activePersonality, context.RelevantMemories, request.VoiceActive);
 
         // Stage 9: Persistence
         totalSw.Stop();
-        LogActivity($"Completed in {totalSw.ElapsedMilliseconds} ms (Confidence: {verification.Confidence:P0})");
+        LogActivity($"Completed in {totalSw.ElapsedMilliseconds} ms (Confidence: {confidence:P0})");
 
-        var sourcesJson = JsonSerializer.Serialize(verification.Sources);
+        var sourcesJson = JsonSerializer.Serialize(combinedSources);
         var metadataJson = JsonSerializer.Serialize(activityLogs);
         await _conversationService.AppendMessageAsync(conversationId, MessageRole.Assistant, finalContent, MessageType.Text, sourcesJson: sourcesJson, metadataJson: metadataJson, cancellationToken: cancellationToken);
 
@@ -326,23 +359,25 @@ public class AgentOrchestrator : IAgentOrchestrator
             catch { }
         });
 
-        var voiceFriendlyText = _voiceResponseFormatter?.FormatForSpeech(finalContent, intent.Capability) ?? finalContent;
+        var voiceFriendlyText = !string.IsNullOrWhiteSpace(synthesized.VoiceContent)
+            ? synthesized.VoiceContent
+            : (_voiceResponseFormatter?.FormatForSpeech(finalContent, intent.Capability) ?? finalContent);
 
         return new AgentResponse
         {
             Message = finalContent,
             VoiceFriendlyMessage = voiceFriendlyText,
             ConversationId = conversationId,
-            Success = verification.IsVerified,
-            Sources = verification.Sources,
-            Confidence = verification.Confidence,
+            Success = isVerified,
+            Sources = combinedSources,
+            Confidence = confidence,
             ActiveVoiceState = request.VoiceActive ? VoiceState.Speaking : VoiceState.Idle,
             ActivityLogs = activityLogs,
             Telemetry = new Dictionary<string, string>
             {
                 ["LatencyMs"] = totalSw.ElapsedMilliseconds.ToString(),
-                ["Confidence"] = verification.Confidence.ToString("F2"),
-                ["SourcesCount"] = verification.Sources.Count.ToString(),
+                ["Confidence"] = confidence.ToString("F2"),
+                ["SourcesCount"] = combinedSources.Count.ToString(),
                 ["Capability"] = intent.Capability,
                 ["Policy"] = plan.Policy.ToString()
             }

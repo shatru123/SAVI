@@ -49,7 +49,7 @@ public class WikidataKnowledgeProvider : ICapabilityProvider
 
         try
         {
-            var url = $"https://www.wikidata.org/w/api.php?action=wbsearchentities&search={Uri.EscapeDataString(query.Trim())}&language=en&format=json&limit=3";
+            var url = $"https://www.wikidata.org/w/api.php?action=wbsearchentities&search={Uri.EscapeDataString(query.Trim())}&language=en&format=json&limit=5";
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             req.Headers.UserAgent.ParseAdd("SAVI-Companion/1.0 (https://github.com/shatru123/SAVI; contact: open-assistant@savi.local)");
 
@@ -67,11 +67,24 @@ public class WikidataKnowledgeProvider : ICapabilityProvider
 
             if (doc.RootElement.TryGetProperty("search", out var searchArray) && searchArray.GetArrayLength() > 0)
             {
-                var first = searchArray[0];
-                var entityId = first.GetProperty("id").GetString() ?? "";
-                var label = first.GetProperty("label").GetString() ?? query;
-                var description = first.TryGetProperty("description", out var dProp) ? dProp.GetString() ?? "" : "";
-                var conceptUri = first.TryGetProperty("concepturi", out var cProp) ? cProp.GetString() ?? $"https://www.wikidata.org/wiki/{entityId}" : $"https://www.wikidata.org/wiki/{entityId}";
+                // Prefer programming/software entity if query is technical
+                JsonElement chosen = searchArray[0];
+                foreach (var item in searchArray.EnumerateArray())
+                {
+                    var desc = item.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "";
+                    if (desc.Contains("programming language", StringComparison.OrdinalIgnoreCase) ||
+                        desc.Contains("software", StringComparison.OrdinalIgnoreCase) ||
+                        desc.Contains("framework", StringComparison.OrdinalIgnoreCase))
+                    {
+                        chosen = item;
+                        break;
+                    }
+                }
+
+                var entityId = chosen.GetProperty("id").GetString() ?? "";
+                var label = chosen.GetProperty("label").GetString() ?? query;
+                var description = chosen.TryGetProperty("description", out var dProp) ? dProp.GetString() ?? "" : "";
+                var conceptUri = chosen.TryGetProperty("concepturi", out var cProp) ? cProp.GetString() ?? $"https://www.wikidata.org/wiki/{entityId}" : $"https://www.wikidata.org/wiki/{entityId}";
 
                 var resultData = new
                 {
@@ -79,7 +92,7 @@ public class WikidataKnowledgeProvider : ICapabilityProvider
                     Label = label,
                     Description = description,
                     Url = conceptUri,
-                    Formatted = $"**{label}** ({entityId}): {description}"
+                    Formatted = $"{label}: {description}"
                 };
 
                 var source = new SourceReference

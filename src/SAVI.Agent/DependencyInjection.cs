@@ -8,12 +8,18 @@ using SAVI.Agent.Routing;
 using SAVI.Agent.Verification;
 using SAVI.Core.Interfaces;
 
+using SAVI.Agent.Understanding;
+using SAVI.Agent.Synthesis;
+
 namespace SAVI.Agent;
 
 public static class DependencyInjection
 {
     public static IServiceCollection AddSaviAgent(this IServiceCollection services)
     {
+        services.AddSingleton<IQueryUnderstandingService, QueryUnderstandingService>();
+        services.AddSingleton<EvidenceAggregator>();
+        services.AddSingleton<IAnswerSynthesisService, AnswerSynthesisService>();
         services.AddScoped<IContextBuilder, ContextBuilder>();
         services.AddSingleton<IntentDetector>();
         services.AddScoped<ExecutionPlanner>();

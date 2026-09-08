@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using SAVI.Core.Constants;
 using SAVI.Core.Interfaces;
 using SAVI.Core.Models;
@@ -39,8 +40,10 @@ public class WikipediaKnowledgeProvider : ICapabilityProvider
 
         try
         {
-            // First try summary API
-            var summaryUrl = $"https://en.wikipedia.org/api/rest_v1/page/summary/{Uri.EscapeDataString(topic)}";
+            var slug = ResolveWikipediaSlug(topic);
+
+            // First try summary API with resolved slug
+            var summaryUrl = $"https://en.wikipedia.org/api/rest_v1/page/summary/{Uri.EscapeDataString(slug)}";
             using var req = new HttpRequestMessage(HttpMethod.Get, summaryUrl);
             req.Headers.TryAddWithoutValidation("User-Agent", "SAVI-Companion/1.0 (contact: info@savi.ai)");
             using var response = await _httpClient.SendAsync(req, cancellationToken);
@@ -53,33 +56,47 @@ public class WikipediaKnowledgeProvider : ICapabilityProvider
 
                 var title = root.TryGetProperty("title", out var tProp) ? tProp.GetString() ?? topic : topic;
                 var extract = root.TryGetProperty("extract", out var eProp) ? eProp.GetString() ?? "" : "";
-                var pageUrl = root.TryGetProperty("content_urls", out var cuProp) &&
-                              cuProp.TryGetProperty("desktop", out var dProp) &&
-                              dProp.TryGetProperty("page", out var pProp)
-                    ? pProp.GetString() ?? $"https://en.wikipedia.org/wiki/{Uri.EscapeDataString(title)}"
-                    : $"https://en.wikipedia.org/wiki/{Uri.EscapeDataString(title)}";
+                var desc = root.TryGetProperty("description", out var dProp) ? dProp.GetString() ?? "" : "";
 
-                var source = new SourceReference
+                // Guard against "C#" resolving to "C" (the letter)
+                bool isAlphabetMismatch = (topic.Equals("C#", StringComparison.OrdinalIgnoreCase) || topic.Contains("C#")) &&
+                                          (title.Equals("C", StringComparison.OrdinalIgnoreCase) || extract.Contains("Latin alphabet", StringComparison.OrdinalIgnoreCase));
+
+                if (!isAlphabetMismatch && !string.IsNullOrWhiteSpace(extract))
                 {
-                    Title = $"{title} — Wikipedia",
-                    Url = pageUrl,
-                    SourceName = "Wikipedia",
-                    Snippet = extract,
-                    ReliabilityScore = 0.92
-                };
+                    var pageUrl = root.TryGetProperty("content_urls", out var cuProp) &&
+                                  cuProp.TryGetProperty("desktop", out var desktopProp) &&
+                                  desktopProp.TryGetProperty("page", out var pProp)
+                        ? pProp.GetString() ?? $"https://en.wikipedia.org/wiki/{Uri.EscapeDataString(title)}"
+                        : $"https://en.wikipedia.org/wiki/{Uri.EscapeDataString(title)}";
 
-                var data = new
-                {
-                    Title = title,
-                    Summary = extract,
-                    Url = pageUrl
-                };
+                    var source = new SourceReference
+                    {
+                        Title = $"{title} — Wikipedia",
+                        Url = pageUrl,
+                        SourceName = "Wikipedia",
+                        Snippet = extract,
+                        ReliabilityScore = 0.92
+                    };
 
-                return ProviderResult.Succeeded(Id, Name, data, confidence: 0.92, sources: new[] { source });
+                    var data = new
+                    {
+                        Title = title,
+                        Summary = extract,
+                        Description = desc,
+                        Url = pageUrl
+                    };
+
+                    return ProviderResult.Succeeded(Id, Name, data, confidence: 0.92, sources: new[] { source });
+                }
             }
 
-            // Fallback to Wikipedia search API
-            var searchUrl = $"https://en.wikipedia.org/w/api.php?action=opensearch&search={Uri.EscapeDataString(topic)}&limit=3&namespace=0&format=json";
+            // Fallback: Rich query search API
+            var searchQuery = topic.Equals("C#", StringComparison.OrdinalIgnoreCase) ? "C Sharp (programming language)" :
+                              topic.Equals("F#", StringComparison.OrdinalIgnoreCase) ? "F Sharp (programming language)" :
+                              topic;
+
+            var searchUrl = $"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={Uri.EscapeDataString(searchQuery)}&format=json&utf8=";
             using var sReq = new HttpRequestMessage(HttpMethod.Get, searchUrl);
             sReq.Headers.TryAddWithoutValidation("User-Agent", "SAVI-Companion/1.0 (contact: info@savi.ai)");
             using var searchResp = await _httpClient.SendAsync(sReq, cancellationToken);
@@ -87,33 +104,67 @@ public class WikipediaKnowledgeProvider : ICapabilityProvider
             {
                 var sJson = await searchResp.Content.ReadAsStringAsync(cancellationToken);
                 using var sDoc = JsonDocument.Parse(sJson);
-                var titles = sDoc.RootElement[1];
-                var descs = sDoc.RootElement[2];
-                var links = sDoc.RootElement[3];
-
-                if (titles.GetArrayLength() > 0)
+                if (sDoc.RootElement.TryGetProperty("query", out var qObj) &&
+                    qObj.TryGetProperty("search", out var searchArr) &&
+                    searchArr.GetArrayLength() > 0)
                 {
-                    var firstTitle = titles[0].GetString() ?? topic;
-                    var firstDesc = descs[0].GetString() ?? "";
-                    var firstLink = links[0].GetString() ?? "";
+                    var topMatch = searchArr[0];
+                    var topTitle = topMatch.GetProperty("title").GetString() ?? topic;
+                    var rawSnippet = topMatch.GetProperty("snippet").GetString() ?? "";
+                    var cleanSnippet = Regex.Replace(rawSnippet, @"<.*?>", string.Empty);
+                    var articleUrl = $"https://en.wikipedia.org/wiki/{Uri.EscapeDataString(topTitle.Replace(' ', '_'))}";
+
+                    // Try to fetch the full summary of this top matched article
+                    try
+                    {
+                        var topSummaryUrl = $"https://en.wikipedia.org/api/rest_v1/page/summary/{Uri.EscapeDataString(topTitle.Replace(' ', '_'))}";
+                        using var topReq = new HttpRequestMessage(HttpMethod.Get, topSummaryUrl);
+                        topReq.Headers.TryAddWithoutValidation("User-Agent", "SAVI-Companion/1.0 (contact: info@savi.ai)");
+                        using var topResp = await _httpClient.SendAsync(topReq, cancellationToken);
+                        if (topResp.IsSuccessStatusCode)
+                        {
+                            var topJson = await topResp.Content.ReadAsStringAsync(cancellationToken);
+                            using var topDoc = JsonDocument.Parse(topJson);
+                            var topExtract = topDoc.RootElement.TryGetProperty("extract", out var teProp) ? teProp.GetString() ?? cleanSnippet : cleanSnippet;
+
+                            var topSource = new SourceReference
+                            {
+                                Title = $"{topTitle} — Wikipedia",
+                                Url = articleUrl,
+                                SourceName = "Wikipedia",
+                                Snippet = topExtract,
+                                ReliabilityScore = 0.90
+                            };
+
+                            var topData = new
+                            {
+                                Title = topTitle,
+                                Summary = topExtract,
+                                Url = articleUrl
+                            };
+
+                            return ProviderResult.Succeeded(Id, Name, topData, confidence: 0.90, sources: new[] { topSource });
+                        }
+                    }
+                    catch { }
 
                     var source = new SourceReference
                     {
-                        Title = firstTitle,
-                        Url = firstLink,
+                        Title = $"{topTitle} — Wikipedia",
+                        Url = articleUrl,
                         SourceName = "Wikipedia",
-                        Snippet = firstDesc,
-                        ReliabilityScore = 0.88
+                        Snippet = cleanSnippet,
+                        ReliabilityScore = 0.85
                     };
 
                     var data = new
                     {
-                        Title = firstTitle,
-                        Summary = firstDesc,
-                        Url = firstLink
+                        Title = topTitle,
+                        Summary = cleanSnippet,
+                        Url = articleUrl
                     };
 
-                    return ProviderResult.Succeeded(Id, Name, data, confidence: 0.88, sources: new[] { source });
+                    return ProviderResult.Succeeded(Id, Name, data, confidence: 0.85, sources: new[] { source });
                 }
             }
 
@@ -136,5 +187,42 @@ public class WikipediaKnowledgeProvider : ICapabilityProvider
         {
             return false;
         }
+    }
+
+    private static string ResolveWikipediaSlug(string topic)
+    {
+        var clean = topic.Trim();
+        if (clean.Equals("C#", StringComparison.OrdinalIgnoreCase) ||
+            clean.Equals("C# programming language", StringComparison.OrdinalIgnoreCase) ||
+            clean.Equals("C sharp", StringComparison.OrdinalIgnoreCase))
+        {
+            return "C_Sharp_(programming_language)";
+        }
+
+        if (clean.Equals("F#", StringComparison.OrdinalIgnoreCase) ||
+            clean.Equals("F# programming language", StringComparison.OrdinalIgnoreCase) ||
+            clean.Equals("F sharp", StringComparison.OrdinalIgnoreCase))
+        {
+            return "F_Sharp_(programming_language)";
+        }
+
+        if (clean.Equals("C++", StringComparison.OrdinalIgnoreCase) ||
+            clean.Equals("C++ programming language", StringComparison.OrdinalIgnoreCase))
+        {
+            return "C++";
+        }
+
+        if (clean.Equals(".NET", StringComparison.OrdinalIgnoreCase) ||
+            clean.Equals(".NET framework", StringComparison.OrdinalIgnoreCase))
+        {
+            return ".NET";
+        }
+
+        if (clean.Equals("ASP.NET Core", StringComparison.OrdinalIgnoreCase))
+        {
+            return "ASP.NET_Core";
+        }
+
+        return clean.Replace(' ', '_');
     }
 }
