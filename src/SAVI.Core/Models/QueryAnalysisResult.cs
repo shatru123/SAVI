@@ -14,6 +14,11 @@ public record QueryAnalysisResult
     public IReadOnlyList<string> SubQuestions { get; init; } = Array.Empty<string>();
     public string? ResolvedContextQuery { get; init; }
     public string CanonicalLookupQuery { get; init; } = string.Empty;
+    public IReadOnlyList<string> RetrievalQueries { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> InformationRequirements { get; init; } = Array.Empty<string>();
+    public bool RequiresFreshness { get; init; }
+    public bool IsComputational { get; init; }
+    public bool IsAmbiguous { get; init; }
     public double Confidence { get; init; } = 0.90;
     public VerificationPolicy? PolicyOverride { get; init; }
 }

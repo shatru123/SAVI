@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using SAVI.Core.Interfaces;
 using SAVI.Core.Models;
 using SAVI.Core.ValueObjects;
@@ -12,7 +13,10 @@ public class VerificationEngine : IVerificationEngine
         IReadOnlyList<ProviderResult> results,
         CancellationToken cancellationToken = default)
     {
-        var successful = results.Where(r => r.Success && r.Data != null).ToList();
+        var successful = results
+            .Where(r => r.Success && r.Data != null)
+            .Where(r => IsResultRelevant(query, r))
+            .ToList();
 
         if (successful.Count == 0)
         {
@@ -58,7 +62,9 @@ public class VerificationEngine : IVerificationEngine
             });
         }
 
-        // Multi-source comparison: Check for discrepancies (e.g. weather temperature difference > 4 degrees)
+        // Compare structured values when available, then fall back to numeric values
+        // with units. This remains domain-agnostic and avoids trusting the first
+        // provider merely because it responded first.
         bool contradiction = false;
         string? contradictionReason = null;
 
@@ -90,6 +96,30 @@ public class VerificationEngine : IVerificationEngine
             }
         }
 
+        if (!contradiction)
+        {
+            var numericValues = successful
+                .Select(r => (Provider: r.ProviderName, Values: ExtractComparableNumbers(r.Data)))
+                .Where(x => x.Values.Count > 0)
+                .ToList();
+
+            if (numericValues.Count >= 2)
+            {
+                var commonLength = numericValues.Min(x => x.Values.Count);
+                for (var i = 0; i < commonLength && !contradiction; i++)
+                {
+                    var values = numericValues.Select(x => x.Values[i]).ToList();
+                    var spread = values.Max() - values.Min();
+                    var tolerance = Math.Max(0.01, Math.Abs(values.Average()) * 0.02);
+                    if (spread > tolerance)
+                    {
+                        contradiction = true;
+                        contradictionReason = $"Sources disagree on a reported value: {string.Join(", ", numericValues.Select(x => $"{x.Provider} reports {x.Values[i]}"))}.";
+                    }
+                }
+            }
+        }
+
         // Weighted confidence based on source authority and agreement
         var primary = successful.OrderByDescending(r => r.Confidence).First();
         var avgConfidence = successful.Average(r => r.Confidence);
@@ -111,6 +141,41 @@ public class VerificationEngine : IVerificationEngine
             Synthesis = synthesis,
             Sources = allSources
         });
+    }
+
+    private static bool IsResultRelevant(string query, ProviderResult result)
+    {
+        // Local deterministic providers often return a scalar with no external
+        // citation. Their provider capability is already selected by routing, so
+        // absence of source text is not evidence of irrelevance.
+        if (result.Sources.Count == 0) return true;
+        var queryTerms = Tokenize(query);
+        if (queryTerms.Count == 0) return true;
+        var evidence = string.Join(" ", result.Sources.Select(s => $"{s.Title} {s.Snippet}")) + " " + FormatDataToText(result.Data);
+        var evidenceTerms = Tokenize(evidence);
+        var overlap = queryTerms.Count(evidenceTerms.Contains);
+        // Interrogative words are intentionally excluded by Tokenize. Require a
+        // meaningful match for entity-bearing and retrieval questions.
+        return overlap >= Math.Max(1, (int)Math.Ceiling(queryTerms.Count * 0.15));
+    }
+
+    private static HashSet<string> Tokenize(string text)
+    {
+        var stopWords = new HashSet<string>(new[] { "what", "is", "are", "the", "a", "an", "of", "to", "in", "on", "for", "who", "when", "where", "why", "how", "tell", "me", "about", "current", "please" }, StringComparer.OrdinalIgnoreCase);
+        return Regex.Matches(text ?? string.Empty, @"[A-Za-z0-9]+(?:[+#./-][A-Za-z0-9]+)*")
+            .Select(m => m.Value.ToLowerInvariant())
+            .Where(token => token.Length > 1 && !stopWords.Contains(token))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyList<double> ExtractComparableNumbers(object? data)
+    {
+        var text = FormatDataToText(data);
+        return Regex.Matches(text, @"(?<![A-Za-z])[-+]?\d+(?:\.\d+)?")
+            .Select(match => double.TryParse(match.Value, out var value) ? (double?)value : null)
+            .Where(value => value.HasValue)
+            .Select(value => value!.Value)
+            .ToList();
     }
 
     private static string FormatDataToText(object? data)

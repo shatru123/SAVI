@@ -8,6 +8,9 @@ public sealed record ProviderResult
     public object? Data { get; init; }
     public double Confidence { get; init; } = 1.0;
     public DateTimeOffset RetrievedAt { get; init; } = DateTimeOffset.UtcNow;
+    public double AuthorityScore { get; init; } = 0.85;
+    public double FreshnessScore { get; init; } = 0.85;
+    public bool IsDeterministic { get; init; }
     public IReadOnlyList<SourceReference> Sources { get; init; } = Array.Empty<SourceReference>();
     public string? Error { get; init; }
 

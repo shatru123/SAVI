@@ -10,4 +10,5 @@ public sealed record TaskRequest
     public Dictionary<string, string> Parameters { get; init; } = new();
     public string ConversationId { get; init; } = string.Empty;
     public ContextPackage? Context { get; init; }
+    public QueryAnalysisResult? Analysis { get; init; }
 }

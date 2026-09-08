@@ -165,6 +165,13 @@ public class QueryUnderstandingService : IQueryUnderstandingService
 
         // Determine intent
         var intent = DetermineIntent(lower, isTechnical, subQuestions.Count > 1);
+        var requirements = ExtractInformationRequirements(lower);
+        var requiresFreshness = RequiresFreshness(lower);
+        var retrievalQueries = BuildRetrievalQueries(clean, resolvedContextQuery, canonicalQuery, requirements);
+        var isComputational = Regex.IsMatch(lower, @"\b(?:calculate|compute|convert|how much|equation|solve)\b|\d+\s*[+\-*/^]\s*\d+");
+        var isAmbiguous = detectedEntities.Count == 0 &&
+                          Regex.IsMatch(clean, @"^(?:what is|who is|tell me about|explain)\s+[^?]{1,40}\??$", RegexOptions.IgnoreCase) &&
+                          !Regex.IsMatch(lower, @"\b(?:programming|language|company|fruit|weather|capital|president|history|protocol|database|framework)\b");
 
         return new QueryAnalysisResult
         {
@@ -178,9 +185,54 @@ public class QueryUnderstandingService : IQueryUnderstandingService
             SubQuestions = subQuestions,
             ResolvedContextQuery = resolvedContextQuery,
             CanonicalLookupQuery = canonicalQuery,
+            RetrievalQueries = retrievalQueries,
+            InformationRequirements = requirements,
+            RequiresFreshness = requiresFreshness,
+            IsComputational = isComputational,
+            IsAmbiguous = isAmbiguous,
             Confidence = isTechnical ? 0.95 : 0.90,
             PolicyOverride = policyOverride
         };
+    }
+
+    private static IReadOnlyList<string> ExtractInformationRequirements(string lowerPrompt)
+    {
+        var requirements = new List<string>();
+        if (Regex.IsMatch(lowerPrompt, @"\b(?:what is|what are|define|meaning|explain)\b")) requirements.Add("definition");
+        if (Regex.IsMatch(lowerPrompt, @"\b(?:who|creator|invented|founded|author|built|developed)\b")) requirements.Add("creator");
+        if (Regex.IsMatch(lowerPrompt, @"\b(?:when|year|date|released|founded)\b")) requirements.Add("date");
+        if (Regex.IsMatch(lowerPrompt, @"\b(?:why|purpose|used|popular|benefit|advantage)\b")) requirements.Add("purpose");
+        if (Regex.IsMatch(lowerPrompt, @"\b(?:how|work|works|steps|process)\b")) requirements.Add("how");
+        if (Regex.IsMatch(lowerPrompt, @"\b(?:difference|compare|versus|\bvs\b)\b")) requirements.Add("comparison");
+        return requirements.Count == 0 ? new[] { "answer" } : requirements.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private static bool RequiresFreshness(string lowerPrompt)
+    {
+        return Regex.IsMatch(lowerPrompt,
+            @"\b(?:current|currently|latest|recent|today|now|live|real[- ]?time|forecast|weather|exchange rate|price|news|happened)\b",
+            RegexOptions.IgnoreCase);
+    }
+
+    private static IReadOnlyList<string> BuildRetrievalQueries(
+        string cleanPrompt,
+        string? resolvedContextQuery,
+        string canonicalQuery,
+        IReadOnlyList<string> requirements)
+    {
+        var queries = new List<string>();
+        AddIfNotEmpty(queries, resolvedContextQuery);
+        AddIfNotEmpty(queries, cleanPrompt);
+        if (!string.Equals(canonicalQuery, cleanPrompt, StringComparison.OrdinalIgnoreCase))
+        {
+            AddIfNotEmpty(queries, $"{canonicalQuery} {string.Join(" ", requirements)}");
+        }
+        return queries.Distinct(StringComparer.OrdinalIgnoreCase).Take(4).ToArray();
+
+        static void AddIfNotEmpty(List<string> values, string? value)
+        {
+            if (!string.IsNullOrWhiteSpace(value)) values.Add(value.Trim());
+        }
     }
 
     private static string ExtractPriorSubjectFromContext(ContextPackage? context)
@@ -258,10 +310,7 @@ public class QueryUnderstandingService : IQueryUnderstandingService
             ? meta.CanonicalName
             : priorSubject;
 
-        // "Who created it?" -> "Who created C# programming language?"
-        // "When was it released?" -> "When was C# programming language released?"
-        // "Why is it popular?" -> "Why is C# programming language popular?"
-        // "its creator" -> "the creator of C# programming language"
+        // Resolve follow-up questions against the previously selected subject.
         var resolved = Regex.Replace(text, @"\bits creator\b", $"the creator of {canonicalSubject}", RegexOptions.IgnoreCase);
         resolved = Regex.Replace(resolved, @"\bits population\b", $"the population of {canonicalSubject}", RegexOptions.IgnoreCase);
         resolved = Regex.Replace(resolved, @"\bits key features\b", $"the key features of {canonicalSubject}", RegexOptions.IgnoreCase);

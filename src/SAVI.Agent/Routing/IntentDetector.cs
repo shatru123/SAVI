@@ -429,7 +429,7 @@ public class IntentDetector
                 {
                     ["topic"] = analysis.CanonicalLookupQuery,
                     ["entity"] = primary,
-                    ["query"] = clean
+                    ["query"] = analysis.RetrievalQueries.FirstOrDefault() ?? clean
                 }, 0.95, policyOverride ?? analysis.PolicyOverride);
         }
 
@@ -442,7 +442,7 @@ public class IntentDetector
                 {
                     ["topic"] = analysis.CanonicalLookupQuery,
                     ["entity"] = primary,
-                    ["query"] = analysis.ResolvedContextQuery ?? clean
+                    ["query"] = analysis.RetrievalQueries.FirstOrDefault() ?? clean
                 }, 0.95, policyOverride ?? analysis.PolicyOverride);
         }
 
@@ -455,7 +455,7 @@ public class IntentDetector
                 {
                     ["topic"] = analysis.CanonicalLookupQuery,
                     ["entity"] = primary,
-                    ["query"] = analysis.ResolvedContextQuery
+                    ["query"] = analysis.RetrievalQueries.FirstOrDefault() ?? analysis.ResolvedContextQuery
                 }, 0.95, policyOverride ?? analysis.PolicyOverride);
         }
 
@@ -470,6 +470,22 @@ public class IntentDetector
                     ["entity"] = analysis.Entities.FirstOrDefault() ?? topic,
                     ["query"] = clean
                 }, 0.90, policyOverride ?? analysis.PolicyOverride);
+        }
+
+        // Generic knowledge questions use the same retrieval path even when the
+        // subject is unseen. Current/live requests stay on search providers so
+        // freshness can be evaluated rather than inferred from a stale article.
+        if (!analysis.RequiresFreshness &&
+            (Regex.IsMatch(lower, @"^(?:what|who|when|where|why|how|which|explain|define|tell me about)\b") ||
+             analysis.Intent is "general_knowledge" or "definition" or "creator_or_identity" or "historical_or_date" or "rationale_or_popularity" or "how_to"))
+        {
+            return new DetectedIntent(SaviConstants.Capabilities.Knowledge, "summary",
+                new Dictionary<string, string>
+                {
+                    ["topic"] = analysis.CanonicalLookupQuery,
+                    ["entity"] = analysis.Entities.FirstOrDefault() ?? analysis.Topic,
+                    ["query"] = analysis.RetrievalQueries.FirstOrDefault() ?? clean
+                }, 0.85, policyOverride ?? analysis.PolicyOverride);
         }
 
         // Default: Web Search abstraction (DuckDuckGo fallback)

@@ -44,7 +44,10 @@ public class EvidenceAggregator
                 RelevantPassages = relevantPassages,
                 SourceUrl = sourceUrl,
                 Confidence = result.Confidence,
-                RetrievedAt = DateTime.UtcNow,
+                AuthorityScore = result.AuthorityScore,
+                FreshnessScore = result.FreshnessScore,
+                IsDeterministic = result.IsDeterministic,
+                RetrievedAt = result.RetrievedAt.UtcDateTime,
                 Sources = result.Sources
             });
         }

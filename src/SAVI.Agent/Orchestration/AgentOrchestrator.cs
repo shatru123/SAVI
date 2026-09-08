@@ -209,7 +209,7 @@ public class AgentOrchestrator : IAgentOrchestrator
 
         // Stage 5: Execution Planning
         request.OnStepProgress?.Invoke(2, "Routing to optimal capability providers");
-        var plan = _executionPlanner.CreatePlan(intent, request);
+        var plan = _executionPlanner.CreatePlan(intent, request, analysis: analysis);
         EmitEvent("provider.selected", new { Primary = plan.PrimaryProviders.Select(p => p.Name).ToList(), Policy = plan.Policy.ToString() });
 
         // Tool Execution Branch
@@ -265,14 +265,27 @@ public class AgentOrchestrator : IAgentOrchestrator
         }
 
         // Stage 6: Concurrent Provider Execution
+        var taskParameters = new Dictionary<string, string>(intent.Parameters, StringComparer.OrdinalIgnoreCase)
+        {
+            ["canonical_query"] = analysis.CanonicalLookupQuery,
+            ["requirements"] = string.Join(",", analysis.InformationRequirements),
+            ["domain"] = analysis.Domain,
+            ["requires_freshness"] = analysis.RequiresFreshness.ToString()
+        };
+        if (analysis.RetrievalQueries.Count > 0)
+        {
+            taskParameters["retrieval_query"] = analysis.RetrievalQueries[0];
+        }
+
         var taskRequest = new TaskRequest
         {
             Capability = intent.Capability,
             Operation = intent.Operation,
-            Parameters = intent.Parameters,
+            Parameters = taskParameters,
             Prompt = request.Message,
             ConversationId = conversationId,
-            Context = context
+            Context = context,
+            Analysis = analysis
         };
 
         request.OnStepProgress?.Invoke(3, "Executing parallel provider queries");
@@ -291,6 +304,7 @@ public class AgentOrchestrator : IAgentOrchestrator
         // Fallback / Verification execution
         var hasSuccessfulPrimary = providerResults.Any(r => r.Success);
         bool shouldRunVerification = (plan.Policy == VerificationPolicy.Verified) ||
+                                     analysis.RequiresFreshness ||
                                      (!hasSuccessfulPrimary && plan.VerificationProviders.Count > 0);
 
         if (shouldRunVerification && plan.VerificationProviders.Count > 0)
@@ -424,7 +438,20 @@ public class AgentOrchestrator : IAgentOrchestrator
                 emitEvent("provider.completed", new { ProviderId = provider.Id, Success = false, LatencyMs = sw.ElapsedMilliseconds, Error = result.Error });
             }
 
-            return result;
+            return result with
+            {
+                AuthorityScore = provider.AuthorityLevel,
+                FreshnessScore = provider.Category switch
+                {
+                    ProviderCategory.LocalDeterministic => 1.0,
+                    ProviderCategory.SpecializedPublicApi => 0.95,
+                    ProviderCategory.WebSearch => 0.90,
+                    ProviderCategory.KnowledgeBase => 0.80,
+                    ProviderCategory.ReasoningSynthesis => 0.65,
+                    _ => 0.75
+                },
+                IsDeterministic = provider.Category == ProviderCategory.LocalDeterministic
+            };
         }
         catch (OperationCanceledException)
         {

@@ -58,11 +58,7 @@ public class WikipediaKnowledgeProvider : ICapabilityProvider
                 var extract = root.TryGetProperty("extract", out var eProp) ? eProp.GetString() ?? "" : "";
                 var desc = root.TryGetProperty("description", out var dProp) ? dProp.GetString() ?? "" : "";
 
-                // Guard against "C#" resolving to "C" (the letter)
-                bool isAlphabetMismatch = (topic.Equals("C#", StringComparison.OrdinalIgnoreCase) || topic.Contains("C#")) &&
-                                          (title.Equals("C", StringComparison.OrdinalIgnoreCase) || extract.Contains("Latin alphabet", StringComparison.OrdinalIgnoreCase));
-
-                if (!isAlphabetMismatch && !string.IsNullOrWhiteSpace(extract))
+                if (!string.IsNullOrWhiteSpace(extract) && IsCandidateRelevant(topic, title, extract))
                 {
                     var pageUrl = root.TryGetProperty("content_urls", out var cuProp) &&
                                   cuProp.TryGetProperty("desktop", out var desktopProp) &&
@@ -92,9 +88,7 @@ public class WikipediaKnowledgeProvider : ICapabilityProvider
             }
 
             // Fallback: Rich query search API
-            var searchQuery = topic.Equals("C#", StringComparison.OrdinalIgnoreCase) ? "C Sharp (programming language)" :
-                              topic.Equals("F#", StringComparison.OrdinalIgnoreCase) ? "F Sharp (programming language)" :
-                              topic;
+            var searchQuery = topic;
 
             var searchUrl = $"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={Uri.EscapeDataString(searchQuery)}&format=json&utf8=";
             using var sReq = new HttpRequestMessage(HttpMethod.Get, searchUrl);
@@ -108,10 +102,20 @@ public class WikipediaKnowledgeProvider : ICapabilityProvider
                     qObj.TryGetProperty("search", out var searchArr) &&
                     searchArr.GetArrayLength() > 0)
                 {
-                    var topMatch = searchArr[0];
-                    var topTitle = topMatch.GetProperty("title").GetString() ?? topic;
-                    var rawSnippet = topMatch.GetProperty("snippet").GetString() ?? "";
-                    var cleanSnippet = Regex.Replace(rawSnippet, @"<.*?>", string.Empty);
+                    var candidates = searchArr.EnumerateArray()
+                        .Select(item => new
+                        {
+                            Item = item,
+                            Title = item.GetProperty("title").GetString() ?? topic,
+                            Snippet = Regex.Replace(item.GetProperty("snippet").GetString() ?? "", "<.*?>", string.Empty)
+                        })
+                        .OrderByDescending(candidate => CandidateScore(topic, candidate.Title, candidate.Snippet))
+                        .ToList();
+                    var topMatch = candidates.FirstOrDefault(candidate => IsCandidateRelevant(topic, candidate.Title, candidate.Snippet));
+                    if (topMatch == null) return ProviderResult.Failed(Id, Name, $"No relevant knowledge found on Wikipedia for '{topic}'.");
+                    var topTitle = topMatch.Title;
+                    var rawSnippet = topMatch.Snippet;
+                    var cleanSnippet = rawSnippet;
                     var articleUrl = $"https://en.wikipedia.org/wiki/{Uri.EscapeDataString(topTitle.Replace(' ', '_'))}";
 
                     // Try to fetch the full summary of this top matched article
@@ -191,38 +195,31 @@ public class WikipediaKnowledgeProvider : ICapabilityProvider
 
     private static string ResolveWikipediaSlug(string topic)
     {
-        var clean = topic.Trim();
-        if (clean.Equals("C#", StringComparison.OrdinalIgnoreCase) ||
-            clean.Equals("C# programming language", StringComparison.OrdinalIgnoreCase) ||
-            clean.Equals("C sharp", StringComparison.OrdinalIgnoreCase))
-        {
-            return "C_Sharp_(programming_language)";
-        }
+        return topic.Trim().Replace(' ', '_');
+    }
 
-        if (clean.Equals("F#", StringComparison.OrdinalIgnoreCase) ||
-            clean.Equals("F# programming language", StringComparison.OrdinalIgnoreCase) ||
-            clean.Equals("F sharp", StringComparison.OrdinalIgnoreCase))
-        {
-            return "F_Sharp_(programming_language)";
-        }
+    private static bool IsCandidateRelevant(string query, string title, string content)
+    {
+        return CandidateScore(query, title, content) >= 0.35;
+    }
 
-        if (clean.Equals("C++", StringComparison.OrdinalIgnoreCase) ||
-            clean.Equals("C++ programming language", StringComparison.OrdinalIgnoreCase))
-        {
-            return "C++";
-        }
+    private static double CandidateScore(string query, string title, string content)
+    {
+        var queryTerms = Terms(query);
+        if (queryTerms.Count == 0) return 0;
+        var titleTerms = Terms(title);
+        var contentTerms = Terms(content);
+        var titleMatches = queryTerms.Count(titleTerms.Contains);
+        var contentMatches = queryTerms.Count(contentTerms.Contains);
+        return Math.Clamp((titleMatches / (double)queryTerms.Count) * 0.75 +
+                          (contentMatches / (double)queryTerms.Count) * 0.25, 0, 1);
+    }
 
-        if (clean.Equals(".NET", StringComparison.OrdinalIgnoreCase) ||
-            clean.Equals(".NET framework", StringComparison.OrdinalIgnoreCase))
-        {
-            return ".NET";
-        }
-
-        if (clean.Equals("ASP.NET Core", StringComparison.OrdinalIgnoreCase))
-        {
-            return "ASP.NET_Core";
-        }
-
-        return clean.Replace(' ', '_');
+    private static HashSet<string> Terms(string value)
+    {
+        return Regex.Matches(value ?? string.Empty, @"[A-Za-z0-9]+(?:[+#./-][A-Za-z0-9]+)*")
+            .Select(m => m.Value.ToLowerInvariant())
+            .Where(v => v.Length > 1)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 }

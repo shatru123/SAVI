@@ -24,7 +24,11 @@ public class ExecutionPlanner
         _providerRegistry = providerRegistry;
     }
 
-    public ExecutionPlan CreatePlan(DetectedIntent intent, AgentRequest request, VerificationPolicy defaultPolicy = VerificationPolicy.Balanced)
+    public ExecutionPlan CreatePlan(
+        DetectedIntent intent,
+        AgentRequest request,
+        VerificationPolicy defaultPolicy = VerificationPolicy.Balanced,
+        QueryAnalysisResult? analysis = null)
     {
         var policy = request.VerificationPolicyOverride ?? intent.PolicyOverride ?? defaultPolicy;
 
@@ -66,7 +70,8 @@ public class ExecutionPlanner
             Operation = intent.Operation,
             Parameters = intent.Parameters,
             Prompt = request.Message,
-            ConversationId = request.ConversationId
+            ConversationId = request.ConversationId,
+            Analysis = analysis
         };
 
         var matched = _providerRegistry.RankProviders(taskReq);

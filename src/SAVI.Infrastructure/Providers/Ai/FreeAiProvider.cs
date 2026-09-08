@@ -181,15 +181,9 @@ public class FreeAiProvider : ICapabilityProvider
             }
         }
 
-        // 3. Technical & Algorithmic Synthesizer (Instant high-confidence code solutions)
-        var techResult = TryTechnicalSynthesizer(prompt);
-        if (techResult != null)
-        {
-            return techResult;
-        }
-
-        // 4. Resilient Fallback: If AI model endpoints are rate-limited on shared cloud IPs,
-        // synthesize answers directly from live knowledge sources so SAVI always answers.
+        // Resilient fallback: if model endpoints are unavailable, retrieve evidence
+        // from knowledge/search sources. It is intentionally not a fixed answer
+        // database or entity-specific algorithm catalog.
         var fallback = await TryKnowledgeFallbackAsync(prompt, cancellationToken);
         if (fallback != null)
         {
@@ -298,115 +292,6 @@ public class FreeAiProvider : ICapabilityProvider
         {
             return null;
         }
-    }
-
-    private static ProviderResult? TryTechnicalSynthesizer(string query)
-    {
-        var lower = query.ToLowerInvariant();
-        if (!lower.Contains("code") && !lower.Contains("function") && !lower.Contains("program") &&
-            !lower.Contains("write") && !lower.Contains("implement") && !lower.Contains("reverse") &&
-            !lower.Contains("sort") && !lower.Contains("search") && !lower.Contains("fibonacci") &&
-            !lower.Contains("palindrome") && !lower.Contains("factorial") && !lower.Contains("linked list"))
-        {
-            return null;
-        }
-
-        string language = "C#";
-        if (lower.Contains("python") || lower.Contains("py")) language = "Python";
-        else if (lower.Contains("javascript") || lower.Contains("js") || lower.Contains("node")) language = "JavaScript";
-        else if (lower.Contains("typescript") || lower.Contains("ts")) language = "TypeScript";
-        else if (lower.Contains("java\b")) language = "Java";
-        else if (lower.Contains("c++") || lower.Contains("cpp")) language = "C++";
-
-        string code = "";
-        string explanation = "";
-
-        if (lower.Contains("reverse") && (lower.Contains("string") || lower.Contains("text") || lower.Contains("word")))
-        {
-            if (language == "Python")
-            {
-                code = "def reverse_string(text: str) -> str:\n    # Using slice notation with step -1\n    return text[::-1]\n\n# Example usage:\nprint(reverse_string('Hello World'))  # Output: dlroW olleH";
-                explanation = "In Python, the most idiomatic and performant way to reverse a string is using slice notation `text[::-1]`.";
-            }
-            else if (language == "JavaScript" || language == "TypeScript")
-            {
-                code = "function reverseString(str) {\n    return str.split('').reverse().join('');\n}\n\n// Example usage:\nconsole.log(reverseString('Hello World')); // Output: dlroW olleH";
-                explanation = "In JavaScript, you split the string into an array of characters, reverse the array, and join it back together.";
-            }
-            else
-            {
-                code = "public static string ReverseString(string text)\n{\n    if (string.IsNullOrEmpty(text)) return text;\n    char[] chars = text.ToCharArray();\n    Array.Reverse(chars);\n    return new string(chars);\n}\n\n// Example:\n// string reversed = ReverseString(\"Hello World\"); // Output: dlroW olleH";
-                explanation = "In C#, convert the string to a character array, invoke `Array.Reverse()`, and return a new string instance.";
-            }
-        }
-        else if (lower.Contains("fibonacci"))
-        {
-            if (language == "Python")
-            {
-                code = "def fibonacci(n: int) -> list[int]:\n    fib = [0, 1]\n    for _ in range(2, n):\n        fib.append(fib[-1] + fib[-2])\n    return fib[:n]\n\nprint(fibonacci(10))";
-                explanation = "Calculates the first N Fibonacci numbers in O(n) time and O(n) space complexity.";
-            }
-            else
-            {
-                code = "public static List<long> Fibonacci(int n)\n{\n    var list = new List<long>();\n    if (n <= 0) return list;\n    list.Add(0);\n    if (n == 1) return list;\n    list.Add(1);\n    for (int i = 2; i < n; i++)\n    {\n        list.Add(list[i - 1] + list[i - 2]);\n    }\n    return list;\n}";
-                explanation = "Calculates the Fibonacci sequence iteratively in linear O(n) time complexity.";
-            }
-        }
-        else if (lower.Contains("binary search"))
-        {
-            if (language == "Python")
-            {
-                code = "def binary_search(arr: list[int], target: int) -> int:\n    low, high = 0, len(arr) - 1\n    while low <= high:\n        mid = (low + high) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            low = mid + 1\n        else:\n            high = mid - 1\n    return -1";
-                explanation = "Binary search achieves O(log n) efficiency on a sorted array by halving the search window at each step.";
-            }
-            else
-            {
-                code = "public static int BinarySearch(int[] arr, int target)\n{\n    int low = 0, high = arr.Length - 1;\n    while (low <= high)\n    {\n        int mid = low + (high - low) / 2;\n        if (arr[mid] == target) return mid;\n        if (arr[mid] < target) low = mid + 1;\n        else high = mid - 1;\n    }\n    return -1;\n}";
-                explanation = "Iterative binary search in O(log n) time avoiding integer overflow in midpoint calculation.";
-            }
-        }
-        else if (lower.Contains("palindrome"))
-        {
-            if (language == "Python")
-            {
-                code = "def is_palindrome(s: str) -> bool:\n    clean = ''.join(c.lower() for c in s if c.isalnum())\n    return clean == clean[::-1]\n\nprint(is_palindrome('A man, a plan, a canal: Panama')) # True";
-                explanation = "Filters out non-alphanumeric characters and checks if the string equals its reverse.";
-            }
-            else
-            {
-                code = "public static bool IsPalindrome(string s)\n{\n    int left = 0, right = s.Length - 1;\n    while (left < right)\n    {\n        while (left < right && !char.IsLetterOrDigit(s[left])) left++;\n        while (left < right && !char.IsLetterOrDigit(s[right])) right--;\n        if (char.ToLower(s[left]) != char.ToLower(s[right])) return false;\n        left++;\n        right--;\n    }\n    return true;\n}";
-                explanation = "Two-pointer verification in O(n) time and O(1) space.";
-            }
-        }
-        else if (lower.Contains("factorial"))
-        {
-            if (language == "Python")
-            {
-                code = "def factorial(n: int) -> int:\n    if n < 0: raise ValueError('Factorial not defined for negative numbers')\n    result = 1\n    for i in range(2, n + 1):\n        result *= i\n    return result\n\nprint(factorial(5)) # 120";
-                explanation = "Iterative factorial calculation with O(n) time and O(1) space.";
-            }
-            else
-            {
-                code = "public static long Factorial(int n)\n{\n    if (n < 0) throw new ArgumentOutOfRangeException(nameof(n));\n    long result = 1;\n    for (int i = 2; i <= n; i++) result *= i;\n    return result;\n}";
-                explanation = "Iterative factorial calculation avoiding call stack depth limits.";
-            }
-        }
-
-        if (!string.IsNullOrEmpty(code))
-        {
-            var content = $"Here is the solution in **{language}**:\n\n```{language.ToLowerInvariant()}\n{code}\n```\n\n{explanation}";
-            var source = new SourceReference
-            {
-                Title = $"{language} Algorithmic Engine",
-                Url = "https://savi-4grt.onrender.com",
-                SourceName = "SAVI Algorithmic Engine",
-                Snippet = explanation,
-                ReliabilityScore = 0.98
-            };
-            return ProviderResult.Succeeded("free_ai", "SAVI Neural Engine (Free Model)", content, confidence: 0.96, sources: new[] { source });
-        }
-
-        return null;
     }
 
     private async Task<ProviderResult?> TryKnowledgeFallbackAsync(string query, CancellationToken cancellationToken)

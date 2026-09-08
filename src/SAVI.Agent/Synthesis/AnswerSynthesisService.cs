@@ -8,40 +8,12 @@ namespace SAVI.Agent.Synthesis;
 
 public class AnswerSynthesisService : IAnswerSynthesisService
 {
-    private static readonly Dictionary<string, (string Summary, string Creator, string Released, string KeyFeatures)> TechnicalFacts =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            ["C#"] = (
-                "C# (pronounced \"C-sharp\") is a modern, object-oriented, and type-safe programming language developed by Microsoft as part of its .NET platform.",
-                "Anders Hejlsberg and Microsoft",
-                "2000 (first released with .NET in 2002)",
-                "It is popular because of its elegant syntax, cross-platform performance, automatic memory management, extensive standard library, and versatility for building cloud services, web APIs, desktop software, and games with Unity."
-            ),
-            ["C++"] = (
-                "C++ is a high-performance, general-purpose programming language that provides low-level memory manipulation alongside object-oriented and generic programming facilities.",
-                "Bjarne Stroustrup",
-                "1985",
-                "It is widely used in systems programming, game development, browsers, operating systems, and performance-critical financial applications."
-            ),
-            ["F#"] = (
-                "F# is a functional-first, cross-platform, open-source programming language for .NET, combining succinct syntax with strong typing.",
-                "Don Syme and Microsoft Research",
-                "2005",
-                "It is popular in data science, financial modeling, and complex domain-driven architectures."
-            ),
-            [".NET"] = (
-                ".NET is a free, open-source, cross-platform developer platform created by Microsoft for building applications across web, cloud, mobile, and desktop.",
-                "Microsoft",
-                "2002 (with modern cross-platform .NET Core launched in 2016)",
-                "It is renowned for world-class throughput, unified APIs, rich tooling with Visual Studio and VS Code, and active LTS releases."
-            ),
-            ["ASP.NET Core"] = (
-                "ASP.NET Core is an open-source, high-performance, modular web framework for building cloud-enabled modern web applications and APIs on .NET.",
-                "Microsoft",
-                "2016",
-                "It is celebrated for high benchmark performance, built-in dependency injection, asynchronous architecture, and cross-platform flexibility."
-            )
-        };
+    private readonly EvidenceEvaluator _evidenceEvaluator;
+
+    public AnswerSynthesisService(EvidenceEvaluator? evidenceEvaluator = null)
+    {
+        _evidenceEvaluator = evidenceEvaluator ?? new EvidenceEvaluator();
+    }
 
     public Task<SynthesizedAnswer> SynthesizeAsync(
         string userQuestion,
@@ -52,7 +24,13 @@ public class AnswerSynthesisService : IAnswerSynthesisService
         CancellationToken cancellationToken = default)
     {
         // 1. Filter evidence by relevance
-        var relevantEvidence = FilterRelevantEvidence(analysis, evidenceList);
+        var evaluatedEvidence = evidenceList
+            .Select(evidence => _evidenceEvaluator.Evaluate(analysis, evidence))
+            .ToList();
+        var relevantEvidence = evaluatedEvidence
+            .Where(evidence => evidence.IsRelevant)
+            .OrderByDescending(evidence => evidence.RelevanceScore * 0.50 + evidence.AuthorityScore * 0.30 + evidence.FreshnessScore * 0.20)
+            .ToList();
 
         // Deduplicate sources
         var allSources = relevantEvidence
@@ -71,22 +49,15 @@ public class AnswerSynthesisService : IAnswerSynthesisService
             .Select(g => g.First())
             .ToList();
 
-        // 2. Check for technical entity questions (e.g. "What is C#?", "What is C#, who created it...?")
-        var primaryEntity = analysis.Entities.FirstOrDefault();
-        if (!string.IsNullOrWhiteSpace(primaryEntity) && TechnicalFacts.TryGetValue(primaryEntity, out var fact))
-        {
-            var synthesized = SynthesizeTechnicalEntityAnswer(analysis, primaryEntity, fact, relevantEvidence, isVoiceMode, allSources);
-            return Task.FromResult(synthesized);
-        }
-
-        // 3. Multi-part questions handling
+        // Multi-part questions are answered from evidence for each requested aspect.
         if (analysis.SubQuestions.Count > 1)
         {
             var multiAnswer = SynthesizeMultiPartAnswer(analysis, relevantEvidence, isVoiceMode, allSources);
             return Task.FromResult(multiAnswer);
         }
 
-        // 4. If no relevant evidence was found
+        // If no relevant evidence was found, do not turn a provider response or a
+        // remembered fact into an unverified answer.
         if (relevantEvidence.Count == 0)
         {
             var lowerQ = userQuestion.ToLowerInvariant();
@@ -113,7 +84,7 @@ public class AnswerSynthesisService : IAnswerSynthesisService
             });
         }
 
-        // 5. Standard single-topic factual synthesis
+        // Standard single-topic factual synthesis
         var topEvidence = relevantEvidence.OrderByDescending(e => e.Confidence).First();
         var mainContent = CleanFactualContent(topEvidence.Content, topEvidence.Title);
 
@@ -123,125 +94,30 @@ public class AnswerSynthesisService : IAnswerSynthesisService
             mainContent = CleanRawDumps(mainContent, analysis.Topic);
         }
 
+        // Retrieval sources do not always repeat a symbol, alias, or resolved
+        // subject in the first sentence. Preserve the user's resolved subject in
+        // the answer without inventing a fact.
+        var answerSubject = analysis.Entities.FirstOrDefault() ?? analysis.Topic;
+        if (!string.IsNullOrWhiteSpace(answerSubject) &&
+            !mainContent.Contains(answerSubject, StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(mainContent))
+        {
+            mainContent = $"{answerSubject}: {mainContent}";
+        }
+
         var voiceContent = FormatVoiceResponse(mainContent);
+        var isComplete = topEvidence.RequirementCoverage >= 0.75;
 
         return Task.FromResult(new SynthesizedAnswer
         {
             MainContent = mainContent,
             VoiceContent = voiceContent,
             Confidence = topEvidence.Confidence,
-            IsVerified = true,
+            IsVerified = isComplete,
             Sources = allSources,
-            IsComplete = true
+            IsComplete = isComplete,
+            UnansweredSubQuestions = isComplete ? Array.Empty<string>() : analysis.SubQuestions
         });
-    }
-
-    private static List<ProviderEvidence> FilterRelevantEvidence(QueryAnalysisResult analysis, IReadOnlyList<ProviderEvidence> evidenceList)
-    {
-        var relevant = new List<ProviderEvidence>();
-
-        foreach (var ev in evidenceList)
-        {
-            var contentLower = ev.Content.ToLowerInvariant();
-            var titleLower = ev.Title.ToLowerInvariant();
-
-            // REJECT C# returning letter C
-            if (analysis.Entities.Any(e => e.Equals("C#", StringComparison.OrdinalIgnoreCase)))
-            {
-                if ((titleLower == "c" || titleLower == "the letter c" || contentLower.Contains("latin alphabet")) &&
-                    !contentLower.Contains("programming") && !contentLower.Contains(".net"))
-                {
-                    // Irrelevant / false match: Latin alphabet "C"
-                    continue;
-                }
-            }
-
-            // REJECT C++ returning letter C
-            if (analysis.Entities.Any(e => e.Equals("C++", StringComparison.OrdinalIgnoreCase)))
-            {
-                if ((titleLower == "c" || contentLower.Contains("latin alphabet")) && !contentLower.Contains("programming"))
-                {
-                    continue;
-                }
-            }
-
-            relevant.Add(ev);
-        }
-
-        return relevant;
-    }
-
-    private static SynthesizedAnswer SynthesizeTechnicalEntityAnswer(
-        QueryAnalysisResult analysis,
-        string entity,
-        (string Summary, string Creator, string Released, string KeyFeatures) fact,
-        IReadOnlyList<ProviderEvidence> evidence,
-        bool isVoiceMode,
-        IReadOnlyList<SourceReference> sources)
-    {
-        var subQuestions = analysis.SubQuestions;
-        var sb = new StringBuilder();
-        var voiceSb = new StringBuilder();
-
-        // Check which aspects were requested
-        bool askedWhat = subQuestions.Any(q => Regex.IsMatch(q, @"\b(?:what is|define|explain)\b", RegexOptions.IgnoreCase)) || subQuestions.Count == 1;
-        bool askedWho = subQuestions.Any(q => Regex.IsMatch(q, @"\b(?:who created|who built|who designed|creator|author)\b", RegexOptions.IgnoreCase));
-        bool askedWhen = subQuestions.Any(q => Regex.IsMatch(q, @"\b(?:when was|release date|released|introduced|created)\b", RegexOptions.IgnoreCase));
-        bool askedWhy = subQuestions.Any(q => Regex.IsMatch(q, @"\b(?:why is|popular|advantages|benefits|features)\b", RegexOptions.IgnoreCase));
-
-        // If it's a general question ("What is C#?"), answer what it is and briefly mention its purpose
-        if (subQuestions.Count <= 1)
-        {
-            // Prefer evidence extract if available and high quality
-            var bestEv = evidence.FirstOrDefault(e => e.Content.Contains(entity, StringComparison.OrdinalIgnoreCase));
-            var cleanedEv = bestEv != null ? CleanFactualContent(bestEv.Content, entity) : string.Empty;
-            var coreText = (!string.IsNullOrWhiteSpace(cleanedEv) && cleanedEv.Length > 20 && !IsRawLinkOrJson(cleanedEv))
-                ? cleanedEv
-                : fact.Summary;
-
-            sb.Append(coreText);
-            voiceSb.Append(coreText);
-        }
-        else
-        {
-            // Multi-part breakdown: synthesize complete answer covering all 4 parts
-            if (askedWhat)
-            {
-                sb.AppendLine($"**{entity}**: {fact.Summary}\n");
-                voiceSb.Append($"{fact.Summary} ");
-            }
-
-            if (askedWho)
-            {
-                sb.AppendLine($"• **Creator**: Developed by {fact.Creator}.");
-                voiceSb.Append($"It was created by {fact.Creator}. ");
-            }
-
-            if (askedWhen)
-            {
-                sb.AppendLine($"• **Release Date**: Introduced in {fact.Released}.");
-                voiceSb.Append($"It was introduced in {fact.Released}. ");
-            }
-
-            if (askedWhy)
-            {
-                sb.AppendLine($"• **Why It's Popular**: {fact.KeyFeatures}");
-                voiceSb.Append(fact.KeyFeatures);
-            }
-        }
-
-        var mainContent = sb.ToString().Trim();
-        var voiceContent = FormatVoiceResponse(voiceSb.ToString().Trim());
-
-        return new SynthesizedAnswer
-        {
-            MainContent = mainContent,
-            VoiceContent = voiceContent,
-            Confidence = 0.98,
-            IsVerified = true,
-            Sources = sources,
-            IsComplete = true
-        };
     }
 
     private static SynthesizedAnswer SynthesizeMultiPartAnswer(
@@ -259,8 +135,8 @@ public class AnswerSynthesisService : IAnswerSynthesisService
         {
             var subQ = analysis.SubQuestions[i];
             var matchingEvidence = evidence.FirstOrDefault(e =>
-                e.RelevantPassages.Any(p => ContainsOverlap(p, subQ)) ||
-                ContainsOverlap(e.Content, subQ));
+                e.RelevantPassages.Any(p => ContainsOverlap(p, $"{subQ} {analysis.Topic} {string.Join(" ", analysis.Entities)}")) ||
+                ContainsOverlap(e.Content, $"{subQ} {analysis.Topic} {string.Join(" ", analysis.Entities)}"));
 
             if (matchingEvidence != null)
             {
