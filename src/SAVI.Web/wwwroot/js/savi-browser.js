@@ -261,9 +261,15 @@
             this.listeners.forEach(listener => listener(next, detail));
         }
 
+        ensureSession() {
+            this.sessionId ??= 'voice_' + Math.random().toString(36).slice(2) + Date.now();
+            this.startedAt ||= Date.now();
+            return this.sessionId;
+        }
+
         start(conversationId) {
             this.intentionalStop = false;
-            this.sessionId ??= 'voice_' + Math.random().toString(36).slice(2) + Date.now();
+            this.ensureSession();
             this.conversationId = conversationId || this.conversationId;
             this.startedAt ||= Date.now();
             this.transition('REQUESTING_PERMISSION', { conversationId: this.conversationId });
@@ -277,6 +283,7 @@
         }
 
         nextGeneration(turnId = this.turnId) {
+            this.ensureSession();
             this.turnId = turnId;
             this.generationId = `${this.sessionId || 'session'}:g${++this.generationCounter}`;
             return this.generationId;
@@ -284,6 +291,7 @@
 
         processing(turnId = this.turnId) { this.turnId = turnId; this.transition('PROCESSING', { turnId }); }
         speaking(turnId = this.turnId) { this.turnId = turnId; this.transition('SAVI_SPEAKING', { turnId }); }
+        userSpeaking(turnId = this.turnId) { this.turnId = turnId; this.transition('USER_SPEAKING', { turnId }); }
         listening() { this.transition('LISTENING', { turnId: this.turnId }); }
         interrupted(reason = 'user') { this.transition('INTERRUPTED', { turnId: this.turnId, reason }); }
         stop() { this.intentionalStop = true; this.transition('IDLE'); }
@@ -324,6 +332,13 @@
                 ...this.audio.diagnostics(),
                 ...this.voiceSession.diagnostics()
             };
+        },
+        async copyText(text) {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(String(text ?? ''));
+                return true;
+            }
+            return false;
         }
     }.init();
 })(window, navigator);

@@ -39,14 +39,16 @@ public class EvidenceAggregator
             {
                 ProviderId = result.ProviderId,
                 ProviderName = result.ProviderName,
-                Title = title,
+                Capability = result.Capability,
+                Title = string.IsNullOrWhiteSpace(result.Title) ? title : result.Title,
                 Content = content,
-                RelevantPassages = relevantPassages,
+                RelevantPassages = result.RelevantPassages.Count > 0 ? result.RelevantPassages : relevantPassages,
                 SourceUrl = sourceUrl,
                 Confidence = result.Confidence,
                 AuthorityScore = result.AuthorityScore,
                 FreshnessScore = result.FreshnessScore,
                 IsDeterministic = result.IsDeterministic,
+                Latency = result.Latency,
                 RetrievedAt = result.RetrievedAt.UtcDateTime,
                 Sources = result.Sources
             });

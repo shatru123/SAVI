@@ -346,7 +346,7 @@ Answer: Done.";
         Assert.Equal("voice_control", brevityIntent2.Capability);
         Assert.Equal("keep_it_short", brevityIntent2.Operation);
 
-        // 2. Test orchestrator brevity resolution for .NET dependency injection
+        // 2. Test orchestrator brevity resolution from arbitrary prior content
         var context = new ContextPackage
         {
             CurrentPrompt = "Wait, keep it short.",
@@ -362,10 +362,7 @@ Answer: Done.";
         Assert.NotNull(method);
 
         var response = (string)method.Invoke(null, new object[] { context })!;
-        Assert.Contains("three lifetimes", response);
-        Assert.Contains("Transient", response);
-        Assert.Contains("Scoped", response);
-        Assert.Contains("Singleton", response);
+        Assert.Equal("In .NET, dependency injection is built around the ServiceProvider and ServiceCollection types.", response);
     }
 
     [Fact]
@@ -428,7 +425,7 @@ Answer: Done.";
         };
 
         var response = (string)method.Invoke(null, new object[] { noteMsg })!;
-        Assert.Equal("The note about your meeting at 3 PM.", response);
+        Assert.Equal("I have a note about your meeting at 3 PM.", response);
     }
 
     [Fact]
@@ -455,7 +452,7 @@ Answer: Done.";
         Assert.Equal("clarify", clarifyIntent.Operation);
         Assert.Equal("Got it. What did you mean?", personality.FormatChitChat(clarifyIntent.Operation, "Actually, that's not what I meant"));
 
-        // "Go back to the first one" for Mars facts
+        // "Go back to the first one" extracts the first enumerated item generically
         var firstItemIntent = detector.Detect("Go back to the first one.");
         Assert.Equal("voice_control", firstItemIntent.Capability);
         Assert.Equal("first_item", firstItemIntent.Operation);
@@ -473,7 +470,7 @@ Answer: Done.";
         Assert.NotNull(method);
 
         var result = (string)method.Invoke(null, new object[] { marsContext })!;
-        Assert.Equal("Mars gets its red color from iron oxide, or rust, covering its surface.", result);
+        Assert.Equal("Mars is known as the Red Planet due to iron oxide on its surface. Fact two...", result);
     }
 
     [Fact]

@@ -35,7 +35,12 @@ public class WttrInWeatherProvider : ICapabilityProvider
     public async Task<ProviderResult> ExecuteAsync(TaskRequest request, CancellationToken cancellationToken = default)
     {
         var city = request.Parameters.GetValueOrDefault("city") ??
-                   request.Parameters.GetValueOrDefault("location") ?? "London";
+                   request.Parameters.GetValueOrDefault("location") ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(city))
+        {
+            return ProviderResult.Failed(Id, Name, "A location is required for a weather request.");
+        }
 
         try
         {

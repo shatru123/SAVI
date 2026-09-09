@@ -175,9 +175,9 @@ public class IntentDetector
                 var prevWeatherMatch = WeatherRegex.Match(lastWeatherMsg.Content);
                 var prevCity = prevWeatherMatch.Groups[1].Success && !string.IsNullOrWhiteSpace(prevWeatherMatch.Groups[1].Value)
                     ? prevWeatherMatch.Groups[1].Value.Trim()
-                    : "Pune";
+                    : string.Empty;
 
-                if (isTomorrow && (isTimeframeOnly || !locationFollowup.Success))
+                if (!string.IsNullOrWhiteSpace(prevCity) && isTomorrow && (isTimeframeOnly || !locationFollowup.Success))
                 {
                     return new DetectedIntent(SaviConstants.Capabilities.Weather, "forecast",
                         new Dictionary<string, string> { ["city"] = prevCity, ["timeframe"] = "tomorrow" }, 0.95, policyOverride);
@@ -283,9 +283,8 @@ public class IntentDetector
         {
             var city = weatherMatch.Groups[1].Success && !string.IsNullOrWhiteSpace(weatherMatch.Groups[1].Value)
                 ? weatherMatch.Groups[1].Value.Trim()
-                : "London";
+                : string.Empty;
             city = Regex.Replace(city, @"\b(?:right now|today|currently|now|please)\b", "", RegexOptions.IgnoreCase).Trim(' ', '?', '.');
-            if (string.IsNullOrWhiteSpace(city)) city = "London";
             return new DetectedIntent(SaviConstants.Capabilities.Weather, "current",
                 new Dictionary<string, string> { ["city"] = city }, 0.95, policyOverride);
         }

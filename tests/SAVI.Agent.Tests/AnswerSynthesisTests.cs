@@ -64,7 +64,19 @@ public class AnswerSynthesisTests
         var prompt = "What is C#, who created it, when was it released, and why is it popular?";
         var analysis = _analyzer.Analyze(prompt);
 
-        var result = await _synthesizer.SynthesizeAsync(prompt, analysis, Array.Empty<ProviderEvidence>(), new ContextPackage(), isVoiceMode: false);
+        var evidence = new[]
+        {
+            new ProviderEvidence
+            {
+                ProviderId = "knowledge",
+                ProviderName = "Test Knowledge",
+                Title = "C# programming language",
+                Content = "C# is a general-purpose programming language developed by Microsoft. Anders Hejlsberg led its design. It was released in 2000 and became popular because it integrates with the .NET platform and supports modern application development.",
+                Confidence = 0.95
+            }
+        };
+
+        var result = await _synthesizer.SynthesizeAsync(prompt, analysis, evidence, new ContextPackage(), isVoiceMode: false);
 
         Assert.True(result.IsComplete);
         Assert.Contains("C#", result.MainContent);

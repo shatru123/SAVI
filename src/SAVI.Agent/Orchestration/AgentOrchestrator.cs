@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using SAVI.Agent.Planning;
 using SAVI.Agent.Routing;
 using SAVI.Agent.Synthesis;
@@ -102,6 +103,23 @@ public class AgentOrchestrator : IAgentOrchestrator
         var intent = _intentDetector.Detect(request.Message, context);
         EmitEvent("request.classified", new { Capability = intent.Capability, Operation = intent.Operation, IsTechnical = analysis.IsTechnical, Topic = analysis.Topic });
         LogActivity($"2. Analyzed query '{analysis.Topic}' (Domain: {analysis.Domain}) -> Routed capability '{intent.Capability}' (Operation: {intent.Operation})");
+
+        if (intent.Capability == SaviConstants.Capabilities.Weather &&
+            string.IsNullOrWhiteSpace(intent.Parameters.GetValueOrDefault("city")) &&
+            string.IsNullOrWhiteSpace(intent.Parameters.GetValueOrDefault("location")))
+        {
+            const string clarification = "Which location should I check the weather for?";
+            await _conversationService.AppendMessageAsync(conversationId, MessageRole.Assistant, clarification, MessageType.Text, cancellationToken: cancellationToken);
+            return new AgentResponse
+            {
+                Message = clarification,
+                VoiceFriendlyMessage = clarification,
+                ConversationId = conversationId,
+                Success = true,
+                Confidence = 1.0,
+                ActivityLogs = activityLogs
+            };
+        }
 
         // Handle Voice Control Commands (Stop, Repeat, Continue, Wait, Go Back, Keep It Short, etc.)
         if (intent.Capability == "voice_control")
@@ -438,8 +456,13 @@ public class AgentOrchestrator : IAgentOrchestrator
                 emitEvent("provider.completed", new { ProviderId = provider.Id, Success = false, LatencyMs = sw.ElapsedMilliseconds, Error = result.Error });
             }
 
+            var extracted = _evidenceAggregator.Aggregate(new[] { result }).FirstOrDefault();
             return result with
             {
+                Capability = request.Capability,
+                Title = extracted?.Title ?? string.Empty,
+                RelevantPassages = extracted?.RelevantPassages ?? Array.Empty<string>(),
+                Latency = sw.Elapsed,
                 AuthorityScore = provider.AuthorityLevel,
                 FreshnessScore = provider.Category switch
                 {
@@ -465,67 +488,43 @@ public class AgentOrchestrator : IAgentOrchestrator
             sw.Stop();
             logActivity($"✗ {provider.Name} error: {ex.Message}");
             emitEvent("provider.completed", new { ProviderId = provider.Id, Success = false, Error = ex.Message });
-            return ProviderResult.Failed(provider.Id, provider.Name, ex.Message);
+            return ProviderResult.Failed(provider.Id, provider.Name, ex.Message) with
+            {
+                Capability = request.Capability,
+                Latency = sw.Elapsed
+            };
         }
     }
 
     private static string HandleKeepItShort(ContextPackage context)
     {
-        var userMsgs = context.RecentMessages.Where(m => m.Role == MessageRole.User).ToList();
-        var lastUserInquiry = userMsgs.Count > 1 ? userMsgs[^2].Content : (userMsgs.Count > 0 ? userMsgs[^1].Content : "");
         var lastAssistantReply = context.RecentMessages.LastOrDefault(m => m.Role == MessageRole.Assistant)?.Content ?? "";
-
-        // Scenario B: .NET dependency injection
-        if (lastUserInquiry.Contains("dependency injection", StringComparison.OrdinalIgnoreCase) ||
-            lastAssistantReply.Contains("dependency injection", StringComparison.OrdinalIgnoreCase) ||
-            lastUserInquiry.Contains(".net", StringComparison.OrdinalIgnoreCase))
-        {
-            return ".NET DI resolves dependencies using three lifetimes: Transient creates new instances every time, Scoped creates one per request, and Singleton creates a single shared instance.";
-        }
-
-        if (!string.IsNullOrWhiteSpace(lastAssistantReply))
-        {
-            var firstSentence = lastAssistantReply.Split(new[] { '.', '!', '?' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(firstSentence))
-            {
-                return firstSentence.Trim() + ".";
-            }
-        }
-
-        return "Understood. Keeping it brief and concise.";
+        return ExtractFirstSentence(lastAssistantReply) ?? "Understood. I’ll keep the answer concise.";
     }
 
     private static string HandleFirstItem(ContextPackage context)
     {
         var lastAssistantReply = context.RecentMessages.LastOrDefault(m => m.Role == MessageRole.Assistant)?.Content ?? "";
-
-        if (lastAssistantReply.Contains("Mars", StringComparison.OrdinalIgnoreCase) ||
-            lastAssistantReply.Contains("Red Planet", StringComparison.OrdinalIgnoreCase))
-        {
-            return "Mars gets its red color from iron oxide, or rust, covering its surface.";
-        }
-
-        var lines = lastAssistantReply.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        var firstItem = lines.FirstOrDefault(l => l.Trim().StartsWith("•") || l.Trim().StartsWith("1.") || l.Trim().StartsWith("Fact one"));
-        if (!string.IsNullOrWhiteSpace(firstItem))
-        {
-            return firstItem.Trim('•', '*', ' ', '1', '.', ':');
-        }
-
-        return "Going back to the first point.";
+        var firstItem = lastAssistantReply
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim())
+            .FirstOrDefault(line => Regex.IsMatch(line, @"^(?:[-*•]|\d+[.)])\s*") ||
+                                    Regex.IsMatch(line, @"^[A-Za-z][A-Za-z\s-]{0,24}:\s+\S"));
+        return string.IsNullOrWhiteSpace(firstItem)
+            ? ExtractFirstSentence(lastAssistantReply) ?? "I couldn't find a separate first item in the previous answer."
+            : Regex.Replace(Regex.Replace(firstItem, @"^(?:[-*•]|\d+[.)])\s*", ""), @"^[A-Za-z][A-Za-z\s-]{0,24}:\s+", "").Trim();
     }
 
     private static string HandleClarifyNote(ContextPackage context)
     {
         var lastAssistantReply = context.RecentMessages.LastOrDefault(m => m.Role == MessageRole.Assistant)?.Content ?? "";
+        return ExtractFirstSentence(lastAssistantReply) ?? "I don't have enough context to identify that note.";
+    }
 
-        if (lastAssistantReply.Contains("meeting", StringComparison.OrdinalIgnoreCase) ||
-            lastAssistantReply.Contains("3 PM", StringComparison.OrdinalIgnoreCase) ||
-            lastAssistantReply.Contains("note", StringComparison.OrdinalIgnoreCase))
-        {
-            return "The note about your meeting at 3 PM.";
-        }
-
-        return "The note we were discussing.";
+    private static string? ExtractFirstSentence(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var sentence = Regex.Match(text.Trim(), @"^(.+?[.!?])(?:\s|$)", RegexOptions.Singleline).Groups[1].Value;
+        return string.IsNullOrWhiteSpace(sentence) ? text.Trim() : sentence.Trim();
     }
 }

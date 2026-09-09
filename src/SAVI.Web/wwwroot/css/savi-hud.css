@@ -241,6 +241,60 @@ body {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
+.savi-message-content {
+  white-space: normal;
+}
+
+.savi-message-content h2,
+.savi-message-content h3,
+.savi-message-content h4 {
+  margin: 0.3rem 0 0.5rem;
+  color: var(--savi-cyan);
+}
+
+.savi-message-content code {
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  background: rgba(0, 240, 255, 0.08);
+  color: #b9f7ff;
+}
+
+.savi-code-block {
+  margin: 0.6rem 0;
+  padding: 0.8rem;
+  overflow-x: auto;
+  border: 1px solid var(--savi-border-subtle);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.savi-code-block code {
+  padding: 0;
+  background: transparent;
+  white-space: pre;
+}
+
+.savi-message-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.savi-message-action {
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--savi-border-subtle);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--savi-text-secondary);
+  cursor: pointer;
+}
+
+.savi-message-action:hover {
+  color: var(--savi-cyan);
+  border-color: var(--savi-border-glow);
+}
+
 .savi-input-deck {
   display: flex;
   gap: 10px;
@@ -838,4 +892,3 @@ body {
     min-width: 0;
   }
 }
-

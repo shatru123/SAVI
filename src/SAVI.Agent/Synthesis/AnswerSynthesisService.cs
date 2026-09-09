@@ -130,18 +130,36 @@ public class AnswerSynthesisService : IAnswerSynthesisService
         var voiceSb = new StringBuilder();
         var unanswered = new List<string>();
 
+        if (evidence.Count == 0)
+        {
+            var subject = string.IsNullOrWhiteSpace(analysis.Topic) ? "that request" : analysis.Topic;
+            var missingParts = string.Join("; ", analysis.SubQuestions);
+            var unavailable = $"I couldn't verify the requested details about {subject} right now. The parts I could not confirm were: {missingParts}";
+            return new SynthesizedAnswer
+            {
+                MainContent = unavailable,
+                VoiceContent = CleanForSpeech(unavailable),
+                Confidence = 0,
+                IsVerified = false,
+                Sources = sources,
+                IsComplete = false,
+                UnansweredSubQuestions = analysis.SubQuestions
+            };
+        }
+
         // Synthesize an answer for each sub-question from available evidence passages
         for (int i = 0; i < analysis.SubQuestions.Count; i++)
         {
             var subQ = analysis.SubQuestions[i];
             var matchingEvidence = evidence.FirstOrDefault(e =>
-                e.RelevantPassages.Any(p => ContainsOverlap(p, $"{subQ} {analysis.Topic} {string.Join(" ", analysis.Entities)}")) ||
-                ContainsOverlap(e.Content, $"{subQ} {analysis.Topic} {string.Join(" ", analysis.Entities)}"));
+                CoversSubQuestion(subQ, e) &&
+                (e.RelevantPassages.Any(p => ContainsOverlap(p, $"{subQ} {analysis.Topic} {string.Join(" ", analysis.Entities)}")) ||
+                 ContainsOverlap(e.Content, $"{subQ} {analysis.Topic} {string.Join(" ", analysis.Entities)}")));
 
             if (matchingEvidence != null)
             {
                 var cleanPart = CleanFactualContent(matchingEvidence.Content, matchingEvidence.Title);
-                var firstSentence = ExtractFirstSentences(cleanPart, 2);
+                var firstSentence = ExtractRelevantSentences(cleanPart, subQ, 2);
                 sb.AppendLine($"• **{subQ}**\n{firstSentence}\n");
                 voiceSb.Append($"{firstSentence} ");
             }
@@ -181,6 +199,25 @@ public class AnswerSynthesisService : IAnswerSynthesisService
             .ToList();
 
         return words.Count > 0 && words.Any(w => text.Contains(w, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool CoversSubQuestion(string subQuestion, ProviderEvidence evidence)
+    {
+        var text = string.Join(" ", evidence.Title, evidence.Content, string.Join(" ", evidence.RelevantPassages));
+        if (string.IsNullOrWhiteSpace(text)) return false;
+
+        if (Regex.IsMatch(subQuestion, @"\b(?:who|creator|created|founded|invented|author|developed)\b", RegexOptions.IgnoreCase))
+            return Regex.IsMatch(text, @"\b(?:created|creator|developed|founded|invented|authored|author|by)\b", RegexOptions.IgnoreCase);
+        if (Regex.IsMatch(subQuestion, @"\b(?:when|year|date|released|introduced)\b", RegexOptions.IgnoreCase))
+            return Regex.IsMatch(text, @"\b(?:19\d{2}|20\d{2}|date|year|released|introduced|founded)\b", RegexOptions.IgnoreCase);
+        if (Regex.IsMatch(subQuestion, @"\b(?:why|purpose|used|popular|benefit|advantage)\b", RegexOptions.IgnoreCase))
+            return Regex.IsMatch(text, @"\b(?:purpose|used|use|popular|benefit|advantage|because)\b", RegexOptions.IgnoreCase);
+        if (Regex.IsMatch(subQuestion, @"\b(?:how|works|work|process|steps)\b", RegexOptions.IgnoreCase))
+            return Regex.IsMatch(text, @"\b(?:how|works|work|process|steps|allows|enables)\b", RegexOptions.IgnoreCase);
+        if (Regex.IsMatch(subQuestion, @"\b(?:difference|compare|versus|\bvs\b)\b", RegexOptions.IgnoreCase))
+            return Regex.IsMatch(text, @"\b(?:difference|compared|versus|whereas|unlike)\b", RegexOptions.IgnoreCase);
+
+        return text.Length >= 20;
     }
 
     private static string CleanFactualContent(string content, string title)
@@ -243,7 +280,9 @@ public class AnswerSynthesisService : IAnswerSynthesisService
 
     private static string CleanRawDumps(string text, string topic)
     {
-        return $"Here is the verified information for **{topic}**: {text}";
+        return Regex.IsMatch(text.Trim(), @"^https?://", RegexOptions.IgnoreCase)
+            ? $"I found source material for **{topic}**, but it did not contain a readable summary that I could verify."
+            : $"I found structured information for **{topic}**, but it needs a readable summary before I can present it confidently.";
     }
 
     private static string ExtractFirstSentences(string text, int count)
@@ -252,6 +291,32 @@ public class AnswerSynthesisService : IAnswerSynthesisService
         var sentences = text.Split(new[] { '.', '!', '?' }, StringSplitOptions.RemoveEmptyEntries);
         var chosen = sentences.Take(count).Select(s => s.Trim()).Where(s => !string.IsNullOrWhiteSpace(s));
         return string.Join(". ", chosen) + ".";
+    }
+
+    private static string ExtractRelevantSentences(string text, string subQuestion, int maxCount)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+        var sentences = Regex.Split(text.Trim(), @"(?<=[.!?])\s+")
+            .Select(sentence => sentence.Trim())
+            .Where(sentence => !string.IsNullOrWhiteSpace(sentence))
+            .ToList();
+
+        var pattern = Regex.IsMatch(subQuestion, @"\b(?:who|creator|created|founded|invented|author|developed)\b", RegexOptions.IgnoreCase)
+            ? @"\b(?:created|creator|developed|founded|invented|authored|author|led|by)\b"
+            : Regex.IsMatch(subQuestion, @"\b(?:when|year|date|released|introduced)\b", RegexOptions.IgnoreCase)
+                ? @"\b(?:19\d{2}|20\d{2}|date|year|released|introduced|founded)\b"
+                : Regex.IsMatch(subQuestion, @"\b(?:why|purpose|used|popular|benefit|advantage)\b", RegexOptions.IgnoreCase)
+                    ? @"\b(?:purpose|used|use|popular|benefit|advantage|because)\b"
+                    : Regex.IsMatch(subQuestion, @"\b(?:how|works|work|process|steps)\b", RegexOptions.IgnoreCase)
+                        ? @"\b(?:how|works|work|process|steps|allows|enables)\b"
+                        : string.Empty;
+
+        var selected = string.IsNullOrWhiteSpace(pattern)
+            ? sentences.Take(maxCount).ToList()
+            : sentences.Where(sentence => Regex.IsMatch(sentence, pattern, RegexOptions.IgnoreCase)).Take(maxCount).ToList();
+
+        if (selected.Count == 0) selected = sentences.Take(maxCount).ToList();
+        return string.Join(" ", selected);
     }
 
     private static string FormatVoiceResponse(string text)

@@ -4,9 +4,10 @@
 // 300ms Pre-Roll & 150ms Post-Roll Ring Buffer, Adaptive VAD with Hysteresis, and Single Authoritative Barge-In
 
 class UserTurnContext {
-    constructor(turnId = null, generationId = null) {
+    constructor(turnId = null, generationId = null, sessionId = null) {
         this.turnId = turnId || ('turn_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now());
         this.generationId = generationId || ('gen_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now());
+        this.sessionId = sessionId || null;
         this.partialTranscript = '';
         this.finalTranscript = '';
         this.startTime = performance.now();
@@ -40,6 +41,8 @@ class AudioPlaybackController {
         this.playbackGeneration = 0;
         this.utteranceSequence = 0;
         this.activeUtteranceId = null;
+        this.currentTtsGenerationId = null;
+        this.currentTtsSessionId = null;
 
         this.loadVoices();
         if (typeof window !== 'undefined' && window.speechSynthesis) {
@@ -89,17 +92,17 @@ class AudioPlaybackController {
         }
     }
 
-    notifyState(stateCode) {
+    notifyState(stateCode, turnId = null, generationId = null, sessionId = null) {
         const turn = this.saviVoice.captureController?.currentTurn;
         this.saviVoice.dotNetRef?.invokeMethodAsync(
             'OnVoiceStateChanged',
             stateCode,
-            turn?.turnId || null,
-            turn?.generationId || null,
-            this.saviVoice.browserSession?.sessionId || null);
+            turnId || this.currentTtsTurnId || turn?.turnId || null,
+            generationId || this.currentTtsGenerationId || turn?.generationId || null,
+            sessionId || this.currentTtsSessionId || turn?.sessionId || this.saviVoice.browserSession?.sessionId || null);
     }
 
-    speak(text, rate = 1.0, turnId = null) {
+    speak(text, rate = 1.0, turnId = null, generationId = null) {
         if (typeof window === 'undefined' || !window.speechSynthesis) return;
 
         try {
@@ -130,7 +133,10 @@ class AudioPlaybackController {
             if (!cleanText) return;
 
             const generation = ++this.playbackGeneration;
+            this.saviVoice.browserSession?.ensureSession?.();
             this.currentTtsTurnId = turnId;
+            this.currentTtsGenerationId = generationId || this.saviVoice.browserSession?.nextGeneration(turnId);
+            this.currentTtsSessionId = this.saviVoice.browserSession?.sessionId || null;
             this.allCurrentText = cleanText;
             this.recentSpokenSentences.push({ text: cleanText, timestamp: performance.now() });
             if (this.recentSpokenSentences.length > 10) this.recentSpokenSentences.shift();
@@ -156,9 +162,10 @@ class AudioPlaybackController {
 
             this.isSpeaking = true;
             this.startResumeWatchdog();
+            this.saviVoice.browserSession?.speaking(this.currentTtsTurnId);
 
             if (this.saviVoice.dotNetRef) {
-                this.notifyState(5); // 5 = Speaking
+                this.notifyState(5, this.currentTtsTurnId, this.currentTtsGenerationId, this.currentTtsSessionId); // 5 = Speaking
             }
 
             // If we previously called duckAndStop/cancel, give the browser speech daemon 25ms to settle IPC
@@ -167,7 +174,7 @@ class AudioPlaybackController {
             this.pendingSpeakTimeout = setTimeout(() => {
                 self.pendingSpeakTimeout = null;
                 if (self.isSpeaking && generation === self.playbackGeneration) {
-                    self.playNextChunk(rate, generation);
+                    self.playNextChunk(rate, generation, self.currentTtsGenerationId);
                 }
             }, delayMs);
 
@@ -177,6 +184,8 @@ class AudioPlaybackController {
             this.stopResumeWatchdog();
             this.currentSpokenText = '';
             this.currentTtsTurnId = null;
+            this.currentTtsGenerationId = null;
+            this.currentTtsSessionId = null;
             this.lastSpokenTimestamp = performance.now();
             if (this.saviVoice.dotNetRef) {
                 this.notifyState(0);
@@ -184,7 +193,7 @@ class AudioPlaybackController {
         }
     }
 
-    playNextChunk(rate, generation = this.playbackGeneration) {
+    playNextChunk(rate, generation = this.playbackGeneration, speechGenerationId = this.currentTtsGenerationId) {
         if (!this.isSpeaking || generation !== this.playbackGeneration) return;
 
         if (this.chunkQueue.length === 0) {
@@ -195,7 +204,9 @@ class AudioPlaybackController {
             this.lastSpokenTimestamp = performance.now();
             if (this.saviVoice.dotNetRef) {
                 const state = this.saviVoice.captureController.continuousVoiceMode ? 1 : 0;
-                this.notifyState(state);
+                this.notifyState(state, this.currentTtsTurnId, speechGenerationId, this.currentTtsSessionId);
+                this.currentTtsGenerationId = null;
+                this.currentTtsSessionId = null;
             }
             return;
         }
@@ -208,9 +219,9 @@ class AudioPlaybackController {
         const utterance = new SpeechSynthesisUtterance(chunk);
         const utteranceId = `utt_${++this.utteranceSequence}`;
         this.activeUtteranceId = utteranceId;
-        utterance.saviSessionId = this.saviVoice.browserSession?.sessionId || null;
+        utterance.saviSessionId = this.currentTtsSessionId;
         utterance.saviTurnId = this.currentTtsTurnId;
-        utterance.saviGenerationId = generation;
+        utterance.saviGenerationId = speechGenerationId;
         utterance.saviUtteranceId = utteranceId;
         utterance.rate = rate || 1.0;
         utterance.pitch = 1.0;
@@ -253,7 +264,7 @@ class AudioPlaybackController {
                 window._saviActiveUtterances.delete(utterance);
                 self.isChunkSpeaking = false;
                 self.ensureSpeechActive();
-                self.playNextChunk(rate, generation);
+                self.playNextChunk(rate, generation, speechGenerationId);
             }
         }, maxExpectedDurationMs);
 
@@ -264,7 +275,7 @@ class AudioPlaybackController {
             window._saviActiveUtterances.delete(utterance);
             self.isChunkSpeaking = false;
             self.lastSpokenTimestamp = performance.now();
-            self.playNextChunk(rate, generation);
+            self.playNextChunk(rate, generation, speechGenerationId);
         };
 
         utterance.onerror = function (err) {
@@ -276,7 +287,7 @@ class AudioPlaybackController {
             self.lastSpokenTimestamp = performance.now();
             console.warn("SAVI: Utterance error, resuming synthesis and playing next chunk:", err?.error || err);
             self.ensureSpeechActive();
-            self.playNextChunk(rate, generation);
+            self.playNextChunk(rate, generation, speechGenerationId);
         };
 
         // Resume if paused and speak
@@ -294,6 +305,9 @@ class AudioPlaybackController {
         if (!this.isSpeaking && !window.speechSynthesis?.speaking) return;
 
         const stopStartTime = performance.now();
+        const interruptedTurnId = this.currentTtsTurnId;
+        const interruptedGenerationId = this.currentTtsGenerationId;
+        const interruptedSessionId = this.currentTtsSessionId;
         ++this.playbackGeneration;
         this.activeUtteranceId = null;
         this.isSpeaking = false;
@@ -301,6 +315,8 @@ class AudioPlaybackController {
         this.stopResumeWatchdog();
         this.currentSpokenText = '';
         this.currentTtsTurnId = null;
+        this.currentTtsGenerationId = null;
+        this.currentTtsSessionId = null;
         this.lastSpokenTimestamp = performance.now();
         this.chunkQueue = [];
 
@@ -319,18 +335,18 @@ class AudioPlaybackController {
 
         const stopLatencyMs = Math.round(performance.now() - stopStartTime);
         this.lastStopLatencyMs = stopLatencyMs;
+        this.saviVoice.browserSession?.interrupted('user');
         console.log(`SAVI: AudioPlaybackController duckAndStop executed in ${stopLatencyMs}ms`);
 
         if (notifyDotNet && this.saviVoice.dotNetRef) {
             try {
-                const turn = this.saviVoice.captureController?.currentTurn;
                 this.saviVoice.dotNetRef.invokeMethodAsync(
                     'OnUserInterrupted',
                     stopLatencyMs,
-                    turn?.turnId || null,
-                    turn?.generationId || null,
-                    this.saviVoice.browserSession?.sessionId || null);
-                this.notifyState(8); // 8 = Interrupted
+                    interruptedTurnId || this.saviVoice.captureController?.currentTurn?.turnId || null,
+                    interruptedGenerationId || this.saviVoice.captureController?.currentTurn?.generationId || null,
+                    interruptedSessionId || this.saviVoice.browserSession?.sessionId || null);
+                this.notifyState(8, interruptedTurnId, interruptedGenerationId, interruptedSessionId); // 8 = Interrupted
                 setTimeout(() => {
                     if (this.saviVoice.dotNetRef && !this.isSpeaking) {
                         this.notifyState(1); // 1 = Listening
@@ -386,7 +402,7 @@ class AudioCaptureController {
 
         this.animFrameId = null;
         this.recognition = null;
-        this.currentTurn = new UserTurnContext();
+        this.currentTurn = new UserTurnContext(null, null, this.saviVoice.browserSession?.sessionId || null);
         this.seenFinalTranscripts = new Set();
         this.turnTimer = null;
 
@@ -397,7 +413,7 @@ class AudioCaptureController {
         const turnId = 'turn_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
         const generationId = this.saviVoice.browserSession?.nextGeneration(turnId) ||
             ('gen_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now());
-        return new UserTurnContext(turnId, generationId);
+        return new UserTurnContext(turnId, generationId, this.saviVoice.browserSession?.sessionId || null);
     }
 
     notifyError(message) {
@@ -567,6 +583,7 @@ class AudioCaptureController {
                     this.vadSpeechOnsetStartTime = 0;
                     this.currentTurn.hasPreRollAudio = true;
                     this.lastVADActivityAt = Date.now();
+                    this.saviVoice.browserSession.userSpeaking(this.currentTurn.turnId);
 
                     if (isAssistantSpeaking) {
                         console.log("SAVI VAD: Sustained user speech detected -> Instant barge-in halt!");
@@ -856,6 +873,7 @@ class AudioCaptureController {
         this.intentionalStop = false;
         this.continuousVoiceMode = this.continuousVoiceMode || false;
         this.saviVoice.browserSession.start(this.saviVoice.conversationId);
+        this.saviVoice.browserSession.transition('STARTING', { conversationId: this.saviVoice.conversationId });
         const ready = await this.initAudioPipeline(true);
         if (!ready || !this.recognition) {
             this.notifyError('Voice recognition isn\'t available in this browser. Please use Chat mode or a supported browser.');
@@ -887,6 +905,7 @@ class AudioCaptureController {
         if (!this.pipelineInitialized || !this.isListening) return false;
 
         try {
+            this.saviVoice.browserSession.transition('RECOVERING');
             if (this.audioContext?.state === 'suspended') {
                 await this.audioContext.resume();
             }
@@ -904,6 +923,7 @@ class AudioCaptureController {
             }
 
             this.armRecognitionWatchdog(this.recognitionGeneration);
+            this.saviVoice.browserSession.listening();
             return true;
         } catch (error) {
             this.lastError = error;
@@ -987,6 +1007,13 @@ window.saviVoice = {
             this.captureController.audioOutputMode = mode;
             console.log("SAVI Audio Output Mode configured to:", mode);
         }
+    },
+
+    markProcessing: function (turnId = null, generationId = null) {
+        if (!this.browserSession) return;
+        if (turnId) this.browserSession.turnId = turnId;
+        if (generationId) this.browserSession.generationId = generationId;
+        this.browserSession.processing(turnId || this.browserSession.turnId);
     },
 
     getDiagnostics: function () {
@@ -1095,9 +1122,9 @@ window.saviVoice = {
         window.addEventListener('orientationchange', updateViewport, { passive: true });
     },
 
-    speak: function (text, rate = 1.0, turnId = null) {
+    speak: function (text, rate = 1.0, turnId = null, generationId = null) {
         if (this.playbackController) {
-            this.playbackController.speak(text, rate, turnId);
+            this.playbackController.speak(text, rate, turnId, generationId);
         }
     },
 

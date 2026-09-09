@@ -3,6 +3,7 @@
 @page "/chat/{ConversationId?}"
 @rendermode InteractiveServer
 @using SAVI.Core.Enums
+@using System.Text.RegularExpressions
 @inject IAgentOrchestrator Orchestrator
 @inject IConversationService ConversationService
 @inject ISettingsService SettingsService
@@ -149,7 +150,18 @@
                             <span style="color: var(--savi-text-dim);">@msg.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
                         </div>
 
-                        <div style="white-space: pre-wrap;">@msg.Content</div>
+                        <div class="savi-message-content">@RenderMarkdown(msg.Content)</div>
+
+                        @if (msg.Role == MessageRole.Assistant)
+                        {
+                            <div class="savi-message-actions">
+                                <button class="savi-message-action" @onclick="() => CopyMessage(msg.Content)" title="Copy SAVI's response">Copy</button>
+                                @if (msg.Id == _messages.LastOrDefault(m => m.Role == MessageRole.Assistant)?.Id)
+                                {
+                                    <button class="savi-message-action" @onclick="RetryLastRequest" disabled="@_isProcessing" title="Ask SAVI again">Retry</button>
+                                }
+                            </div>
+                        }
 
                         @if (msg.Sources != null && msg.Sources.Count > 0)
                         {
@@ -157,7 +169,7 @@
                                 @foreach (var src in msg.Sources)
                                 {
                                     <a href="@src.Url" target="_blank" class="savi-badge" style="text-decoration: none;" title="@src.Snippet">
-                                        ✓ @src.SourceName (@(src.ReliabilityScore * 100)%)
+                                        ✓ Source (@(src.ReliabilityScore * 100)%)
                                     </a>
                                 }
                             </div>
@@ -222,6 +234,7 @@
                         </div>
                     </div>
                 </div>
+                <button class="savi-btn" style="align-self: flex-start; margin-top: 4px;" @onclick="StopGenerating">Stop generating</button>
             }
         </div>
 
@@ -332,7 +345,7 @@
         IsMuted="_isMicMuted"
         AudioOutputMode="@_audioOutputMode"
         FalseSelfDetectionCount="@_falseSelfDetectionCount"
-        HardwareAecStatus="@(_hardwareAec ? "Hardware Verified" : "Software Filter")"
+        HardwareAecStatus="@GetAudioCapabilityStatus(_hardwareAec)"
         UserTranscript="@(!string.IsNullOrWhiteSpace(_liveInterimTranscript) ? _liveInterimTranscript : (_messages.LastOrDefault(m => m.Role == MessageRole.User)?.Content ?? ""))"
         AssistantTranscript="@(_messages.LastOrDefault(m => m.Role == MessageRole.Assistant)?.Content ?? "")"
         AudioStopLatencyMs="_lastAudioStopLatencyMs"
@@ -453,9 +466,10 @@
     private string? _voiceGenerationId;
     private string _audioOutputMode = "speaker";
     private int _falseSelfDetectionCount = 0;
-    private bool _hardwareAec = true;
-    private bool _hardwareNs = true;
-    private bool _hardwareAgc = true;
+    private bool _hardwareAec;
+    private bool _hardwareNs;
+    private bool _hardwareAgc;
+    private bool _audioSettingsReported;
     private string? _lastSuppressedEcho;
 
     private bool _isVoiceOverlayOpen = false;
@@ -586,7 +600,8 @@
         catch (Exception ex)
         {
             _continuousVoiceMode = false;
-            _voiceError = $"Continuous voice mode error: {ex.Message}";
+            Console.Error.WriteLine($"SAVI continuous voice mode error: {ex}");
+            _voiceError = "Continuous voice mode could not start. Check microphone permission and try again.";
         }
         StateHasChanged();
     }
@@ -703,6 +718,10 @@
     {
         _mobileConvDrawerOpen = false;
         _currentConversationId = id;
+        if (!Navigation.Uri.EndsWith($"/chat/{id}", StringComparison.OrdinalIgnoreCase))
+        {
+            Navigation.NavigateTo($"/chat/{id}", replace: true);
+        }
         if (_voiceJsReady)
         {
             await JS.InvokeVoidAsync("saviVoice.setConversationId", id);
@@ -721,6 +740,7 @@
         _mobileConvDrawerOpen = false;
         var newConv = await ConversationService.GetOrCreateAsync(null);
         _currentConversationId = newConv.Id;
+        Navigation.NavigateTo($"/chat/{_currentConversationId}", replace: true);
         if (_voiceJsReady)
         {
             await JS.InvokeVoidAsync("saviVoice.setConversationId", _currentConversationId);
@@ -816,6 +836,8 @@
                 }
             };
 
+            try { await JS.InvokeVoidAsync("saviVoice.markProcessing", turnId, _voiceGenerationId); } catch { }
+
             var res = await Orchestrator.ProcessAsync(req, currentToken);
 
             // STALE RESULT RULE: If this turn was superseded by a newer turn, discard the stale result!
@@ -851,7 +873,7 @@
 
                 try
                 {
-                    await JS.InvokeVoidAsync("saviVoice.speak", spokenText, 1.0, turnId);
+                    await JS.InvokeVoidAsync("saviVoice.speak", spokenText, 1.0, turnId, _voiceGenerationId);
                 }
                 catch { }
             }
@@ -878,11 +900,12 @@
         {
             if (!currentToken.IsCancellationRequested && _activeTurnId == turnId)
             {
+                Console.Error.WriteLine($"SAVI turn error: {ex}");
                 _messages.Add(new MessageDto
                 {
                     Id = Guid.NewGuid().ToString(),
                     Role = MessageRole.Assistant,
-                    Content = $"I encountered an unexpected issue: {ex.Message}. I've logged the technical details.",
+                    Content = "I ran into a problem while processing that request. Please try again.",
                     Timestamp = DateTimeOffset.UtcNow
                 });
                 _voiceState = VoiceState.Error;
@@ -917,7 +940,8 @@
         {
             _isListening = false;
             _voiceState = VoiceState.Idle;
-            _voiceError = $"Voice input initialization failed: {ex.Message}";
+            Console.Error.WriteLine($"SAVI voice input error: {ex}");
+            _voiceError = "Voice input could not start. Check microphone permission or continue in text chat.";
         }
     }
 
@@ -926,7 +950,7 @@
     {
         if (!AcceptVoiceCallback(turnId, generationId, sessionId)) return;
         _wasInterrupted = true;
-        _voiceState = VoiceState.DetectingSpeech;
+        _voiceState = VoiceState.UserSpeaking;
         InvokeAsync(StateHasChanged);
     }
 
@@ -1022,6 +1046,7 @@
         _hardwareAec = aec;
         _hardwareNs = ns;
         _hardwareAgc = agc;
+        _audioSettingsReported = true;
         InvokeAsync(StateHasChanged);
     }
 
@@ -1041,6 +1066,54 @@
         }
         catch { }
         _dotNetRef?.Dispose();
+    }
+
+    private async Task StopGenerating()
+    {
+        try { _processingCts?.Cancel(); } catch { }
+        _isProcessing = false;
+        _voiceState = _continuousVoiceMode ? VoiceState.Listening : VoiceState.Idle;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RetryLastRequest()
+    {
+        var assistantIndex = _messages.FindLastIndex(message => message.Role == MessageRole.Assistant);
+        if (assistantIndex < 0) return;
+        var previousUser = _messages.Take(assistantIndex).LastOrDefault(message => message.Role == MessageRole.User);
+        if (previousUser == null || string.IsNullOrWhiteSpace(previousUser.Content)) return;
+        await CancelCurrentTurnAndReplaceAsync(previousUser.Content, "turn_" + Guid.NewGuid().ToString("N"));
+    }
+
+    private async Task CopyMessage(string content)
+    {
+        try { await JS.InvokeVoidAsync("saviBrowser.copyText", content); } catch { }
+    }
+
+    private string GetAudioCapabilityStatus(bool enabled) =>
+        !_audioSettingsReported ? "Unsupported" : enabled ? "Enabled" : "Disabled";
+
+    private static Microsoft.AspNetCore.Components.MarkupString RenderMarkdown(string? markdown)
+    {
+        var encoded = System.Net.WebUtility.HtmlEncode(markdown ?? string.Empty);
+        var codeBlocks = new List<string>();
+        encoded = Regex.Replace(encoded, @"```[^\r\n]*\r?\n([\s\S]*?)```", match =>
+        {
+            var code = match.Groups[1].Value.Replace("\r\n", "\n").Replace("\n", "&#10;");
+            var token = $"@@SAVI_CODE_{codeBlocks.Count}@@";
+            codeBlocks.Add($"<pre class=\"savi-code-block\"><code>{code}</code></pre>");
+            return token;
+        });
+        encoded = Regex.Replace(encoded, @"^### (.+)$", "<h4>$1</h4>", RegexOptions.Multiline);
+        encoded = Regex.Replace(encoded, @"^## (.+)$", "<h3>$1</h3>", RegexOptions.Multiline);
+        encoded = Regex.Replace(encoded, @"^# (.+)$", "<h2>$1</h2>", RegexOptions.Multiline);
+        encoded = Regex.Replace(encoded, @"\*\*(.+?)\*\*", "<strong>$1</strong>");
+        encoded = Regex.Replace(encoded, @"`([^`]+)`", "<code>$1</code>");
+        encoded = Regex.Replace(encoded, @"\[([^\]]+)\]\((https?://[^\s)]+)\)", "<a href=\"$2\" target=\"_blank\" rel=\"noopener noreferrer\">$1</a>");
+        encoded = Regex.Replace(encoded, @"^\s*[-*•]\s+(.+)$", "<span class=\"savi-md-bullet\">• $1</span>", RegexOptions.Multiline);
+        encoded = encoded.Replace("\r\n", "\n").Replace("\n", "<br />");
+        for (var i = 0; i < codeBlocks.Count; i++) encoded = encoded.Replace($"@@SAVI_CODE_{i}@@", codeBlocks[i], StringComparison.Ordinal);
+        return new Microsoft.AspNetCore.Components.MarkupString(encoded);
     }
 
     private void ToggleActivityDrawer()

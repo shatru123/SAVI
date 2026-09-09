@@ -35,7 +35,7 @@
                 </span>
             }
             <span class="telemetry-pill desktop-only" title="Acoustic Echo Cancellation Status">
-                AEC: @(_hardwareAec ? "Hardware Verified" : "Software Filter")
+                AEC: @GetAudioCapabilityStatus(_hardwareAec)
             </span>
             @if (_falseSelfDetectionCount > 0)
             {
@@ -123,6 +123,26 @@
                     case VoiceState.Processing:
                         <span class="pill-dot thinking-dot"></span>
                         <span>THINKING & REASONING</span>
+                        break;
+                    case VoiceState.RequestingPermission:
+                        <span class="pill-dot thinking-dot"></span>
+                        <span>REQUESTING MICROPHONE</span>
+                        break;
+                    case VoiceState.Starting:
+                        <span class="pill-dot thinking-dot"></span>
+                        <span>STARTING AUDIO</span>
+                        break;
+                    case VoiceState.UserSpeaking:
+                        <span class="pill-dot detecting-dot"></span>
+                        <span>YOU ARE SPEAKING</span>
+                        break;
+                    case VoiceState.Recovering:
+                        <span class="pill-dot thinking-dot"></span>
+                        <span>RECOVERING AUDIO</span>
+                        break;
+                    case VoiceState.Paused:
+                        <span class="pill-dot idle-dot"></span>
+                        <span>PAUSED</span>
                         break;
                     case VoiceState.Speaking:
                         <span class="pill-dot speaking-dot"></span>
@@ -738,9 +758,10 @@
     private bool _isMicMuted = false;
     private string _audioOutputMode = "speaker";
     private int _falseSelfDetectionCount = 0;
-    private bool _hardwareAec = true;
-    private bool _hardwareNs = true;
-    private bool _hardwareAgc = true;
+    private bool _hardwareAec;
+    private bool _hardwareNs;
+    private bool _hardwareAgc;
+    private bool _audioSettingsReported;
     private double _lastAudioStopLatencyMs = 0;
     private string? _voiceError;
     private bool _voiceSupported = true;
@@ -782,6 +803,7 @@
             var newConv = await ConversationService.GetOrCreateAsync(null);
             _currentConversationId = newConv.Id;
             _activeTitle = newConv.Title;
+            Navigation.NavigateTo($"/voice/{_currentConversationId}", replace: true);
         }
     }
 
@@ -801,7 +823,8 @@
             }
             catch (Exception ex)
             {
-                _voiceError = $"Voice initialization notice: {ex.Message}";
+                Console.Error.WriteLine($"SAVI voice initialization error: {ex}");
+                _voiceError = "Voice initialization could not complete. You can continue this conversation in Chat mode.";
             }
             StateHasChanged();
         }
@@ -816,7 +839,8 @@
         }
         catch (Exception ex)
         {
-            _browserDiagnosticsJson = $"Diagnostics unavailable: {ex.Message}";
+            Console.Error.WriteLine($"SAVI diagnostics error: {ex}");
+            _browserDiagnosticsJson = "Diagnostics are unavailable right now.";
             _showDiagnostics = true;
         }
     }
@@ -892,7 +916,7 @@
     public void OnVadSpeechStarted(double timestampMs, string? turnId = null, string? generationId = null, string? sessionId = null)
     {
         if (!AcceptVoiceCallback(turnId, generationId, sessionId)) return;
-        _voiceState = VoiceState.DetectingSpeech;
+        _voiceState = VoiceState.UserSpeaking;
         InvokeAsync(StateHasChanged);
     }
 
@@ -955,6 +979,7 @@
 
         try
         {
+            try { await JS.InvokeVoidAsync("saviVoice.markProcessing", assignedTurnId, generationId); } catch { }
             var req = new AgentRequest
             {
                 Message = transcript.Trim(),
@@ -977,7 +1002,7 @@
 
             try
             {
-                await JS.InvokeVoidAsync("saviVoice.speak", spokenText, 1.0, assignedTurnId);
+                await JS.InvokeVoidAsync("saviVoice.speak", spokenText, 1.0, assignedTurnId, generationId);
             }
             catch { }
         }
@@ -992,7 +1017,8 @@
         {
             if (!currentToken.IsCancellationRequested && _activeTurnId == assignedTurnId)
             {
-                _voiceError = $"Voice error: {ex.Message}";
+                Console.Error.WriteLine($"SAVI voice turn error: {ex}");
+                _voiceError = "I ran into a problem while processing that voice request. Please try again.";
                 _voiceState = VoiceState.Error;
             }
         }
@@ -1049,6 +1075,7 @@
         _hardwareAec = aec;
         _hardwareNs = ns;
         _hardwareAgc = agc;
+        _audioSettingsReported = true;
         InvokeAsync(StateHasChanged);
     }
 
@@ -1068,4 +1095,7 @@
         catch { }
         _dotNetRef?.Dispose();
     }
+
+    private string GetAudioCapabilityStatus(bool enabled) =>
+        !_audioSettingsReported ? "Unsupported" : enabled ? "Enabled" : "Disabled";
 }

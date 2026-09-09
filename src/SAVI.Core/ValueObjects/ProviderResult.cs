@@ -4,6 +4,9 @@ public sealed record ProviderResult
 {
     public string ProviderId { get; init; } = string.Empty;
     public string ProviderName { get; init; } = string.Empty;
+    public string Capability { get; init; } = string.Empty;
+    public string Title { get; init; } = string.Empty;
+    public IReadOnlyList<string> RelevantPassages { get; init; } = Array.Empty<string>();
     public bool Success { get; init; }
     public object? Data { get; init; }
     public double Confidence { get; init; } = 1.0;
@@ -11,6 +14,7 @@ public sealed record ProviderResult
     public double AuthorityScore { get; init; } = 0.85;
     public double FreshnessScore { get; init; } = 0.85;
     public bool IsDeterministic { get; init; }
+    public TimeSpan Latency { get; init; } = TimeSpan.Zero;
     public IReadOnlyList<SourceReference> Sources { get; init; } = Array.Empty<SourceReference>();
     public string? Error { get; init; }
 

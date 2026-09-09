@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.Extensions.Caching.Memory;
 using Moq;
 using SAVI.Agent.Context;
@@ -34,7 +35,7 @@ public class EndToEndAssistantTests
 
     public EndToEndAssistantTests()
     {
-        var fakeHttp = new HttpClient();
+        var fakeHttp = new HttpClient(new DeterministicKnowledgeHandler());
         var providers = new ICapabilityProvider[]
         {
             new SystemInfoProvider(),
@@ -139,7 +140,8 @@ public class EndToEndAssistantTests
         {
             Message = "What is C#, who created it, when was it released, and why is it popular?",
             ConversationId = "test-conv",
-            VoiceActive = false
+            VoiceActive = false,
+            VerificationPolicyOverride = VerificationPolicy.Verified
         };
 
         var response = await _orchestrator.ProcessAsync(request);
@@ -165,5 +167,22 @@ public class EndToEndAssistantTests
 
         Assert.True(response.Success);
         Assert.Contains("157115", response.Message);
+    }
+
+    private sealed class DeterministicKnowledgeHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var uri = request.RequestUri?.ToString() ?? string.Empty;
+            var body = uri.Contains("wikidata.org", StringComparison.OrdinalIgnoreCase)
+                ? "{\"search\":[{\"id\":\"Q123\",\"label\":\"C#\",\"description\":\"a programming language developed by Microsoft and Anders Hejlsberg, released in 2000 and popular for building .NET applications\",\"concepturi\":\"https://www.wikidata.org/entity/Q123\"}]}"
+                : "{\"title\":\"C#\",\"description\":\"programming language\",\"extract\":\"C# is a programming language developed by Microsoft and Anders Hejlsberg. It was released in 2000 and became popular because it enables developers to build .NET applications.\",\"content_urls\":{\"desktop\":{\"page\":\"https://en.wikipedia.org/wiki/C_Sharp_(programming_language)\"}}}";
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                RequestMessage = request,
+                Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")
+            });
+        }
     }
 }
