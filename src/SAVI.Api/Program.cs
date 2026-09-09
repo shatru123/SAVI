@@ -7,6 +7,12 @@ using SAVI.Tools;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.WebHost.ConfigureKestrel(options =>
+{
+    // Keep malformed or unexpectedly large requests from consuming the API process.
+    options.Limits.MaxRequestBodySize = 1_048_576;
+});
+
 // Dynamic PORT binding for container deployments
 var port = Environment.GetEnvironmentVariable("PORT");
 if (!string.IsNullOrEmpty(port))
@@ -25,9 +31,27 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("SaviCors", policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyHeader()
-              .AllowAnyMethod();
+        var configuredOrigins = builder.Configuration["SAVI_CORS_ORIGINS"]?
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(origin => Uri.TryCreate(origin, UriKind.Absolute, out var uri) &&
+                             (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray() ?? Array.Empty<string>();
+
+        if (configuredOrigins.Length > 0)
+        {
+            policy.WithOrigins(configuredOrigins)
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+        }
+        else if (builder.Environment.IsDevelopment())
+        {
+            // Local development can use arbitrary localhost ports; production requires
+            // an explicit SAVI_CORS_ORIGINS allow-list.
+            policy.AllowAnyOrigin()
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+        }
     });
 });
 

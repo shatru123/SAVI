@@ -103,4 +103,9 @@ public class ExecutionPlanner
 
         return new ExecutionPlan(intent.Capability, primary, verification, false, null, null, policy);
     }
+
+    public void RecordProviderResult(string providerId, long latencyMs, bool succeeded, bool rateLimited = false, TimeSpan? retryAfter = null)
+    {
+        _providerRegistry.RecordResult(providerId, latencyMs, succeeded, rateLimited, retryAfter);
+    }
 }

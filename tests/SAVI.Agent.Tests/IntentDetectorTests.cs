@@ -53,6 +53,24 @@ public class IntentDetectorTests
     }
 
     [Fact]
+    public void Detect_DotNetKnowledgeQuery_ShouldNotRouteToSystemDiagnostics()
+    {
+        var intent = _detector.Detect("What is .NET?");
+        Assert.Equal(SaviConstants.Capabilities.Knowledge, intent.Capability);
+    }
+
+    [Theory]
+    [InlineData("Who is the current president of India?")]
+    [InlineData("What is the latest GitHub release?")]
+    [InlineData("What happened in the markets today?")]
+    public void Detect_CurrentInformation_ShouldRouteToLiveSearch(string prompt)
+    {
+        var intent = _detector.Detect(prompt);
+        Assert.Equal(SaviConstants.Capabilities.Search, intent.Capability);
+        Assert.Equal("web_search", intent.Operation);
+    }
+
+    [Fact]
     public void Detect_MemoryRememberQuery_ShouldRouteToMemory()
     {
         var intent = _detector.Detect("Remember that I prefer dark theme and concise explanations");

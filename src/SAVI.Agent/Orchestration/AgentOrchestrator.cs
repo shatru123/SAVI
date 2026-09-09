@@ -424,7 +424,10 @@ public class AgentOrchestrator : IAgentOrchestrator
         CancellationToken cancellationToken)
     {
         // Provider-aware caching & request coalescing
-        var cacheKey = $"{provider.Id}:{request.Capability}:{request.Operation}:{request.Prompt}".Trim().ToLowerInvariant();
+        var parameterKey = string.Join("&", request.Parameters
+            .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(pair => $"{pair.Key}={pair.Value}"));
+        var cacheKey = $"{provider.Id}:{request.Capability}:{request.Operation}:{request.Prompt}:{parameterKey}".Trim().ToLowerInvariant();
 
         emitEvent("provider.started", new { ProviderId = provider.Id, ProviderName = provider.Name });
         var sw = Stopwatch.StartNew();
@@ -434,7 +437,9 @@ public class AgentOrchestrator : IAgentOrchestrator
             var result = await _providerCache.GetOrExecuteAsync(
                 provider.Id,
                 cacheKey,
-                provider.SupportsCaching ? provider.CacheTtl : TimeSpan.Zero,
+                request.Analysis?.RequiresFreshness == true
+                    ? TimeSpan.Zero
+                    : provider.SupportsCaching ? provider.CacheTtl : TimeSpan.Zero,
                 async ct =>
                 {
                     using var timeoutCts = new CancellationTokenSource(provider.Timeout);
@@ -444,6 +449,12 @@ public class AgentOrchestrator : IAgentOrchestrator
                 cancellationToken);
 
             sw.Stop();
+            _executionPlanner.RecordProviderResult(
+                provider.Id,
+                sw.ElapsedMilliseconds,
+                result.Success,
+                result.Error?.Contains("429", StringComparison.OrdinalIgnoreCase) == true,
+                result.Error?.Contains("429", StringComparison.OrdinalIgnoreCase) == true ? TimeSpan.FromSeconds(60) : null);
 
             if (result.Success)
             {
@@ -479,6 +490,7 @@ public class AgentOrchestrator : IAgentOrchestrator
         catch (OperationCanceledException)
         {
             sw.Stop();
+            _executionPlanner.RecordProviderResult(provider.Id, sw.ElapsedMilliseconds, false);
             logActivity($"✗ {provider.Name} timed out after {provider.Timeout.TotalMilliseconds} ms");
             emitEvent("provider.completed", new { ProviderId = provider.Id, Success = false, Error = "Timeout" });
             return ProviderResult.Failed(provider.Id, provider.Name, $"Provider timed out after {provider.Timeout.TotalMilliseconds} ms");
@@ -486,6 +498,7 @@ public class AgentOrchestrator : IAgentOrchestrator
         catch (Exception ex)
         {
             sw.Stop();
+            _executionPlanner.RecordProviderResult(provider.Id, sw.ElapsedMilliseconds, false);
             logActivity($"✗ {provider.Name} error: {ex.Message}");
             emitEvent("provider.completed", new { ProviderId = provider.Id, Success = false, Error = ex.Message });
             return ProviderResult.Failed(provider.Id, provider.Name, ex.Message) with

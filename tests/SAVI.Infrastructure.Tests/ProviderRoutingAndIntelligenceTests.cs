@@ -181,6 +181,23 @@ public class ProviderRoutingAndIntelligenceTests
     }
 
     [Fact]
+    public void ProviderRegistry_RecordsRuntimeResultsForRouting()
+    {
+        _registry.RecordResult(SaviConstants.Providers.OpenMeteo, 125, false);
+        _registry.RecordResult(SaviConstants.Providers.OpenMeteo, 125, false);
+        _registry.RecordResult(SaviConstants.Providers.OpenMeteo, 125, false);
+
+        var ranked = _registry.RankProviders(new TaskRequest
+        {
+            Capability = SaviConstants.Capabilities.Weather,
+            Prompt = "What is the weather in Tokyo?",
+            Parameters = new Dictionary<string, string> { ["city"] = "Tokyo" }
+        });
+
+        Assert.Empty(ranked);
+    }
+
+    [Fact]
     public async Task ProviderCache_CachesResult_AndReportsHitRate()
     {
         var key = "calc:test";
@@ -192,6 +209,30 @@ public class ProviderRoutingAndIntelligenceTests
         Assert.Equal("42", retrieved.Data?.ToString());
         Assert.True(_cache.CacheHits > 0);
         Assert.True(_cache.HitRatio > 0.0);
+    }
+
+    [Fact]
+    public async Task ProviderCache_RequestCoalescing_SeparatesDifferentParameters()
+    {
+        var calls = 0;
+        var first = await _cache.GetOrExecuteAsync(
+            "weather",
+            "weather:city=tokyo",
+            TimeSpan.FromMinutes(1),
+            _ => Task.FromResult(ProviderResult.Succeeded("weather", "Weather", "Tokyo")));
+        var second = await _cache.GetOrExecuteAsync(
+            "weather",
+            "weather:city=mumbai",
+            TimeSpan.FromMinutes(1),
+            _ =>
+            {
+                calls++;
+                return Task.FromResult(ProviderResult.Succeeded("weather", "Weather", "Mumbai"));
+            });
+
+        Assert.Equal("Tokyo", first.Data);
+        Assert.Equal("Mumbai", second.Data);
+        Assert.Equal(1, calls);
     }
 
     [Fact]

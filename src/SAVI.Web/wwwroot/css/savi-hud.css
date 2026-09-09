@@ -281,7 +281,8 @@ body {
 }
 
 .savi-message-action {
-  min-height: 32px;
+  min-width: 44px;
+  min-height: 44px;
   padding: 4px 8px;
   border: 1px solid var(--savi-border-subtle);
   border-radius: 4px;
@@ -347,8 +348,8 @@ body {
 
 .savi-btn-voice {
   border-radius: 50%;
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   display: flex;
   align-items: center;
@@ -391,6 +392,7 @@ body {
 /* Base Responsive Helpers */
 .savi-mobile-only {
   display: none !important;
+  min-width: 44px;
 }
 .savi-desktop-only {
   display: flex !important;
@@ -624,8 +626,8 @@ body {
     font-size: 0.8rem;
   }
   .savi-btn-voice {
-    width: 38px;
-    height: 38px;
+    width: 44px;
+    height: 44px;
   }
   .savi-input-deck {
     padding: 8px 10px;

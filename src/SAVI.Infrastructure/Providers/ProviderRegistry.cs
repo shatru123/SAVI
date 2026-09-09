@@ -52,7 +52,10 @@ public class ProviderRegistry : IProviderRegistry
 
     public IReadOnlyList<ICapabilityProvider> RankProviders(TaskRequest request)
     {
-        var candidates = _providers.Values.Where(p => p.CanHandle(request)).ToList();
+        var candidates = _providers.Values
+            .Where(p => p.CanHandle(request))
+            .Where(p => _circuitBreakers.GetRecord(p.Id).GetCurrentState() != CircuitBreakerState.Open)
+            .ToList();
         if (candidates.Count <= 1) return candidates;
 
         return candidates
@@ -66,6 +69,19 @@ public class ProviderRegistry : IProviderRegistry
             .ThenBy(x => x.Provider.Priority)
             .Select(x => x.Provider)
             .ToList();
+    }
+
+    public void RecordResult(string providerId, long latencyMs, bool succeeded, bool rateLimited = false, TimeSpan? retryAfter = null)
+    {
+        var record = _circuitBreakers.GetRecord(providerId);
+        if (succeeded)
+        {
+            record.RecordSuccess(Math.Max(0, latencyMs));
+        }
+        else
+        {
+            record.RecordFailure(Math.Max(0, latencyMs), rateLimited, retryAfter);
+        }
     }
 
     public Task<IReadOnlyList<ProviderMetadata>> GetMetadataAsync(CancellationToken cancellationToken = default)

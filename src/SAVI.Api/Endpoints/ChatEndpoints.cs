@@ -22,6 +22,18 @@ public static class ChatEndpoints
             IAgentOrchestrator orchestrator,
             CancellationToken ct) =>
         {
+            if (request is null || string.IsNullOrWhiteSpace(request.Message))
+            {
+                return Results.BadRequest(new { error = "Message is required." });
+            }
+
+            if (request.Message.Length > SendChatMessageRequest.MaxMessageLength)
+            {
+                return Results.Problem(
+                    detail: $"Message must be {SendChatMessageRequest.MaxMessageLength} characters or fewer.",
+                    statusCode: StatusCodes.Status413PayloadTooLarge);
+            }
+
             var agentReq = new AgentRequest
             {
                 Message = request.Message,

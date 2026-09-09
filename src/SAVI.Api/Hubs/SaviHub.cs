@@ -33,6 +33,16 @@ public class SaviHub : Hub
 
     public async Task SendMessage(SendChatMessageRequest request)
     {
+        if (request is null || string.IsNullOrWhiteSpace(request.Message))
+        {
+            throw new HubException("Message is required.");
+        }
+
+        if (request.Message.Length > SendChatMessageRequest.MaxMessageLength)
+        {
+            throw new HubException($"Message must be {SendChatMessageRequest.MaxMessageLength} characters or fewer.");
+        }
+
         // 1. Instant deterministic acknowledgement (<100ms)
         await Clients.Caller.SendAsync("ReceiveVoiceState", VoiceState.Processing);
         await Clients.Caller.SendAsync("ReceiveAcknowledgement", new

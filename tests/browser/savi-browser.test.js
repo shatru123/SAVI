@@ -90,3 +90,11 @@ test('voice session generations are monotonic and remain tied to the session', (
     assert.equal(browser.voiceSession.conversationId, 'conversation-1');
     assert.equal(browser.voiceSession.diagnostics().generationCounter, 2);
 });
+
+test('voice session start enters permission state without opening the microphone', () => {
+    const { browser } = loadBrowser();
+    browser.voiceSession.start('conversation-voice');
+    assert.equal(browser.voiceSession.conversationId, 'conversation-voice');
+    assert.equal(browser.voiceSession.state, 'REQUESTING_PERMISSION');
+    assert.ok(browser.voiceSession.sessionId);
+});

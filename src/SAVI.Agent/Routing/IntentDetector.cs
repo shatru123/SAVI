@@ -30,10 +30,11 @@ public class IntentDetector
     private static readonly Regex BookRegex = new(@"(?:books?|novel|isbn|who wrote)\s+(?:by|about|titled)?\s*(.+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex NewsRegex = new(@"(?:hacker news|\bhn\b|tech news|developer news|technology news|startup news)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex LocationRegex = new(@"(?:where is|location of|coordinates of|find place|find location)\s+([a-zA-Z\s]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex EntityRegex = new(@"(?:who is the (?:prime minister|president|ceo|founder|king|queen|governor|leader)|what is the capital of)\s+([a-zA-Z\s]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex EntityRegex = new(@"(?:who is (?:the )?(?:current )?(?:prime minister|president|ceo|founder|king|queen|governor|leader)|what is the capital of)\s+([a-zA-Z\s]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex GitHubRegex = new(@"(?:github|repo|repository)\s+(?:for\s+)?([a-zA-Z0-9_\-\/]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex TimeRegex = new(@"(?:what time|current time|clock|what is the date|today's date)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex SystemRegex = new(@"(?:system status|specs|\bcpu\b|\bram\b|memory usage|hardware|system info|uptime|\bversion\b|\.net|\bdotnet\b|\bframework\b|os version|\bruntime\b|host info)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex SystemRegex = new(@"(?:system status|system specs|\bcpu\b|\bram\b|memory usage|hardware diagnostics|system info|uptime|os version|host info)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex FreshInformationRegex = new(@"\b(?:current|currently|latest|recent|today|now|live|real[- ]?time|market|markets|yesterday|this week|this month|happened)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex CalcRegex = new(@"(?:calculate|eval|compute|math|\b\d+\s*[\+\-\*\/\^]\s*\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex UnitConvertRegex = new(@"([\d\.]+)\s*(?:km|miles?|celsius|fahrenheit|c|f)\s+(?:to|in)\s+(?:km|miles?|celsius|fahrenheit|c|f)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex FileListRegex = new(@"(?:list files|show files|dir|ls|browse directory)\s*(?:in|at)?\s*(.*)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -355,6 +356,12 @@ public class IntentDetector
         var entityMatch = EntityRegex.Match(clean);
         if (entityMatch.Success)
         {
+            if (FreshInformationRegex.IsMatch(lower))
+            {
+                return new DetectedIntent(SaviConstants.Capabilities.Search, "web_search",
+                    new Dictionary<string, string> { ["query"] = clean }, 0.95, policyOverride);
+            }
+
             return new DetectedIntent(SaviConstants.Capabilities.Entity, "entity_lookup",
                 new Dictionary<string, string> { ["entity"] = clean, ["query"] = clean }, 0.95, policyOverride);
         }
@@ -363,6 +370,12 @@ public class IntentDetector
         var ghMatch = GitHubRegex.Match(clean);
         if (ghMatch.Success)
         {
+            if (FreshInformationRegex.IsMatch(lower))
+            {
+                return new DetectedIntent(SaviConstants.Capabilities.Search, "web_search",
+                    new Dictionary<string, string> { ["query"] = clean }, 0.95, policyOverride);
+            }
+
             var repo = ghMatch.Groups[1].Value.Trim();
             return new DetectedIntent(SaviConstants.Capabilities.GitHub, "repo_info",
                 new Dictionary<string, string> { ["repo"] = repo }, 0.95, policyOverride);

@@ -397,6 +397,8 @@
         font-size: 0.72rem;
         padding: 4px 8px;
         white-space: nowrap;
+        min-width: 44px;
+        min-height: 44px;
     }
 }
 .conv-item {
@@ -416,6 +418,8 @@
     color: var(--savi-cyan);
 }
 .conv-del-btn {
+    min-width: 44px;
+    min-height: 44px;
     background: rgba(255, 0, 85, 0.12);
     border: 1px solid rgba(255, 0, 85, 0.25);
     color: #ff6688;
@@ -949,7 +953,6 @@
     public void OnVadSpeechStarted(double timestampMs, string? turnId = null, string? generationId = null, string? sessionId = null)
     {
         if (!AcceptVoiceCallback(turnId, generationId, sessionId)) return;
-        _wasInterrupted = true;
         _voiceState = VoiceState.UserSpeaking;
         InvokeAsync(StateHasChanged);
     }

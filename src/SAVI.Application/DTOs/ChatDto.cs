@@ -5,6 +5,8 @@ namespace SAVI.Application.DTOs;
 
 public sealed record SendChatMessageRequest
 {
+    public const int MaxMessageLength = 12_000;
+
     public string Message { get; init; } = string.Empty;
     public string? ConversationId { get; init; }
     public PersonalityMode? PersonalityOverride { get; init; }

@@ -38,4 +38,10 @@ public class ApiContractTests
         Assert.Equal(0.95, resp.Confidence);
         Assert.Empty(resp.Sources);
     }
+
+    [Fact]
+    public void ChatRequest_ShouldExposeProductionPayloadLimit()
+    {
+        Assert.Equal(12_000, SendChatMessageRequest.MaxMessageLength);
+    }
 }

@@ -857,12 +857,12 @@
         {
             if (_isMicMuted)
             {
-                await JS.InvokeVoidAsync("saviVoice.stopListening");
+                await JS.InvokeVoidAsync("saviVoice.setContinuousMode", false);
                 _isListening = false;
             }
             else
             {
-                await JS.InvokeVoidAsync("saviVoice.startListening");
+                await JS.InvokeVoidAsync("saviVoice.setContinuousMode", true);
                 _isListening = true;
                 _voiceState = VoiceState.Listening;
             }
@@ -877,13 +877,13 @@
         {
             if (_isListening)
             {
-                await JS.InvokeVoidAsync("saviVoice.stopListening");
+                await JS.InvokeVoidAsync("saviVoice.setContinuousMode", false);
                 _isListening = false;
-                _voiceState = VoiceState.Idle;
+                _voiceState = VoiceState.Paused;
             }
             else
             {
-                await JS.InvokeVoidAsync("saviVoice.startListening");
+                await JS.InvokeVoidAsync("saviVoice.setContinuousMode", true);
                 _isListening = true;
                 _voiceState = VoiceState.Listening;
             }

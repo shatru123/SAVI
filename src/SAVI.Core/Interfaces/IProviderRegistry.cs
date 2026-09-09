@@ -10,5 +10,6 @@ public interface IProviderRegistry
     IReadOnlyCollection<ICapabilityProvider> GetByCapability(string capability);
     ICapabilityProvider? GetById(string id);
     IReadOnlyList<ICapabilityProvider> RankProviders(TaskRequest request);
+    void RecordResult(string providerId, long latencyMs, bool succeeded, bool rateLimited = false, TimeSpan? retryAfter = null);
     Task<IReadOnlyList<ProviderMetadata>> GetMetadataAsync(CancellationToken cancellationToken = default);
 }
