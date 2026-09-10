@@ -34,4 +34,12 @@ public class PersonalityEngineTests
         var greeting = _engine.FormatFriendlyGreeting();
         Assert.Contains("Shatru", greeting);
     }
+
+    [Fact]
+    public void FormatFriendlyGreeting_WithDynamicUser_ShouldMentionDynamicUser()
+    {
+        var greeting = _engine.FormatFriendlyGreeting("Alice");
+        Assert.Contains("Alice", greeting);
+        Assert.DoesNotContain("Shatru", greeting);
+    }
 }

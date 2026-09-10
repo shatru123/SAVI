@@ -287,7 +287,7 @@ public class SaviSelfKnowledgeService : ISaviSelfKnowledgeService
                                $"• **Dual Parity Modes**: Full command deck Chat and interruptible Real-Time Voice.\n" +
                                $"• **High-Performance Architecture**: Built with C# 13 on .NET 10 with Blazor and SQLite.\n" +
                                $"• **Local Privacy**: Your conversations and memory stay in your local database (`savi.db`).\n\n" +
-                               $"How can I assist you today, Shatru?";
+                               $"How can I assist you today?";
                 speechResponse = $"I'm SAVI, or Shatru's Adaptive Virtual Intelligence. I'm a personal AI assistant created by Shatrughna Ambhore, designed for coding, research, multi-step tasks, and real-time voice conversation.";
                 keyFacts.AddRange(new[] { profile.Name, profile.FullName, profile.Creator, profile.Framework });
                 break;

@@ -12,6 +12,8 @@ public sealed class MemoryItem
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? ExpiresAt { get; set; }
+    public DateTimeOffset? LastAccessedAt { get; set; }
+    public string? Source { get; set; }
     public string? SourceConversationId { get; set; }
     public string? UserId { get; set; }
 }

@@ -20,29 +20,41 @@ public class MemoryRepository : IMemoryRepository
         return await _db.MemoryItems.FirstOrDefaultAsync(m => m.Id == id, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<MemoryItem>> GetAllAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<MemoryItem>> GetAllAsync(string? userId = null, CancellationToken cancellationToken = default)
     {
-        var list = await _db.MemoryItems.ToListAsync(cancellationToken);
+        var query = _db.MemoryItems.AsQueryable();
+        if (!string.IsNullOrEmpty(userId))
+        {
+            query = query.Where(m => m.UserId == userId);
+        }
+        var list = await query.ToListAsync(cancellationToken);
         return list.OrderByDescending(m => m.Importance)
                    .ThenByDescending(m => m.UpdatedAt)
                    .ToList();
     }
 
-    public async Task<IReadOnlyList<MemoryItem>> GetByTypeAsync(MemoryType type, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<MemoryItem>> GetByTypeAsync(MemoryType type, string? userId = null, CancellationToken cancellationToken = default)
     {
-        var list = await _db.MemoryItems.Where(m => m.Type == type).ToListAsync(cancellationToken);
+        var query = _db.MemoryItems.Where(m => m.Type == type);
+        if (!string.IsNullOrEmpty(userId))
+        {
+            query = query.Where(m => m.UserId == userId);
+        }
+        var list = await query.ToListAsync(cancellationToken);
         return list.OrderByDescending(m => m.Importance)
                    .ThenByDescending(m => m.UpdatedAt)
                    .ToList();
     }
 
-    public async Task<IReadOnlyList<MemoryItem>> SearchAsync(string query, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<MemoryItem>> SearchAsync(string query, string? userId = null, CancellationToken cancellationToken = default)
     {
         var qLower = query.ToLower();
-        var list = await _db.MemoryItems
-            .Where(m => m.Content.ToLower().Contains(qLower))
-            .ToListAsync(cancellationToken);
-
+        var q = _db.MemoryItems.Where(m => m.Content.ToLower().Contains(qLower));
+        if (!string.IsNullOrEmpty(userId))
+        {
+            q = q.Where(m => m.UserId == userId);
+        }
+        var list = await q.ToListAsync(cancellationToken);
         return list.OrderByDescending(m => m.Importance).ToList();
     }
 
@@ -68,9 +80,14 @@ public class MemoryRepository : IMemoryRepository
         }
     }
 
-    public async Task ClearCategoryAsync(MemoryType type, CancellationToken cancellationToken = default)
+    public async Task ClearCategoryAsync(MemoryType type, string? userId = null, CancellationToken cancellationToken = default)
     {
-        var items = await _db.MemoryItems.Where(m => m.Type == type).ToListAsync(cancellationToken);
+        var query = _db.MemoryItems.Where(m => m.Type == type);
+        if (!string.IsNullOrEmpty(userId))
+        {
+            query = query.Where(m => m.UserId == userId);
+        }
+        var items = await query.ToListAsync(cancellationToken);
         if (items.Count > 0)
         {
             _db.MemoryItems.RemoveRange(items);
@@ -78,9 +95,14 @@ public class MemoryRepository : IMemoryRepository
         }
     }
 
-    public async Task ClearAllAsync(CancellationToken cancellationToken = default)
+    public async Task ClearAllAsync(string? userId = null, CancellationToken cancellationToken = default)
     {
-        var items = await _db.MemoryItems.ToListAsync(cancellationToken);
+        var query = _db.MemoryItems.AsQueryable();
+        if (!string.IsNullOrEmpty(userId))
+        {
+            query = query.Where(m => m.UserId == userId);
+        }
+        var items = await query.ToListAsync(cancellationToken);
         if (items.Count > 0)
         {
             _db.MemoryItems.RemoveRange(items);
@@ -88,8 +110,13 @@ public class MemoryRepository : IMemoryRepository
         }
     }
 
-    public async Task<int> GetCountAsync(CancellationToken cancellationToken = default)
+    public async Task<int> GetCountAsync(string? userId = null, CancellationToken cancellationToken = default)
     {
-        return await _db.MemoryItems.CountAsync(cancellationToken);
+        var query = _db.MemoryItems.AsQueryable();
+        if (!string.IsNullOrEmpty(userId))
+        {
+            query = query.Where(m => m.UserId == userId);
+        }
+        return await query.CountAsync(cancellationToken);
     }
 }

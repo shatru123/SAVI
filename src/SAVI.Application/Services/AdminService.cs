@@ -54,8 +54,8 @@ public class AdminService : IAdminService
 
         var totalConversations = await _conversationRepository.GetCountAsync(null, cancellationToken);
         var totalMessages = await _conversationRepository.GetTotalMessagesCountAsync(cancellationToken);
-        var totalMemory = await _memoryRepository.GetCountAsync(cancellationToken);
-        var allTasks = await _taskRepository.GetAllAsync(null, cancellationToken);
+        var totalMemory = await _memoryRepository.GetCountAsync(userId: null, cancellationToken: cancellationToken);
+        var allTasks = await _taskRepository.GetAllAsync(state: null, userId: null, cancellationToken: cancellationToken);
         var providerCount = _providerRepository != null ? (await _providerRepository.GetAllAsync(cancellationToken)).Count : 4;
 
         return new PlatformMetricsDto

@@ -10,11 +10,15 @@ namespace SAVI.Application.Services;
 public class TaskService : ITaskService, ITaskStateMachine
 {
     private readonly ITaskRepository _repository;
+    private readonly ICurrentUserService? _currentUserService;
 
-    public TaskService(ITaskRepository repository)
+    public TaskService(ITaskRepository repository, ICurrentUserService? currentUserService = null)
     {
         _repository = repository;
+        _currentUserService = currentUserService;
     }
+
+    private string? EffectiveUserId => _currentUserService?.IsAuthenticated == true ? _currentUserService.UserId : null;
 
     public async Task<TaskItemDto> CreateTaskAsync(string title, string description, IReadOnlyList<string> steps, CancellationToken cancellationToken = default)
     {
@@ -38,6 +42,7 @@ public class TaskService : ITaskService, ITaskStateMachine
         var task = new TaskItem
         {
             Id = Guid.NewGuid().ToString(),
+            UserId = EffectiveUserId,
             Title = title,
             Description = description,
             State = TaskState.Running,
@@ -54,17 +59,40 @@ public class TaskService : ITaskService, ITaskStateMachine
     public async Task<TaskItemDto?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
     {
         var item = await _repository.GetByIdAsync(id, cancellationToken);
-        return item == null ? null : MapToDto(item);
+        if (item == null) return null;
+
+        if (_currentUserService != null && _currentUserService.IsAuthenticated && !_currentUserService.IsOwner)
+        {
+            if (!string.IsNullOrEmpty(item.UserId) && item.UserId != _currentUserService.UserId)
+            {
+                return null;
+            }
+        }
+
+        return MapToDto(item);
     }
 
     public async Task<TaskItem?> GetTaskAsync(string taskId, CancellationToken cancellationToken = default)
     {
-        return await _repository.GetByIdAsync(taskId, cancellationToken);
+        var item = await _repository.GetByIdAsync(taskId, cancellationToken);
+        if (item != null && _currentUserService != null && _currentUserService.IsAuthenticated && !_currentUserService.IsOwner)
+        {
+            if (!string.IsNullOrEmpty(item.UserId) && item.UserId != _currentUserService.UserId)
+            {
+                return null;
+            }
+        }
+        return item;
     }
 
     public async Task<IReadOnlyList<TaskItemDto>> GetAllAsync(TaskState? state = null, CancellationToken cancellationToken = default)
     {
-        var items = await _repository.GetAllAsync(state, cancellationToken);
+        if (_currentUserService != null && !_currentUserService.IsAuthenticated)
+        {
+            return Array.Empty<TaskItemDto>();
+        }
+
+        var items = await _repository.GetAllAsync(state, EffectiveUserId, cancellationToken);
         return items.Select(MapToDto).ToList();
     }
 
@@ -127,6 +155,14 @@ public class TaskService : ITaskService, ITaskStateMachine
         var task = await _repository.GetByIdAsync(taskId, cancellationToken)
             ?? throw new KeyNotFoundException($"Task {taskId} not found");
 
+        if (_currentUserService != null && _currentUserService.IsAuthenticated && !_currentUserService.IsOwner)
+        {
+            if (!string.IsNullOrEmpty(task.UserId) && task.UserId != _currentUserService.UserId)
+            {
+                throw new UnauthorizedAccessException($"User is not authorized to approve steps on task {taskId}");
+            }
+        }
+
         var steps = string.IsNullOrWhiteSpace(task.StepsJson)
             ? new List<TaskStep>()
             : JsonSerializer.Deserialize<List<TaskStep>>(task.StepsJson) ?? new List<TaskStep>();
@@ -157,6 +193,14 @@ public class TaskService : ITaskService, ITaskStateMachine
     {
         var task = await _repository.GetByIdAsync(taskId, cancellationToken)
             ?? throw new KeyNotFoundException($"Task {taskId} not found");
+
+        if (_currentUserService != null && _currentUserService.IsAuthenticated && !_currentUserService.IsOwner)
+        {
+            if (!string.IsNullOrEmpty(task.UserId) && task.UserId != _currentUserService.UserId)
+            {
+                throw new UnauthorizedAccessException($"User is not authorized to modify task {taskId}");
+            }
+        }
 
         task.State = newState;
         if (summary != null) task.ResultSummary = summary;

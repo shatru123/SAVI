@@ -6,13 +6,13 @@ namespace SAVI.Application.Interfaces;
 public interface IMemoryRepository
 {
     Task<MemoryItem?> GetByIdAsync(string id, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<MemoryItem>> GetAllAsync(CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<MemoryItem>> GetByTypeAsync(MemoryType type, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<MemoryItem>> SearchAsync(string query, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<MemoryItem>> GetAllAsync(string? userId = null, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<MemoryItem>> GetByTypeAsync(MemoryType type, string? userId = null, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<MemoryItem>> SearchAsync(string query, string? userId = null, CancellationToken cancellationToken = default);
     Task AddAsync(MemoryItem item, CancellationToken cancellationToken = default);
     Task UpdateAsync(MemoryItem item, CancellationToken cancellationToken = default);
     Task DeleteAsync(string id, CancellationToken cancellationToken = default);
-    Task ClearCategoryAsync(MemoryType type, CancellationToken cancellationToken = default);
-    Task ClearAllAsync(CancellationToken cancellationToken = default);
-    Task<int> GetCountAsync(CancellationToken cancellationToken = default);
+    Task ClearCategoryAsync(MemoryType type, string? userId = null, CancellationToken cancellationToken = default);
+    Task ClearAllAsync(string? userId = null, CancellationToken cancellationToken = default);
+    Task<int> GetCountAsync(string? userId = null, CancellationToken cancellationToken = default);
 }

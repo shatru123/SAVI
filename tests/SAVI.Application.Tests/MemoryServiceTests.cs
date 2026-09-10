@@ -42,7 +42,7 @@ public class MemoryServiceTests
         };
 
         var mockRepo = new Mock<IMemoryRepository>();
-        mockRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(list);
+        mockRepo.Setup(r => r.GetAllAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(list);
 
         var service = new MemoryService(mockRepo.Object);
         var relevant = await service.GetRelevantMemoriesAsync("Explain dependency injection in .NET");

@@ -108,4 +108,115 @@ public class ExecutionPlanner
     {
         _providerRegistry.RecordResult(providerId, latencyMs, succeeded, rateLimited, retryAfter);
     }
+
+    public AgentPlan CreateAgentPlan(AgentRequest request, DetectedIntent intent, QueryAnalysisResult? analysis = null)
+    {
+        var prompt = request.Message.Trim();
+        var lower = prompt.ToLowerInvariant();
+        var requestType = ClassifyRequestType(lower, intent);
+        var steps = new List<PlanStep>();
+
+        // Multi-Step Comparative or Research Task Decomposition
+        if (lower.Contains("compare") || lower.Contains("vs") || lower.Contains("difference between"))
+        {
+            steps.Add(new PlanStep
+            {
+                Order = 1,
+                Title = "Identify Entities & Criteria",
+                Description = "Extract targets to compare from prompt",
+                Capability = intent.Capability,
+                SkillOrToolName = "search"
+            });
+            steps.Add(new PlanStep
+            {
+                Order = 2,
+                Title = "Gather Domain Evidence",
+                Description = "Retrieve specifications and real-time facts for each target",
+                Capability = intent.Capability,
+                SkillOrToolName = intent.Capability == "weather" ? "weather" : "search",
+                Dependencies = new[] { steps[0].Id }
+            });
+            steps.Add(new PlanStep
+            {
+                Order = 3,
+                Title = "Synthesize Comparative Analysis",
+                Description = "Evaluate trade-offs, metrics, and formulate response",
+                Capability = "synthesis",
+                SkillOrToolName = "synthesis",
+                Dependencies = new[] { steps[1].Id }
+            });
+        }
+        else if (requestType == "Research")
+        {
+            steps.Add(new PlanStep
+            {
+                Order = 1,
+                Title = "Primary Information Retrieval",
+                Description = "Query authoritative knowledge bases and web sources",
+                Capability = intent.Capability,
+                SkillOrToolName = "wikipedia"
+            });
+            steps.Add(new PlanStep
+            {
+                Order = 2,
+                Title = "Cross-Verification Search",
+                Description = "Gather supplementary evidence for consensus check",
+                Capability = "web_search",
+                SkillOrToolName = "search"
+            });
+            steps.Add(new PlanStep
+            {
+                Order = 3,
+                Title = "Final Evidence Synthesis",
+                Description = "Assemble coherent verified answer",
+                Capability = "synthesis",
+                SkillOrToolName = "synthesis",
+                Dependencies = new[] { steps[0].Id, steps[1].Id }
+            });
+        }
+        else
+        {
+            // Direct Single-Stage Execution
+            steps.Add(new PlanStep
+            {
+                Order = 1,
+                Title = $"Execute {intent.Capability}",
+                Description = $"Process user request via {intent.Capability} capability",
+                Capability = intent.Capability,
+                SkillOrToolName = intent.Capability,
+                Arguments = intent.Parameters,
+                RequiresConfirmation = intent.Capability == SaviConstants.Capabilities.Terminal ||
+                                       (intent.Capability == SaviConstants.Capabilities.FileSystem && intent.Operation == "delete")
+            });
+        }
+
+        return new AgentPlan
+        {
+            Goal = prompt,
+            RequestType = requestType,
+            Steps = steps,
+            Status = PlanExecutionStatus.Pending,
+            VerificationPolicy = request.VerificationPolicyOverride ?? intent.PolicyOverride ?? VerificationPolicy.Balanced
+        };
+    }
+
+    private static string ClassifyRequestType(string lower, DetectedIntent intent)
+    {
+        if (intent.Capability == "chitchat" || lower.StartsWith("hi") || lower.StartsWith("hello") || lower.StartsWith("hey"))
+            return "Conversation";
+        if (lower.Contains("compare") || lower.Contains("difference") || lower.Contains("analyze"))
+            return "Analysis";
+        if (lower.Contains("research") || lower.Contains("tell me about") || lower.Contains("explain"))
+            return "Research";
+        if (lower.Contains("remind") || lower.Contains("every") || lower.Contains("schedule") || lower.Contains("monitor"))
+            return "Automation";
+        if (lower.StartsWith("create") || lower.StartsWith("write") || lower.StartsWith("build"))
+            return "Creation";
+        if (lower.StartsWith("delete") || lower.StartsWith("run") || lower.StartsWith("execute") || lower.StartsWith("set"))
+            return "Command";
+        if (intent.Capability == "weather" || intent.Capability == "calculator" || intent.Capability == "currency")
+            return "Question";
+
+        return "Task";
+    }
 }

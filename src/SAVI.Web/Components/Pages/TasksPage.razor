@@ -1,5 +1,6 @@
 @page "/tasks"
 @inject ITaskService TaskService
+@inject ICurrentUserService CurrentUserService
 
 <PageTitle>SAVI — Task Execution Matrix</PageTitle>
 
@@ -12,28 +13,53 @@
             </div>
         </div>
 
-        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-            <button class="savi-btn active-voice-btn" style="background: rgba(0, 240, 255, 0.18); border-color: rgba(0, 240, 255, 0.5); color: #00f0ff;" @onclick="LoadExampleWorkflows">✨ Load Example Workflows</button>
-            <button class="savi-btn" @onclick="OpenCreateBlank">+ Create Task</button>
-        </div>
+        @if (CurrentUserService.IsAuthenticated)
+        {
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="savi-btn active-voice-btn" style="background: rgba(0, 240, 255, 0.18); border-color: rgba(0, 240, 255, 0.5); color: #00f0ff;" @onclick="LoadExampleWorkflows">✨ Load Example Workflows</button>
+                <button class="savi-btn" @onclick="OpenCreateBlank">+ Create Task</button>
+            </div>
+        }
     </div>
 
-    <!-- Quick Workflow Templates -->
-    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; background: rgba(0, 240, 255, 0.04); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--savi-border-subtle);">
-        <span style="font-size: 0.72rem; color: var(--savi-text-dim); text-transform: uppercase; letter-spacing: 0.8px;">Workflow Templates:</span>
-        <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="OpenSecurityAuditTemplate">
-            + 🛡️ Security Audit
-        </button>
-        <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="OpenDbMigrationTemplate">
-            + 🗄️ DB Migration
-        </button>
-        <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="OpenAudioBenchmarkTemplate">
-            + 📡 Audio Benchmark
-        </button>
-        <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="OpenContainerBuildTemplate">
-            + 🐳 Container Build
-        </button>
-    </div>
+    @if (!CurrentUserService.IsAuthenticated)
+    {
+        <div style="text-align: center; color: var(--savi-text-dim); margin-top: 40px; padding: 40px 24px; background: rgba(0,0,0,0.3); border: 1px dashed var(--savi-border-subtle); border-radius: 8px; max-width: 580px; margin-left: auto; margin-right: auto;">
+            <div style="font-size: 2.6rem; margin-bottom: 12px;">⚙</div>
+            <div style="font-size: 1.15rem; color: var(--savi-text-primary); font-weight: bold; margin-bottom: 8px;">
+                Authentication Required for Task Workflows
+            </div>
+            <div style="font-size: 0.84rem; color: var(--savi-text-secondary); margin-bottom: 24px; line-height: 1.6;">
+                Task execution workflows, state machines, and approval queues are isolated per operator. Sign in to run and monitor workflows.
+            </div>
+            <div style="display: flex; gap: 12px; justify-content: center; max-width: 320px; margin: 0 auto;">
+                <a href="/login?returnUrl=/tasks" class="savi-btn savi-btn-primary" style="flex: 1; text-align: center; text-decoration: none; padding: 8px 16px;">
+                    Log In
+                </a>
+                <a href="/register?returnUrl=/tasks" class="savi-btn" style="flex: 1; text-align: center; text-decoration: none; padding: 8px 16px; border-color: var(--savi-cyan); color: var(--savi-cyan);">
+                    Register
+                </a>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Quick Workflow Templates -->
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; background: rgba(0, 240, 255, 0.04); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--savi-border-subtle);">
+            <span style="font-size: 0.72rem; color: var(--savi-text-dim); text-transform: uppercase; letter-spacing: 0.8px;">Workflow Templates:</span>
+            <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="OpenSecurityAuditTemplate">
+                + 🛡️ Security Audit
+            </button>
+            <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="OpenDbMigrationTemplate">
+                + 🗄️ DB Migration
+            </button>
+            <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="OpenAudioBenchmarkTemplate">
+                + 📡 Audio Benchmark
+            </button>
+            <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="OpenContainerBuildTemplate">
+                + 🐳 Container Build
+            </button>
+        </div>
 
     @if (_tasks.Count == 0)
     {
@@ -111,6 +137,7 @@
                 </div>
             }
         </div>
+    }
     }
 </div>
 

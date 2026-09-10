@@ -78,8 +78,8 @@ public class AdminServiceTests
             });
         _mockConvRepo.Setup(r => r.GetCountAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(25);
         _mockConvRepo.Setup(r => r.GetTotalMessagesCountAsync(It.IsAny<CancellationToken>())).ReturnsAsync(100);
-        _mockMemoryRepo.Setup(r => r.GetCountAsync(It.IsAny<CancellationToken>())).ReturnsAsync(50);
-        _mockTaskRepo.Setup(r => r.GetAllAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(new List<TaskItem>());
+        _mockMemoryRepo.Setup(r => r.GetCountAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(50);
+        _mockTaskRepo.Setup(r => r.GetAllAsync(null, null, It.IsAny<CancellationToken>())).ReturnsAsync(new List<TaskItem>());
 
         var metrics = await adminService.GetPlatformMetricsAsync();
 

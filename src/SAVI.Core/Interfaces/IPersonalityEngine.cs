@@ -11,8 +11,8 @@ public interface IPersonalityEngine
         IReadOnlyList<MemoryItem> relevantMemories,
         bool isVoice = false);
 
-    string FormatFriendlyGreeting();
-    string FormatChitChat(string operation, string prompt);
+    string FormatFriendlyGreeting(string? userName = null);
+    string FormatChitChat(string operation, string prompt, string? userName = null);
     string FormatError(string reason);
     string FormatActionApprovalPrompt(string actionDescription, PermissionLevel level);
 }

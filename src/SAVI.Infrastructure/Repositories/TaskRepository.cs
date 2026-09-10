@@ -20,9 +20,13 @@ public class TaskRepository : ITaskRepository
         return await _db.TaskItems.FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<TaskItem>> GetAllAsync(TaskState? state = null, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<TaskItem>> GetAllAsync(TaskState? state = null, string? userId = null, CancellationToken cancellationToken = default)
     {
         var query = _db.TaskItems.AsQueryable();
+        if (!string.IsNullOrEmpty(userId))
+        {
+            query = query.Where(t => t.UserId == userId);
+        }
         if (state.HasValue)
         {
             query = query.Where(t => t.State == state.Value);

@@ -1,0 +1,487 @@
+@page "/automations"
+@using SAVI.Application.DTOs
+@using SAVI.Application.Interfaces
+@inject IAutomationService AutomationService
+@inject ICurrentUserService CurrentUserService
+@inject IUserCapabilityService CapabilityService
+@inject NavigationManager Navigation
+
+<PageTitle>SAVI — Persistent Automation Matrix</PageTitle>
+
+<div class="savi-glass-panel savi-hud-bracket" style="padding: 24px; min-height: calc(100vh - 80px);">
+    <!-- Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 16px; margin-bottom: 20px; flex-wrap: wrap; gap: 14px;">
+        <div style="flex: 1; min-width: 240px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <h2 class="savi-glow-text" style="margin: 0; font-size: 1.25rem;">AUTOMATION ENGINE MATRIX</h2>
+                <span class="savi-badge" style="color: var(--savi-cyan); border-color: var(--savi-cyan); font-size: 0.65rem;">
+                    24/7 BACKGROUND WORKER
+                </span>
+            </div>
+            <div style="font-size: 0.8rem; color: var(--savi-text-secondary); margin-top: 4px;">
+                Autonomous recurring tasks, scheduled intelligence routines, and proactive agent execution.
+            </div>
+        </div>
+
+        @if (CurrentUserService.IsAuthenticated)
+        {
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="savi-btn active-voice-btn" style="background: rgba(0, 240, 255, 0.18); border-color: rgba(0, 240, 255, 0.5); color: #00f0ff;" @onclick="LoadExampleAutomations">
+                    ✨ Load Sample Routines
+                </button>
+                <button class="savi-btn savi-btn-primary" @onclick="OpenCreateModal">
+                    + New Automation
+                </button>
+            </div>
+        }
+    </div>
+
+    @if (!CurrentUserService.IsAuthenticated)
+    {
+        <!-- Unauthenticated Guest Prompt -->
+        <div style="text-align: center; color: var(--savi-text-dim); margin-top: 40px; padding: 40px 24px; background: rgba(0,0,0,0.3); border: 1px dashed var(--savi-border-subtle); border-radius: 8px; max-width: 580px; margin-left: auto; margin-right: auto;">
+            <div style="font-size: 2.6rem; margin-bottom: 12px;">⚡</div>
+            <div style="font-size: 1.15rem; color: var(--savi-text-primary); font-weight: bold; margin-bottom: 8px;">
+                Authentication Required for Automations
+            </div>
+            <div style="font-size: 0.84rem; color: var(--savi-text-secondary); margin-bottom: 24px; line-height: 1.6;">
+                SAVI's Persistent Automation Engine schedules sovereign background workers that execute recurring tasks, monitor APIs, and evaluate system state even when your browser is closed.
+            </div>
+            <div style="display: flex; gap: 12px; justify-content: center; max-width: 320px; margin: 0 auto;">
+                <a href="/login?returnUrl=/automations" class="savi-btn savi-btn-primary" style="flex: 1; text-align: center; text-decoration: none; padding: 8px 16px;">
+                    Log In
+                </a>
+                <a href="/register?returnUrl=/automations" class="savi-btn" style="flex: 1; text-align: center; text-decoration: none; padding: 8px 16px; border-color: var(--savi-cyan); color: var(--savi-cyan);">
+                    Register
+                </a>
+            </div>
+        </div>
+    }
+    else if (_loading)
+    {
+        <div style="text-align: center; padding: 60px 0; color: var(--savi-cyan); font-family: var(--savi-font-mono);">
+            INITIALIZING AUTOMATION SUBSYSTEM...
+        </div>
+    }
+    else if (_automations.Count == 0)
+    {
+        <!-- Empty State -->
+        <div style="text-align: center; color: var(--savi-text-dim); margin-top: 40px; padding: 40px 20px; background: rgba(0,0,0,0.25); border: 1px dashed var(--savi-border-subtle); border-radius: 8px; max-width: 620px; margin-left: auto; margin-right: auto;">
+            <div style="font-size: 2.2rem; margin-bottom: 10px;">⚡</div>
+            <div style="font-size: 1rem; color: var(--savi-text-primary); font-weight: bold; margin-bottom: 6px;">No Active Automations</div>
+            <div style="font-size: 0.82rem; color: var(--savi-text-secondary); margin-bottom: 20px; line-height: 1.5;">
+                Configure recurring jobs, periodic system telemetry probes, or automatic knowledge synching.
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button class="savi-btn active-voice-btn" style="padding: 8px 18px; font-size: 0.85rem;" @onclick="LoadExampleAutomations">
+                    ✨ Load Sample Routines
+                </button>
+                <button class="savi-btn savi-btn-primary" style="padding: 8px 18px; font-size: 0.85rem;" @onclick="OpenCreateModal">
+                    + Create First Routine
+                </button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Automations List -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px;">
+            @foreach (var auto in _automations)
+            {
+                <div class="savi-glass-panel" style="padding: 16px; display: flex; flex-direction: column; justify-content: space-between; border-color: @(auto.IsEnabled ? "var(--savi-border-subtle)" : "rgba(255,255,255,0.06)"); opacity: @(auto.IsEnabled ? "1" : "0.75"); transition: all 0.2s ease;">
+                    <div>
+                        <!-- Header Row -->
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 8px;">
+                            <div>
+                                <div style="font-weight: bold; font-size: 0.95rem; color: var(--savi-text-primary);">
+                                    @auto.Name
+                                </div>
+                                <div style="font-size: 0.78rem; color: var(--savi-text-secondary); margin-top: 2px;">
+                                    @(string.IsNullOrWhiteSpace(auto.Description) ? "No description" : auto.Description)
+                                </div>
+                            </div>
+                            <button class="savi-badge" style="cursor: pointer; background: @(auto.IsEnabled ? "rgba(0, 240, 255, 0.1)" : "rgba(255, 255, 255, 0.05)"); color: @(auto.IsEnabled ? "var(--savi-cyan)" : "var(--savi-text-dim)"); border-color: @(auto.IsEnabled ? "var(--savi-cyan)" : "var(--savi-border-subtle)"); font-size: 0.65rem;" @onclick="() => ToggleEnabled(auto.Id)">
+                                ● @(auto.IsEnabled ? "ACTIVE" : "PAUSED")
+                            </button>
+                        </div>
+
+                        <!-- Interval Badge & Prompt Preview -->
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                            <span class="savi-badge" style="font-size: 0.68rem; color: var(--savi-blue); border-color: var(--savi-blue);">
+                                ⏱ @FormatInterval(auto.IntervalSeconds)
+                            </span>
+                        </div>
+
+                        <div style="background: rgba(0, 0, 0, 0.35); border: 1px solid var(--savi-border-subtle); border-radius: 4px; padding: 8px 10px; margin-bottom: 12px; font-family: var(--savi-font-mono); font-size: 0.75rem; color: var(--savi-cyan); white-space: pre-wrap; word-break: break-word; max-height: 70px; overflow-y: auto;">
+                            &gt; @auto.Prompt
+                        </div>
+
+                        <!-- Timings -->
+                        <div style="font-size: 0.72rem; color: var(--savi-text-dim); display: flex; flex-direction: column; gap: 3px; margin-bottom: 14px; font-family: var(--savi-font-mono);">
+                            <div>Last Run: <span style="color: var(--savi-text-secondary);">@(auto.LastExecutedAt.HasValue ? auto.LastExecutedAt.Value.ToLocalTime().ToString("MMM dd, HH:mm:ss") : "Never")</span></div>
+                            <div>Next Run: <span style="color: var(--savi-text-secondary);">@(auto.IsEnabled && auto.NextExecutionAt.HasValue ? auto.NextExecutionAt.Value.ToLocalTime().ToString("MMM dd, HH:mm:ss") : "Paused")</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Action Bar -->
+                    <div style="display: flex; gap: 8px; border-top: 1px solid var(--savi-border-subtle); padding-top: 10px; align-items: center;">
+                        <button class="savi-btn savi-btn-sm" style="flex: 1; font-size: 0.75rem; border-color: var(--savi-cyan); color: var(--savi-cyan);" disabled="@(_runningIds.Contains(auto.Id))" @onclick="() => TriggerNow(auto.Id)">
+                            @if (_runningIds.Contains(auto.Id))
+                            {
+                                <span>Running...</span>
+                            }
+                            else
+                            {
+                                <span>▶ Run Now</span>
+                            }
+                        </button>
+                        <button class="savi-btn savi-btn-sm" style="font-size: 0.75rem;" @onclick="() => ViewLogs(auto.Id, auto.Name)">
+                            📜 Logs
+                        </button>
+                        <button class="savi-btn savi-btn-sm" style="font-size: 0.75rem;" @onclick="() => OpenEditModal(auto)">
+                            ✏ Edit
+                        </button>
+                        <button class="savi-btn savi-btn-sm savi-btn-danger" style="font-size: 0.75rem; padding: 4px 8px;" @onclick="() => DeleteAutomation(auto.Id)">
+                            🗑
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<!-- Create / Edit Modal -->
+@if (_showModal)
+{
+    <div class="savi-drawer-backdrop active" style="z-index: 2000;" @onclick="CloseModal">
+        <div class="savi-glass-panel savi-hud-bracket" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 500px; padding: 24px; z-index: 2001; box-shadow: 0 16px 48px rgba(0,0,0,0.8);" @onclick:stopPropagation="true">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 12px; margin-bottom: 16px;">
+                <h3 class="savi-glow-text" style="margin: 0; font-size: 1.1rem;">
+                    @(_isEditing ? "EDIT AUTOMATION ROUTINE" : "NEW AUTOMATION ROUTINE")
+                </h3>
+                <button class="savi-btn savi-btn-sm" @onclick="CloseModal">✕</button>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 14px;">
+                <div>
+                    <label style="font-size: 0.75rem; color: var(--savi-text-dim); text-transform: uppercase; font-weight: bold; margin-bottom: 4px; display: block;">Routine Name</label>
+                    <input type="text" class="savi-input-field" style="width: 100%; box-sizing: border-box; padding: 8px 10px;" placeholder="e.g. Daily Weather Brief" @bind="_formName" />
+                </div>
+
+                <div>
+                    <label style="font-size: 0.75rem; color: var(--savi-text-dim); text-transform: uppercase; font-weight: bold; margin-bottom: 4px; display: block;">Description</label>
+                    <input type="text" class="savi-input-field" style="width: 100%; box-sizing: border-box; padding: 8px 10px;" placeholder="Optional routine description" @bind="_formDescription" />
+                </div>
+
+                <div>
+                    <label style="font-size: 0.75rem; color: var(--savi-text-dim); text-transform: uppercase; font-weight: bold; margin-bottom: 4px; display: block;">Agent Instruction / Prompt</label>
+                    <textarea class="savi-input-field" style="width: 100%; box-sizing: border-box; padding: 8px 10px; height: 80px; resize: vertical; font-family: var(--savi-font-mono); font-size: 0.8rem;" placeholder="e.g. Check current weather in Tokyo and log summary" @bind="_formPrompt"></textarea>
+                </div>
+
+                <div>
+                    <label style="font-size: 0.75rem; color: var(--savi-text-dim); text-transform: uppercase; font-weight: bold; margin-bottom: 4px; display: block;">Execution Frequency</label>
+                    <select class="savi-input-field" style="width: 100%; box-sizing: border-box; padding: 8px 10px; background: #0f141c; color: white;" @bind="_formIntervalSeconds">
+                        <option value="300">Every 5 Minutes (Testing)</option>
+                        <option value="900">Every 15 Minutes</option>
+                        <option value="1800">Every 30 Minutes</option>
+                        <option value="3600">Every 1 Hour</option>
+                        <option value="21600">Every 6 Hours</option>
+                        <option value="43200">Every 12 Hours</option>
+                        <option value="86400">Every 24 Hours (Daily)</option>
+                    </select>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                    <input type="checkbox" id="enableToggle" @bind="_formIsEnabled" style="cursor: pointer; accent-color: var(--savi-cyan);" />
+                    <label for="enableToggle" style="font-size: 0.82rem; color: var(--savi-text-secondary); cursor: pointer;">Enable immediately on save</label>
+                </div>
+
+                @if (!string.IsNullOrEmpty(_formError))
+                {
+                    <div style="color: #ff5555; font-size: 0.78rem; font-family: var(--savi-font-mono);">
+                        @_formError
+                    </div>
+                }
+
+                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px;">
+                    <button class="savi-btn" @onclick="CloseModal">Cancel</button>
+                    <button class="savi-btn savi-btn-primary" @onclick="SaveAutomation">Save Routine</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Execution Logs Modal -->
+@if (_showLogsModal)
+{
+    <div class="savi-drawer-backdrop active" style="z-index: 2000;" @onclick="CloseLogsModal">
+        <div class="savi-glass-panel savi-hud-bracket" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 650px; max-height: 80vh; padding: 24px; z-index: 2001; display: flex; flex-direction: column;" @onclick:stopPropagation="true">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 12px; margin-bottom: 16px;">
+                <div>
+                    <h3 class="savi-glow-text" style="margin: 0; font-size: 1.05rem;">EXECUTION AUDIT LOGS</h3>
+                    <div style="font-size: 0.75rem; color: var(--savi-text-secondary); margin-top: 2px;">@_activeLogTitle</div>
+                </div>
+                <button class="savi-btn savi-btn-sm" @onclick="CloseLogsModal">✕</button>
+            </div>
+
+            <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px;">
+                @if (_logs.Count == 0)
+                {
+                    <div style="text-align: center; color: var(--savi-text-dim); padding: 40px 0; font-size: 0.82rem;">
+                        No execution records found for this routine.
+                    </div>
+                }
+                else
+                {
+                    @foreach (var log in _logs)
+                    {
+                        <div style="background: rgba(0, 0, 0, 0.35); border: 1px solid @(log.Success ? "rgba(0, 240, 255, 0.2)" : "rgba(255, 85, 85, 0.3)"); border-radius: 4px; padding: 10px 12px; font-family: var(--savi-font-mono);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.72rem;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span class="savi-badge" style="font-size: 0.62rem; color: @(log.Success ? "#00f0ff" : "#ff5555"); border-color: @(log.Success ? "#00f0ff" : "#ff5555");">
+                                        @(log.Success ? "SUCCESS" : "FAILED")
+                                    </span>
+                                    <span style="color: var(--savi-text-dim);">@log.ExecutedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span>
+                                </div>
+                                <span style="color: var(--savi-cyan);">@log.DurationMs ms</span>
+                            </div>
+
+                            <div style="font-size: 0.76rem; color: @(log.Success ? "var(--savi-text-secondary)" : "#ff8888"); white-space: pre-wrap; word-break: break-word;">
+                                @(log.Success ? log.Result : log.ErrorMessage)
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<AutomationDto> _automations = new();
+    private List<AutomationExecutionLogDto> _logs = new();
+    private HashSet<string> _runningIds = new();
+    private bool _loading = true;
+
+    // Modal state
+    private bool _showModal = false;
+    private bool _isEditing = false;
+    private string? _editingId;
+    private string _formName = string.Empty;
+    private string _formDescription = string.Empty;
+    private string _formPrompt = string.Empty;
+    private int _formIntervalSeconds = 3600;
+    private bool _formIsEnabled = true;
+    private string? _formError;
+
+    // Logs state
+    private bool _showLogsModal = false;
+    private string _activeLogTitle = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (CurrentUserService.IsAuthenticated)
+        {
+            await LoadAutomations();
+        }
+        else
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadAutomations()
+    {
+        _loading = true;
+        try
+        {
+            var items = await AutomationService.GetAllAsync();
+            _automations = items.ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Load automations error: {ex}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string FormatInterval(int? seconds) => seconds switch
+    {
+        <= 300 => "Every 5m",
+        <= 900 => "Every 15m",
+        <= 1800 => "Every 30m",
+        <= 3600 => "Every 1h",
+        <= 21600 => "Every 6h",
+        <= 43200 => "Every 12h",
+        <= 86400 => "Every 24h",
+        _ => $"Every {seconds}s"
+    };
+
+    private void OpenCreateModal()
+    {
+        _isEditing = false;
+        _editingId = null;
+        _formName = string.Empty;
+        _formDescription = string.Empty;
+        _formPrompt = string.Empty;
+        _formIntervalSeconds = 3600;
+        _formIsEnabled = true;
+        _formError = null;
+        _showModal = true;
+    }
+
+    private void OpenEditModal(AutomationDto item)
+    {
+        _isEditing = true;
+        _editingId = item.Id;
+        _formName = item.Name;
+        _formDescription = item.Description;
+        _formPrompt = item.Prompt;
+        _formIntervalSeconds = item.IntervalSeconds ?? 3600;
+        _formIsEnabled = item.IsEnabled;
+        _formError = null;
+        _showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        _showModal = false;
+    }
+
+    private async Task SaveAutomation()
+    {
+        if (string.IsNullOrWhiteSpace(_formName))
+        {
+            _formError = "Please enter a routine name.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_formPrompt))
+        {
+            _formError = "Please enter an agent instruction or prompt.";
+            return;
+        }
+
+        try
+        {
+            if (_isEditing && _editingId != null)
+            {
+                await AutomationService.UpdateAsync(_editingId, new UpdateAutomationDto(
+                    _formName.Trim(),
+                    _formDescription.Trim(),
+                    "Interval",
+                    _formIntervalSeconds,
+                    null,
+                    _formPrompt.Trim(),
+                    _formIsEnabled
+                ));
+            }
+            else
+            {
+                await AutomationService.CreateAsync(new CreateAutomationDto(
+                    _formName.Trim(),
+                    _formDescription.Trim(),
+                    "Interval",
+                    _formIntervalSeconds,
+                    null,
+                    _formPrompt.Trim(),
+                    _formIsEnabled
+                ));
+            }
+
+            _showModal = false;
+            await LoadAutomations();
+        }
+        catch (Exception ex)
+        {
+            _formError = $"Failed to save: {ex.Message}";
+        }
+    }
+
+    private async Task ToggleEnabled(string id)
+    {
+        try
+        {
+            await AutomationService.ToggleEnabledAsync(id);
+            await LoadAutomations();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Toggle error: {ex}");
+        }
+    }
+
+    private async Task TriggerNow(string id)
+    {
+        _runningIds.Add(id);
+        StateHasChanged();
+        try
+        {
+            await AutomationService.TriggerNowAsync(id);
+            await LoadAutomations();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Trigger now error: {ex}");
+        }
+        finally
+        {
+            _runningIds.Remove(id);
+            StateHasChanged();
+        }
+    }
+
+    private async Task ViewLogs(string id, string name)
+    {
+        _activeLogTitle = name;
+        try
+        {
+            var logs = await AutomationService.GetLogsAsync(id);
+            _logs = logs.ToList();
+            _showLogsModal = true;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"View logs error: {ex}");
+        }
+    }
+
+    private void CloseLogsModal()
+    {
+        _showLogsModal = false;
+    }
+
+    private async Task DeleteAutomation(string id)
+    {
+        try
+        {
+            await AutomationService.DeleteAsync(id);
+            await LoadAutomations();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Delete error: {ex}");
+        }
+    }
+
+    private async Task LoadExampleAutomations()
+    {
+        var sampleRoutines = new List<CreateAutomationDto>
+        {
+            new("Hourly System Telemetry", "Inspect system health, memory usage, and OS metrics", "Interval", 3600, null, "Inspect system diagnostics and check CPU/RAM usage", true),
+            new("Daily Weather Briefing", "Fetch current weather conditions and forecast", "Interval", 86400, null, "Check current weather in Tokyo and provide a concise summary", true),
+            new("Pending Tasks Monitor", "Analyze pending task queues and log outstanding approvals", "Interval", 1800, null, "Summarize all pending and running tasks", true)
+        };
+
+        foreach (var sample in sampleRoutines)
+        {
+            await AutomationService.CreateAsync(sample);
+        }
+
+        await LoadAutomations();
+    }
+}

@@ -46,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<IConversationRepository, ConversationRepository>();
         services.AddScoped<IMemoryRepository, MemoryRepository>();
         services.AddScoped<ITaskRepository, TaskRepository>();
+        services.AddScoped<IAutomationRepository, AutomationRepository>();
         services.AddScoped<IProviderDefinitionRepository, ProviderDefinitionRepository>();
         services.AddScoped<IAuditRepository, AuditRepository>();
         services.AddScoped<ISettingsRepository, SettingsRepository>();
@@ -55,13 +56,16 @@ public static class DependencyInjection
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IAdminService, AdminService>();
+        services.AddScoped<IUserCapabilityService, UserCapabilityService>();
         services.AddScoped<IConversationService, ConversationService>();
         services.AddScoped<IMemoryService, MemoryService>();
         services.AddScoped<ITaskService, TaskService>();
         services.AddScoped<ITaskStateMachine>(sp => (TaskService)sp.GetRequiredService<ITaskService>());
+        services.AddScoped<IAutomationService, AutomationService>();
         services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddSingleton<ISpeechService, SystemSpeechService>();
+        services.AddHostedService<SAVI.Infrastructure.Automation.AutomationScheduler>();
 
         // Voice Conversation & Audio Subsystem
         services.AddSingleton<IVoiceResponseFormatter, VoiceResponseFormatter>();

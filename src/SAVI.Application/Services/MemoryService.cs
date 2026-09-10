@@ -8,27 +8,46 @@ namespace SAVI.Application.Services;
 public class MemoryService : IMemoryService
 {
     private readonly IMemoryRepository _repository;
+    private readonly ICurrentUserService? _currentUserService;
 
-    public MemoryService(IMemoryRepository repository)
+    public MemoryService(IMemoryRepository repository, ICurrentUserService? currentUserService = null)
     {
         _repository = repository;
+        _currentUserService = currentUserService;
     }
+
+    private string? EffectiveUserId => _currentUserService?.IsAuthenticated == true ? _currentUserService.UserId : null;
 
     public async Task<IReadOnlyList<MemoryItemDto>> GetAllAsync(CancellationToken cancellationToken = default)
     {
-        var items = await _repository.GetAllAsync(cancellationToken);
+        if (_currentUserService != null && !_currentUserService.IsAuthenticated)
+        {
+            return Array.Empty<MemoryItemDto>();
+        }
+
+        var items = await _repository.GetAllAsync(EffectiveUserId, cancellationToken);
         return items.Select(MapToDto).ToList();
     }
 
     public async Task<IReadOnlyList<MemoryItemDto>> GetByCategoryAsync(MemoryType type, CancellationToken cancellationToken = default)
     {
-        var items = await _repository.GetByTypeAsync(type, cancellationToken);
+        if (_currentUserService != null && !_currentUserService.IsAuthenticated)
+        {
+            return Array.Empty<MemoryItemDto>();
+        }
+
+        var items = await _repository.GetByTypeAsync(type, EffectiveUserId, cancellationToken);
         return items.Select(MapToDto).ToList();
     }
 
     public async Task<IReadOnlyList<MemoryItemDto>> SearchAsync(string query, CancellationToken cancellationToken = default)
     {
-        var items = await _repository.SearchAsync(query, cancellationToken);
+        if (_currentUserService != null && !_currentUserService.IsAuthenticated)
+        {
+            return Array.Empty<MemoryItemDto>();
+        }
+
+        var items = await _repository.SearchAsync(query, EffectiveUserId, cancellationToken);
         return items.Select(MapToDto).ToList();
     }
 
@@ -37,13 +56,15 @@ public class MemoryService : IMemoryService
         var item = new MemoryItem
         {
             Id = Guid.NewGuid().ToString(),
+            UserId = EffectiveUserId,
             Type = dto.Type,
             Content = dto.Content,
             Importance = dto.Importance,
-            Confidence = 1.0,
+            Confidence = dto.Confidence > 0 ? dto.Confidence : 1.0,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
             ExpiresAt = dto.ExpiresAt,
+            Source = dto.Source,
             SourceConversationId = sourceConversationId
         };
 
@@ -56,6 +77,15 @@ public class MemoryService : IMemoryService
         var item = await _repository.GetByIdAsync(id, cancellationToken);
         if (item == null) return null;
 
+        // Isolation: if user is authenticated and not owner, prevent editing another user's memory
+        if (_currentUserService != null && _currentUserService.IsAuthenticated && !_currentUserService.IsOwner)
+        {
+            if (!string.IsNullOrEmpty(item.UserId) && item.UserId != _currentUserService.UserId)
+            {
+                return null;
+            }
+        }
+
         item.Type = dto.Type;
         item.Content = dto.Content;
         item.Importance = dto.Importance;
@@ -67,25 +97,44 @@ public class MemoryService : IMemoryService
 
     public async Task DeleteAsync(string id, CancellationToken cancellationToken = default)
     {
+        var item = await _repository.GetByIdAsync(id, cancellationToken);
+        if (item == null) return;
+
+        // Isolation check
+        if (_currentUserService != null && _currentUserService.IsAuthenticated && !_currentUserService.IsOwner)
+        {
+            if (!string.IsNullOrEmpty(item.UserId) && item.UserId != _currentUserService.UserId)
+            {
+                return;
+            }
+        }
+
         await _repository.DeleteAsync(id, cancellationToken);
     }
 
     public async Task ClearCategoryAsync(MemoryType type, CancellationToken cancellationToken = default)
     {
-        await _repository.ClearCategoryAsync(type, cancellationToken);
+        await _repository.ClearCategoryAsync(type, EffectiveUserId, cancellationToken);
     }
 
     public async Task ClearAllAsync(CancellationToken cancellationToken = default)
     {
-        await _repository.ClearAllAsync(cancellationToken);
+        await _repository.ClearAllAsync(EffectiveUserId, cancellationToken);
     }
 
     public async Task<IReadOnlyList<MemoryItem>> GetRelevantMemoriesAsync(string prompt, CancellationToken cancellationToken = default)
     {
-        var all = await _repository.GetAllAsync(cancellationToken);
+        // Unauthenticated guests have zero persistent memory access
+        if (_currentUserService != null && !_currentUserService.IsAuthenticated)
+        {
+            return Array.Empty<MemoryItem>();
+        }
+
+        var all = await _repository.GetAllAsync(EffectiveUserId, cancellationToken);
         if (all.Count == 0) return Array.Empty<MemoryItem>();
 
-        var active = all.Where(m => !m.ExpiresAt.HasValue || m.ExpiresAt > DateTimeOffset.UtcNow).ToList();
+        // Filter active and sufficiently confident memories
+        var active = all.Where(m => (!m.ExpiresAt.HasValue || m.ExpiresAt > DateTimeOffset.UtcNow) && m.Confidence >= 0.4).ToList();
 
         var tokens = prompt.Split(new[] { ' ', ',', '.', '?', '!', ':', ';', '/' }, StringSplitOptions.RemoveEmptyEntries)
             .Where(t => t.Length >= 3)
@@ -93,32 +142,41 @@ public class MemoryService : IMemoryService
             .Distinct()
             .ToList();
 
+        List<MemoryItem> results;
         if (tokens.Count == 0)
         {
-            return active.Where(m => m.Type == MemoryType.Preference || m.Type == MemoryType.Instruction)
+            results = active.Where(m => m.Type == MemoryType.Preference || m.Type == MemoryType.Instruction)
                          .OrderByDescending(m => m.Importance)
                          .Take(5)
                          .ToList();
         }
-
-        var scored = active.Select(m =>
+        else
         {
-            var contentLower = m.Content.ToLowerInvariant();
-            var matches = tokens.Count(t => contentLower.Contains(t));
-            var score = matches * 2.0 + m.Importance;
-            if (m.Type == MemoryType.Preference || m.Type == MemoryType.Instruction)
+            results = active.Select(m =>
             {
-                score += 1.5;
-            }
-            return new { Item = m, Score = score };
-        })
-        .Where(x => x.Score > 1.0)
-        .OrderByDescending(x => x.Score)
-        .Take(5)
-        .Select(x => x.Item)
-        .ToList();
+                var contentLower = m.Content.ToLowerInvariant();
+                var matches = tokens.Count(t => contentLower.Contains(t));
+                var score = matches * 2.0 + m.Importance;
+                if (m.Type == MemoryType.Preference || m.Type == MemoryType.Instruction)
+                {
+                    score += 1.5;
+                }
+                return new { Item = m, Score = score };
+            })
+            .Where(x => x.Score > 1.0)
+            .OrderByDescending(x => x.Score)
+            .Take(5)
+            .Select(x => x.Item)
+            .ToList();
+        }
 
-        return scored;
+        // Update LastAccessedAt in background/fire-and-forget for active items
+        foreach (var item in results)
+        {
+            item.LastAccessedAt = DateTimeOffset.UtcNow;
+        }
+
+        return results;
     }
 
     private static MemoryItemDto MapToDto(MemoryItem item)
@@ -133,6 +191,8 @@ public class MemoryService : IMemoryService
             CreatedAt = item.CreatedAt,
             UpdatedAt = item.UpdatedAt,
             ExpiresAt = item.ExpiresAt,
+            LastAccessedAt = item.LastAccessedAt,
+            Source = item.Source,
             SourceConversationId = item.SourceConversationId
         };
     }

@@ -1,3 +1,4 @@
+using SAVI.Core.Constants;
 using SAVI.Core.Entities;
 using SAVI.Core.Enums;
 using SAVI.Core.Interfaces;
@@ -32,21 +33,23 @@ public class PersonalityEngine : IPersonalityEngine
         };
     }
 
-    public string FormatFriendlyGreeting()
+    public string FormatFriendlyGreeting(string? userName = null)
     {
+        var name = string.IsNullOrWhiteSpace(userName) ? SaviConstants.DefaultUser : userName.Trim();
         var greetings = new[]
         {
-            "Hey Shatru! I'm online and ready. What are we working on today?",
-            "Hello Shatru! Systems are all green. How can I help you out?",
-            "Good to see you, Shatru! SAVI core is active. What's on your mind?",
-            "Ready when you are, Shatru. Let's get things done."
+            $"Hey {name}! I'm online and ready. What are we working on today?",
+            $"Hello {name}! Systems are all green. How can I help you out?",
+            $"Good to see you, {name}! SAVI core is active. What's on your mind?",
+            $"Ready when you are, {name}. Let's get things done."
         };
         var idx = Random.Shared.Next(greetings.Length);
         return greetings[idx];
     }
 
-    public string FormatChitChat(string operation, string prompt)
+    public string FormatChitChat(string operation, string prompt, string? userName = null)
     {
+        var name = string.IsNullOrWhiteSpace(userName) ? "there" : userName.Trim();
         return operation.ToLowerInvariant() switch
         {
             "check_prompt" => "Sure, what do you need?",
@@ -54,13 +57,13 @@ public class PersonalityEngine : IPersonalityEngine
             "wait" => "Yep?",
             "go_back" => "Sure.",
             "clarify" => "Got it. What did you mean?",
-            "listening_check" => "Yes, Shatru! I'm listening loud and clear. My audio and reasoning systems are active. How can I help you right now?",
-            "status" => "I'm doing great, Shatru! All background services and providers are running smoothly. How's everything with you?",
-            "gratitude" => "You're very welcome, Shatru! Always happy to help.",
+            "listening_check" => $"Yes, {name}! I'm listening loud and clear. My audio and reasoning systems are active. How can I help you right now?",
+            "status" => $"I'm doing great, {name}! All background services and providers are running smoothly. How's everything with you?",
+            "gratitude" => $"You're very welcome, {name}! Always happy to help.",
             "identity" => "I am SAVI (Shatru's Adaptive Virtual Intelligence) — an advanced personal digital assistant and autonomous task execution platform created by Shatrughna Ambhore.\n\nHere is how I can assist you:\n\n• 💻 Coding & Development: Write, debug, and explain algorithms and code in C#, Python, JavaScript, TypeScript, Go, SQL, and more.\n• ⚡ Agentic Tasks: Autonomous multi-step planning, solution generation, and cross-verification.\n• 🌦️ Real-Time Weather: Live forecasts, temperature, and conditions worldwide (e.g. \"weather in Tokyo\").\n• 💱 Currency Conversion: Live FX rates across global currencies (e.g. \"convert 100 USD to INR\").\n• 🔍 Knowledge & Search: Detailed answers, topic research, and factual summaries.\n• 🔢 Math & Computation: Calculations, mathematical formulas, and unit conversions.\n• 📁 Host Diagnostics & Files: System specs, CPU/RAM stats, directory inspection, and file operations.\n• 💾 Persistent Memory: Remembers your preferences across conversations (e.g. \"Remember that I prefer C#\").\n• 🔊 Voice Talk-Back: Speech recognition and real-time voice response (toggle ON/OFF anytime in the top bar).\n\nWhat would you like to work on today?",
             "creator" => "I was created and architected by Shatrughna Ambhore. SAVI (Shatru's Adaptive Virtual Intelligence) is built as a personal digital companion and sovereign task execution platform.",
-            "greeting" => FormatFriendlyGreeting(),
-            _ => FormatFriendlyGreeting()
+            "greeting" => FormatFriendlyGreeting(userName),
+            _ => FormatFriendlyGreeting(userName)
         };
     }
 
@@ -78,7 +81,7 @@ public class PersonalityEngine : IPersonalityEngine
     {
         if (content.StartsWith("•") || content.Contains('\n'))
         {
-            return $"Sure, Shatru. Here is what I found:\n\n{content}";
+            return $"Sure. Here is what I found:\n\n{content}";
         }
 
         // Do not prepend "Done." to complete natural conversational sentences
@@ -100,7 +103,8 @@ public class PersonalityEngine : IPersonalityEngine
 
     private static string CleanConcise(string content)
     {
-        return content.Replace("Sure, Shatru. Here is what I found:\n\n", "")
+        return content.Replace("Sure. Here is what I found:\n\n", "")
+                      .Replace("Sure, Shatru. Here is what I found:\n\n", "")
                       .Replace("Done. ", "")
                       .Trim();
     }
@@ -108,6 +112,7 @@ public class PersonalityEngine : IPersonalityEngine
     private static string CleanProfessional(string content)
     {
         return content.Replace("Hey Shatru! ", "")
+                      .Replace("Hey! ", "")
                       .Replace("Done. ", "")
                       .Trim();
     }

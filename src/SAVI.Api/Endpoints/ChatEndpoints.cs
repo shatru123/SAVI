@@ -237,7 +237,7 @@ public static class ChatEndpoints
         {
             var proc = Process.GetCurrentProcess();
             var convCount = await convRepo.GetCountAsync(null, ct);
-            var memCount = await memRepo.GetCountAsync(ct);
+            var memCount = await memRepo.GetCountAsync(userId: null, cancellationToken: ct);
 
             return Results.Ok(new DiagnosticsDto
             {

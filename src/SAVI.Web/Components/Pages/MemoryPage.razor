@@ -1,5 +1,6 @@
 @page "/memory"
 @inject IMemoryService MemoryService
+@inject ICurrentUserService CurrentUserService
 
 <PageTitle>SAVI — Long-Term Memory Deck</PageTitle>
 
@@ -12,46 +13,71 @@
             </div>
         </div>
 
-        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-            <button class="savi-btn active-voice-btn" style="background: rgba(0, 240, 255, 0.18); border-color: rgba(0, 240, 255, 0.5); color: #00f0ff;" @onclick="LoadExampleMemories">✨ Load Recommended Examples</button>
-            <button class="savi-btn" @onclick="OpenAddModal">+ Add Memory</button>
-            <button class="savi-btn savi-btn-danger" @onclick="ClearAll">Clear All</button>
+        @if (CurrentUserService.IsAuthenticated)
+        {
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="savi-btn active-voice-btn" style="background: rgba(0, 240, 255, 0.18); border-color: rgba(0, 240, 255, 0.5); color: #00f0ff;" @onclick="LoadExampleMemories">✨ Load Recommended Examples</button>
+                <button class="savi-btn" @onclick="OpenAddModal">+ Add Memory</button>
+                <button class="savi-btn savi-btn-danger" @onclick="ClearAll">Clear All</button>
+            </div>
+        }
+    </div>
+
+    @if (!CurrentUserService.IsAuthenticated)
+    {
+        <div style="text-align: center; color: var(--savi-text-dim); margin-top: 40px; padding: 40px 24px; background: rgba(0,0,0,0.3); border: 1px dashed var(--savi-border-subtle); border-radius: 8px; max-width: 580px; margin-left: auto; margin-right: auto;">
+            <div style="font-size: 2.6rem; margin-bottom: 12px;">🧠</div>
+            <div style="font-size: 1.15rem; color: var(--savi-text-primary); font-weight: bold; margin-bottom: 8px;">
+                Authentication Required for Long-Term Memory
+            </div>
+            <div style="font-size: 0.84rem; color: var(--savi-text-secondary); margin-bottom: 24px; line-height: 1.6;">
+                SAVI isolates memories strictly by user account. Sign in to create, recall, and manage your private long-term preferences, coding styles, and project facts.
+            </div>
+            <div style="display: flex; gap: 12px; justify-content: center; max-width: 320px; margin: 0 auto;">
+                <a href="/login?returnUrl=/memory" class="savi-btn savi-btn-primary" style="flex: 1; text-align: center; text-decoration: none; padding: 8px 16px;">
+                    Log In
+                </a>
+                <a href="/register?returnUrl=/memory" class="savi-btn" style="flex: 1; text-align: center; text-decoration: none; padding: 8px 16px; border-color: var(--savi-cyan); color: var(--savi-cyan);">
+                    Register
+                </a>
+            </div>
         </div>
-    </div>
-
-    <!-- Quick Template Chips -->
-    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; background: rgba(0, 240, 255, 0.04); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--savi-border-subtle);">
-        <span style="font-size: 0.72rem; color: var(--savi-text-dim); text-transform: uppercase; letter-spacing: 0.8px;">Quick Templates:</span>
-        <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="AddCodingPreferenceTemplate">
-            + Coding Preference
-        </button>
-        <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="AddIdentityTemplate">
-            + Developer Identity
-        </button>
-        <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="AddRuleTemplate">
-            + Synthesis Rule
-        </button>
-        <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="AddProjectTemplate">
-            + Project Scope
-        </button>
-    </div>
-
-    <!-- Category Filters & Search -->
-    <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
-        <input type="text" class="savi-input-field" placeholder="Search memories..."
-               style="padding: 8px 12px; border: 1px solid var(--savi-border-subtle); border-radius: 4px; max-width: 300px;"
-               @bind="_searchQuery" @bind:event="oninput" @bind:after="FilterMemories" />
-
-        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-            <button class="savi-btn @(_selectedCategory == null ? "active" : "")" @onclick="() => SelectCategory(null)">All</button>
-            @foreach (var type in Enum.GetValues<MemoryType>())
-            {
-                <button class="savi-btn @(_selectedCategory == type ? "active" : "")" @onclick="() => SelectCategory(type)">
-                    @type
-                </button>
-            }
+    }
+    else
+    {
+        <!-- Quick Template Chips -->
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; background: rgba(0, 240, 255, 0.04); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--savi-border-subtle);">
+            <span style="font-size: 0.72rem; color: var(--savi-text-dim); text-transform: uppercase; letter-spacing: 0.8px;">Quick Templates:</span>
+            <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="AddCodingPreferenceTemplate">
+                + Coding Preference
+            </button>
+            <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="AddIdentityTemplate">
+                + Developer Identity
+            </button>
+            <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="AddRuleTemplate">
+                + Synthesis Rule
+            </button>
+            <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="AddProjectTemplate">
+                + Project Scope
+            </button>
         </div>
-    </div>
+
+        <!-- Category Filters & Search -->
+        <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+            <input type="text" class="savi-input-field" placeholder="Search memories..."
+                   style="padding: 8px 12px; border: 1px solid var(--savi-border-subtle); border-radius: 4px; max-width: 300px;"
+                   @bind="_searchQuery" @bind:event="oninput" @bind:after="FilterMemories" />
+
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <button class="savi-btn @(_selectedCategory == null ? "active" : "")" @onclick="() => SelectCategory(null)">All</button>
+                @foreach (var type in Enum.GetValues<MemoryType>())
+                {
+                    <button class="savi-btn @(_selectedCategory == type ? "active" : "")" @onclick="() => SelectCategory(type)">
+                        @type
+                    </button>
+                }
+            </div>
+        </div>
 
     <!-- Memories Grid -->
     @if (_memories.Count == 0)
@@ -94,6 +120,7 @@
                 </div>
             }
         </div>
+    }
     }
 </div>
 
@@ -207,7 +234,8 @@
 
     private void AddIdentityTemplate()
     {
-        OpenWithTemplate(MemoryType.PersonalContext, "User is Shatrughna Ambhore, founder and architect of SAVI.");
+        var name = CurrentUserService.DisplayName ?? "Operator";
+        OpenWithTemplate(MemoryType.PersonalContext, $"User is {name}, operator of SAVI.");
     }
 
     private void AddRuleTemplate()
@@ -229,11 +257,12 @@
 
     private async Task LoadExampleMemories()
     {
+        var name = CurrentUserService.DisplayName ?? "Operator";
         var sampleMemories = new List<CreateMemoryDto>
         {
             new() { Type = MemoryType.Preference, Content = "User prefers concise, senior-architect level explanations with production-ready C# code samples.", Importance = 1.0 },
             new() { Type = MemoryType.Preference, Content = "Always preserve existing code comments and prioritize asynchronous non-blocking patterns.", Importance = 0.9 },
-            new() { Type = MemoryType.PersonalContext, Content = "User is Shatrughna Ambhore, founder and lead system architect of SAVI based in Pune, India.", Importance = 1.0 },
+            new() { Type = MemoryType.PersonalContext, Content = $"User is {name}, active operator of SAVI.", Importance = 1.0 },
             new() { Type = MemoryType.Project, Content = "Active project is SAVI (Shatru's Adaptive Virtual Intelligence) — a zero-cost, sovereign AI assistant on .NET 10.", Importance = 0.95 },
             new() { Type = MemoryType.Instruction, Content = "Never output raw JSON dumps in conversation; always synthesize provider data into natural, fluent answers.", Importance = 1.0 },
             new() { Type = MemoryType.Interest, Content = "Interested in distributed systems, autonomous agent orchestration, and real-time audio signal processing.", Importance = 0.85 },

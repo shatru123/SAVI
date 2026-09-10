@@ -9,16 +9,22 @@ public class ContextBuilder : IContextBuilder
 {
     private readonly IConversationRepository _conversationRepository;
     private readonly IMemoryService _memoryService;
+    private readonly ICurrentUserService? _currentUserService;
 
-    public ContextBuilder(IConversationRepository conversationRepository, IMemoryService memoryService)
+    public ContextBuilder(
+        IConversationRepository conversationRepository,
+        IMemoryService memoryService,
+        ICurrentUserService? currentUserService = null)
     {
         _conversationRepository = conversationRepository;
         _memoryService = memoryService;
+        _currentUserService = currentUserService;
     }
 
     public async Task<ContextPackage> BuildContextAsync(AgentRequest request, CancellationToken cancellationToken = default)
     {
         IReadOnlyList<Message> recentMessages = Array.Empty<Message>();
+        IReadOnlyList<Message> relevantHistorical = Array.Empty<Message>();
         string? summary = null;
 
         if (!string.IsNullOrWhiteSpace(request.ConversationId))
@@ -27,15 +33,44 @@ public class ContextBuilder : IContextBuilder
             if (conversation != null)
             {
                 summary = conversation.Summary;
-                recentMessages = conversation.Messages
-                    .OrderByDescending(m => m.Timestamp)
-                    .Take(10)
-                    .OrderBy(m => m.Timestamp)
+                var allMessages = conversation.Messages.OrderBy(m => m.Timestamp).ToList();
+
+                // Detailed recent messages (last 10)
+                recentMessages = allMessages
+                    .TakeLast(10)
                     .ToList();
+
+                // Rolling Context Compression: if conversation exceeds 10 turns, summarize older messages
+                if (allMessages.Count > 10)
+                {
+                    var olderMessages = allMessages.Take(allMessages.Count - 10).ToList();
+                    if (string.IsNullOrWhiteSpace(summary))
+                    {
+                        var keyTopics = olderMessages
+                            .Where(m => m.Role == Core.Enums.MessageRole.User)
+                            .Select(m => m.Content.Length > 60 ? m.Content[..57] + "..." : m.Content)
+                            .TakeLast(3);
+                        summary = $"Prior discussion covered: {string.Join("; ", keyTopics)}";
+                    }
+
+                    // Retrieve older messages if relevant to current query tokens
+                    var promptTokens = request.Message.Split(new[] { ' ', ',', '.', '?' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Where(t => t.Length >= 4)
+                        .Select(t => t.ToLowerInvariant())
+                        .ToList();
+
+                    if (promptTokens.Count > 0)
+                    {
+                        relevantHistorical = olderMessages
+                            .Where(m => promptTokens.Any(t => m.Content.Contains(t, StringComparison.OrdinalIgnoreCase)))
+                            .TakeLast(2)
+                            .ToList();
+                    }
+                }
             }
         }
 
-        // Retrieve relevant long-term memories
+        // Retrieve relevant long-term memories (scoped to current user)
         var relevantMemories = await _memoryService.GetRelevantMemoriesAsync(request.Message, cancellationToken);
 
         // Coreference query resolution
@@ -56,7 +91,10 @@ public class ContextBuilder : IContextBuilder
             RecentMessages = recentMessages,
             ConversationSummary = summary,
             RelevantMemories = relevantMemories,
+            RelevantHistoricalMessages = relevantHistorical,
             ResolvedCoreferenceQuery = resolvedQuery,
+            UserName = _currentUserService?.DisplayName ?? "Operator",
+            UserId = _currentUserService?.UserId,
             Intent = "DeterminedLater"
         };
     }

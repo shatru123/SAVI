@@ -12,6 +12,8 @@ public sealed record MemoryItemDto
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
     public DateTimeOffset? ExpiresAt { get; init; }
+    public DateTimeOffset? LastAccessedAt { get; init; }
+    public string? Source { get; init; }
     public string? SourceConversationId { get; init; }
 }
 
@@ -20,7 +22,9 @@ public sealed record CreateMemoryDto
     public MemoryType Type { get; init; } = MemoryType.Preference;
     public string Content { get; init; } = string.Empty;
     public double Importance { get; init; } = 1.0;
+    public double Confidence { get; init; } = 1.0;
     public DateTimeOffset? ExpiresAt { get; init; }
+    public string? Source { get; init; }
 }
 
 public sealed record UpdateMemoryDto

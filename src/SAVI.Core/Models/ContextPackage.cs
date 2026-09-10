@@ -11,4 +11,6 @@ public sealed record ContextPackage
     public IReadOnlyList<Message> RelevantHistoricalMessages { get; init; } = Array.Empty<Message>();
     public string Intent { get; init; } = "GeneralChat";
     public string? ResolvedCoreferenceQuery { get; init; }
+    public string? UserName { get; init; }
+    public string? UserId { get; init; }
 }

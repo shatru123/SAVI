@@ -168,4 +168,63 @@ public class UserDataIsolationTests
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             convService.DeleteAsync("conv-a"));
     }
+
+    [Fact]
+    public async Task MemoryService_Scopes_Queries_To_Current_User()
+    {
+        var userA = CreateCurrentUserService("user-A", SaviConstants.Roles.User);
+        var mockMemoryRepo = new Mock<IMemoryRepository>();
+        mockMemoryRepo.Setup(r => r.GetAllAsync("user-A", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<MemoryItem>
+            {
+                new() { Id = "m1", UserId = "user-A", Content = "User A Private Secret", Importance = 1.0 }
+            });
+
+        var memoryService = new MemoryService(mockMemoryRepo.Object, userA);
+        var memories = await memoryService.GetAllAsync();
+
+        Assert.Single(memories);
+        Assert.Equal("User A Private Secret", memories[0].Content);
+        mockMemoryRepo.Verify(r => r.GetAllAsync("user-A", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task MemoryService_UserB_Cannot_Delete_UserA_Memory()
+    {
+        var userB = CreateCurrentUserService("user-B", SaviConstants.Roles.User);
+        var mockMemoryRepo = new Mock<IMemoryRepository>();
+        mockMemoryRepo.Setup(r => r.GetByIdAsync("m1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MemoryItem { Id = "m1", UserId = "user-A", Content = "User A Secret" });
+
+        var memoryService = new MemoryService(mockMemoryRepo.Object, userB);
+        await memoryService.DeleteAsync("m1");
+
+        // Should NOT call DeleteAsync on repo because UserId does not match!
+        mockMemoryRepo.Verify(r => r.DeleteAsync("m1", It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task MemoryService_Unauthenticated_Returns_Empty_List()
+    {
+        var unauthenticatedUser = new CurrentUserService(); // No principal set
+        var mockMemoryRepo = new Mock<IMemoryRepository>();
+
+        var memoryService = new MemoryService(mockMemoryRepo.Object, unauthenticatedUser);
+        var memories = await memoryService.GetAllAsync();
+
+        Assert.Empty(memories);
+        mockMemoryRepo.Verify(r => r.GetAllAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task TaskService_UserB_Cannot_Approve_UserA_Task()
+    {
+        var userB = CreateCurrentUserService("user-B", SaviConstants.Roles.User);
+        var mockTaskRepo = new Mock<ITaskRepository>();
+        mockTaskRepo.Setup(r => r.GetByIdAsync("t1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TaskItem { Id = "t1", UserId = "user-A", Title = "User A Task" });
+
+        var taskService = new TaskService(mockTaskRepo.Object, userB);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => taskService.ApproveStepAsync("t1", "step-1", true));
+    }
 }

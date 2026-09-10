@@ -12,6 +12,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\SAVI.Core\SAVI.Core.csproj" />
     <ProjectReference Include="..\..\src\SAVI.Application\SAVI.Application.csproj" />
+    <ProjectReference Include="..\..\src\SAVI.Tools\SAVI.Tools.csproj" />
     <ProjectReference Include="..\..\src\SAVI.Agent\SAVI.Agent.csproj" />
   </ItemGroup>
   <ItemGroup>

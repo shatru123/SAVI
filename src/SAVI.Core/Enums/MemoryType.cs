@@ -9,5 +9,12 @@ public enum MemoryType
     ConversationFact = 4,
     Interest = 5,
     Instruction = 6,
-    TemporaryContext = 7
+    TemporaryContext = 7,
+    Fact = 8,
+    Goal = 9,
+    Person = 10,
+    TechnicalContext = 11,
+    Workflow = 12,
+    TaskContext = 13,
+    ConversationSummary = 14
 }

@@ -19,6 +19,8 @@ public class SaviDbContext : DbContext
     public DbSet<ApiProviderDefinition> ApiProviders => Set<ApiProviderDefinition>();
     public DbSet<AuditLogEntry> AuditLogs => Set<AuditLogEntry>();
     public DbSet<UserSettings> Settings => Set<UserSettings>();
+    public DbSet<AutomationItem> AutomationItems => Set<AutomationItem>();
+    public DbSet<AutomationExecutionLog> AutomationExecutionLogs => Set<AutomationExecutionLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -121,6 +123,23 @@ public class SaviDbContext : DbContext
         {
             entity.HasKey(s => s.Id);
             entity.Property(s => s.ActivePersonality).HasConversion<string>();
+        });
+
+        modelBuilder.Entity<AutomationItem>(entity =>
+        {
+            entity.HasKey(a => a.Id);
+            entity.Property(a => a.Name).HasMaxLength(256).IsRequired();
+            entity.Property(a => a.Prompt).IsRequired();
+            entity.HasIndex(a => a.UserId);
+            entity.HasIndex(a => a.IsEnabled);
+            entity.HasIndex(a => a.NextExecutionAt);
+        });
+
+        modelBuilder.Entity<AutomationExecutionLog>(entity =>
+        {
+            entity.HasKey(l => l.Id);
+            entity.HasIndex(l => l.AutomationId);
+            entity.HasIndex(l => l.ExecutedAt);
         });
     }
 }

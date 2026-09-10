@@ -33,9 +33,11 @@ SAVI is **NOT** a simple chatbot or generic API wrapper. SAVI behaves like a per
 * **Connect to Free AI Models**: Automatically queries serverless OpenAI-compatible inference endpoints (Mistral 7B Instruct, Mistral Nemo 2407, GPT-OSS 20B) for realistic, intelligent, and accurate responses with zero API keys and zero cost.
 * **Real-Time Full-Duplex Voice Conversation**: Continuous conversational voice experience with live partial speech transcription, adaptive turn detection, streaming sentence-level speech playback, and instant barge-in interruption (<200ms stop latency).
 * **Dedicated Immersive Voice Screen (`VoiceOverlay`)**: Interactive full-screen HUD featuring a central reactive SAVI reactor orb, dynamic audio ripple waves responding to voice levels, live dual transcript streams, and instant voice controls.
-* **Auto-Speaking Welcome Voice**: Automatically begins speaking aloud ("Hello Shatru! I am SAVI...") when you open the URL, featuring browser autoplay security unlockers.
-* **Two-Tier Access & Multi-User Data Isolation**: Secure two-tier role architecture (`Owner` and `User`) with strict workspace isolation for conversations, memory facts, and task matrices. Includes an owner-only telemetry command console with read-only operator inspection.
-* **Maintain Deep Context & Long-Term Memory**: Remembers user preferences, past conversations, and facts in persistent SQLite memory.
+* **Auto-Speaking Welcome Voice**: Automatically begins speaking aloud when you open the URL, featuring browser autoplay security unlockers and dynamic user identity.
+* **Modular Skill & Plugin Architecture**: Extensible `ISaviSkill` and `ISkillRegistry` supporting capability decomposition, parallel execution, and isolated fault recovery.
+* **Persistent 24/7 Automation Engine**: Background worker (`AutomationScheduler`) that runs 24/7 on intervals, triggering autonomous routines, telemetry probes, and task pipelines with audit logs.
+* **Two-Tier Access & Multi-User Data Isolation**: Secure two-tier role architecture (`Owner` and `User`) with strict workspace isolation for conversations, memory facts, tasks, and automations.
+* **Maintain Deep Context & Long-Term Memory**: Remembers user preferences, past conversations, and facts in persistent SQLite memory with rolling context compression.
 * **Search & Verify with Multi-Source Consensus**: Discovers public knowledge bases, live weather, currency rates, GitHub repositories, and system diagnostics, verifying consensus before responding.
 * **Execute Protected Local Tasks**: Guided by a strict 3-tier permission guard (Safe / Controlled / Dangerous) with interactive user confirmation modals for destructive actions.
 * **Rich Cybernetic HUD Interface**: Futuristic JARVIS-inspired HUD with real-time audio wave telemetry, animated hexagonal core, responsive mobile drawer, search, and conversation management.

@@ -157,7 +157,7 @@ public class AgentOrchestrator : IAgentOrchestrator
                 "stop" => "Stopped. I'm listening.",
                 "wait" => "Yep?",
                 "go_back" => "Sure.",
-                "repeat" => context.RecentMessages.LastOrDefault(m => m.Role == MessageRole.Assistant)?.Content ?? "I'm ready when you are, Shatru.",
+                "repeat" => context.RecentMessages.LastOrDefault(m => m.Role == MessageRole.Assistant)?.Content ?? $"I'm ready when you are, {context.UserName ?? "Operator"}.",
                 "continue" => "Continuing from where we left off.",
                 "keep_it_short" => HandleKeepItShort(context),
                 "first_item" => HandleFirstItem(context),
@@ -184,7 +184,7 @@ public class AgentOrchestrator : IAgentOrchestrator
         // Handle Chit-Chat & System Greetings
         if (intent.Capability == "chitchat")
         {
-            var reply = _personalityEngine.FormatChitChat(intent.Operation, request.Message);
+            var reply = _personalityEngine.FormatChitChat(intent.Operation, request.Message, context.UserName);
             var voiceReply = _voiceResponseFormatter?.FormatForSpeech(reply) ?? reply;
             await _conversationService.AppendMessageAsync(conversationId, MessageRole.Assistant, reply, MessageType.Text, cancellationToken: cancellationToken);
             EmitEvent("response.completed", new { Message = reply });
@@ -214,7 +214,8 @@ public class AgentOrchestrator : IAgentOrchestrator
                     Importance = 1.0
                 }, conversationId, cancellationToken);
 
-                var confirmation = $"Got it, Shatru. I've saved that in long-term memory: \"{contentToRemember}\".";
+                var userName = context.UserName ?? "Operator";
+                var confirmation = $"Got it, {userName}. I've saved that in long-term memory: \"{contentToRemember}\".";
                 await _conversationService.AppendMessageAsync(conversationId, MessageRole.Assistant, confirmation, MessageType.Text, cancellationToken: cancellationToken);
                 EmitEvent("response.completed", new { Message = confirmation });
 
