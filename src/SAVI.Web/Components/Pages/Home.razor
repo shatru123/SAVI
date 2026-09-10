@@ -99,8 +99,8 @@
                         _ => "⚖ Balanced"
                     })
                 </button>
-                <!-- Desktop Only: Voice Talk-Back Toggle Button -->
-                <button class="savi-btn savi-desktop-only @(_talkBackEnabled ? "active-voice-btn" : "")" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="ToggleTalkBack" title="Toggle Voice Talk-Back (Speech Synthesis)">
+                <!-- Voice Talk-Back Toggle Button (Mobile & Desktop) -->
+                <button class="savi-btn @(_talkBackEnabled ? "active-voice-btn" : "")" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="ToggleTalkBack" title="Toggle Voice Talk-Back (Speech Synthesis)">
                     @(_talkBackEnabled ? "🔊 Voice: ON" : "🔇 Voice: OFF")
                 </button>
                 <!-- Desktop Only: Continuous Conversational Voice Mode Button -->
@@ -633,6 +633,13 @@
             catch { }
             _voiceState = VoiceState.Idle;
         }
+        try
+        {
+            var settings = await SettingsService.GetSettingsAsync();
+            settings.VoiceEnabled = _talkBackEnabled;
+            await SettingsService.UpdateSettingsAsync(settings);
+        }
+        catch { }
         StateHasChanged();
     }
 
@@ -640,6 +647,7 @@
     {
         var settings = await SettingsService.GetSettingsAsync();
         _reducedMotion = settings.ReducedMotion;
+        _talkBackEnabled = settings.VoiceEnabled;
         await LoadConversations();
     }
 
@@ -966,12 +974,10 @@
         {
             _lastAudioStopLatencyMs = audioStopLatencyMs;
         }
-        try
+        if (_voiceState == VoiceState.Speaking)
         {
-            _processingCts?.Cancel();
+            _voiceState = VoiceState.Interrupted;
         }
-        catch { }
-        _voiceState = VoiceState.Interrupted;
         InvokeAsync(StateHasChanged);
     }
 
@@ -1035,8 +1041,6 @@
 
         if (!string.IsNullOrWhiteSpace(generationId))
         {
-            if (_voiceGenerationId != null && !string.Equals(_voiceGenerationId, generationId, StringComparison.Ordinal) &&
-                _voiceState is VoiceState.Processing or VoiceState.Speaking) return false;
             _voiceGenerationId = generationId;
         }
 

@@ -928,12 +928,10 @@
         {
             _lastAudioStopLatencyMs = audioStopLatencyMs;
         }
-        try
+        if (_voiceState == VoiceState.Speaking)
         {
-            _processingCts?.Cancel();
+            _voiceState = VoiceState.Interrupted;
         }
-        catch { }
-        _voiceState = VoiceState.Interrupted;
         InvokeAsync(StateHasChanged);
     }
 
@@ -1061,8 +1059,6 @@
 
         if (!string.IsNullOrWhiteSpace(generationId))
         {
-            if (_voiceGenerationId != null && !string.Equals(_voiceGenerationId, generationId, StringComparison.Ordinal) &&
-                _voiceState is VoiceState.Processing or VoiceState.Speaking) return false;
             _voiceGenerationId = generationId;
         }
 

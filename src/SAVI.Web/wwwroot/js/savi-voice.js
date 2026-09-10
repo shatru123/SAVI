@@ -168,8 +168,12 @@ class AudioPlaybackController {
                 this.notifyState(5, this.currentTtsTurnId, this.currentTtsGenerationId, this.currentTtsSessionId); // 5 = Speaking
             }
 
-            // If we previously called duckAndStop/cancel, give the browser speech daemon 25ms to settle IPC
-            const delayMs = wasSpeaking ? 25 : 0;
+            if (this.saviVoice.captureController) {
+                this.saviVoice.captureController.assistantSpeechStartTime = performance.now();
+            }
+
+            // If we previously called duckAndStop/cancel, give the browser speech daemon 100ms to settle IPC
+            const delayMs = wasSpeaking ? 100 : 0;
             const self = this;
             this.pendingSpeakTimeout = setTimeout(() => {
                 self.pendingSpeakTimeout = null;
@@ -559,33 +563,52 @@ class AudioCaptureController {
             this.adaptiveNoiseFloor = (this.adaptiveNoiseFloor * 0.95) + (rms * 0.05);
         }
 
+        // Only run VAD detection if the microphone is actively listening
+        if (!this.isListening) {
+            this.currentRms = rms;
+            this.isSpeechActive = false;
+            this.vadSpeechOnsetStartTime = 0;
+            return;
+        }
+
         // 4. Adaptive VAD with Hysteresis and Speaker-Aware Dynamic Threshold
-        const isAssistantSpeaking = this.saviVoice.playbackController.isSpeaking;
+        const isAssistantSpeaking = !!this.saviVoice.playbackController?.isSpeaking;
+        const now = performance.now();
+
+        // Speech onset blanking window: prevent initial speaker burst transients from killing speech
+        if (isAssistantSpeaking && this.assistantSpeechStartTime) {
+            if (now - this.assistantSpeechStartTime < 350) {
+                this.vadSpeechOnsetStartTime = 0;
+                return;
+            }
+        }
 
         // When assistant is speaking through device speakers, acoustic energy leaks into the microphone
         // Dynamic onset threshold:
-        // - Speaker Mode while assistant speaks: threshold is elevated to 0.36 or baseline + 0.16
-        // - Headphone Mode or assistant silent: sensitive threshold (0.12 or baseline + 0.04)
-        const onsetThreshold = Math.min(0.28, Math.max(0.10,
-            this.adaptiveNoiseFloor + (isAssistantSpeaking ? 0.06 : 0.04)));
+        // - Speaker Mode while assistant speaks: threshold is elevated to 0.48 or baseline + 0.22
+        // - Headphone Mode or assistant silent: sensitive threshold (0.10 or baseline + 0.04)
+        const onsetThreshold = isAssistantSpeaking
+            ? (this.audioOutputMode === 'headphone' ? Math.max(0.18, this.adaptiveNoiseFloor + 0.08) : Math.max(0.48, this.adaptiveNoiseFloor + 0.22))
+            : Math.max(0.10, this.adaptiveNoiseFloor + 0.04);
 
         const continuationThreshold = onsetThreshold * 0.70;
-
-        const now = performance.now();
+        const requiredDuration = isAssistantSpeaking
+            ? (this.audioOutputMode === 'headphone' ? 160 : 220)
+            : this.minSpeechDurationMs;
 
         if (!this.isSpeechActive) {
             if (rms >= onsetThreshold) {
                 if (!this.vadSpeechOnsetStartTime) {
                     this.vadSpeechOnsetStartTime = now;
-                } else if (now - this.vadSpeechOnsetStartTime >= this.minSpeechDurationMs) {
+                } else if (now - this.vadSpeechOnsetStartTime >= requiredDuration) {
                     // Confirmed User Speech! Single Authoritative Event for Barge-In
                     this.isSpeechActive = true;
                     this.vadSpeechOnsetStartTime = 0;
                     this.currentTurn.hasPreRollAudio = true;
                     this.lastVADActivityAt = Date.now();
-                    this.saviVoice.browserSession.userSpeaking(this.currentTurn.turnId);
+                    this.saviVoice.browserSession?.userSpeaking?.(this.currentTurn.turnId);
 
-                    if (isAssistantSpeaking) {
+                    if (isAssistantSpeaking && this.continuousVoiceMode) {
                         console.log("SAVI VAD: Sustained user speech detected -> Instant barge-in halt!");
                         this.saviVoice.playbackController.duckAndStop(true);
                     }
@@ -1223,6 +1246,15 @@ window.saviVoice = {
     },
 
     testAudio: function () {
+        try {
+            if (window.speechSynthesis) {
+                if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+            }
+            if (this.captureController?.audioContext && this.captureController.audioContext.state === 'suspended') {
+                this.captureController.audioContext.resume();
+            }
+        } catch (_) {}
+
         if (this.playbackController) {
             this.speak("Audio output is loud and clear, Shatru. All neural speech channels are active.");
         }
@@ -1233,20 +1265,28 @@ window.saviVoice = {
 (function () {
     if (typeof window === 'undefined') return;
 
+    let unlocked = false;
+
     function unlockMobileAudio() {
+        if (unlocked) return;
+        unlocked = true;
+
         if (window.speechSynthesis) {
             try {
                 if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+                const u = new SpeechSynthesisUtterance(' ');
+                u.volume = 0.01;
+                window.speechSynthesis.speak(u);
             } catch (_) {}
         }
 
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (AudioCtx && window.saviVoice?.captureController?.audioContext) {
-            const ctx = window.saviVoice.captureController.audioContext;
-            if (ctx.state === 'suspended') {
-                try { ctx.resume(); } catch (_) {}
-            }
+        if (AudioCtx) {
             try {
+                const ctx = window.saviVoice?.captureController?.audioContext || new AudioCtx();
+                if (ctx.state === 'suspended') {
+                    ctx.resume();
+                }
                 const buf = ctx.createBuffer(1, 1, 22050);
                 const src = ctx.createBufferSource();
                 src.buffer = buf;

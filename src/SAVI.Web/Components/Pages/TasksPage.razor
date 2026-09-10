@@ -13,14 +13,41 @@
             </div>
         </div>
 
-        <button class="savi-btn" @onclick="() => _showCreateModal = true">+ Create Task</button>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button class="savi-btn active-voice-btn" style="background: rgba(0, 240, 255, 0.18); border-color: rgba(0, 240, 255, 0.5); color: #00f0ff;" @onclick="LoadExampleWorkflows">✨ Load Example Workflows</button>
+            <button class="savi-btn" @onclick="OpenCreateBlank">+ Create Task</button>
+        </div>
+    </div>
+
+    <!-- Quick Workflow Templates -->
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; background: rgba(0, 240, 255, 0.04); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--savi-border-subtle);">
+        <span style="font-size: 0.72rem; color: var(--savi-text-dim); text-transform: uppercase; letter-spacing: 0.8px;">Workflow Templates:</span>
+        <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="OpenSecurityAuditTemplate">
+            + 🛡️ Security Audit
+        </button>
+        <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="OpenDbMigrationTemplate">
+            + 🗄️ DB Migration
+        </button>
+        <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="OpenAudioBenchmarkTemplate">
+            + 📡 Audio Benchmark
+        </button>
+        <button class="savi-btn" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" @onclick="OpenContainerBuildTemplate">
+            + 🐳 Container Build
+        </button>
     </div>
 
     @if (_tasks.Count == 0)
     {
-        <div style="text-align: center; color: var(--savi-text-dim); margin-top: 60px;">
-            <div style="font-size: 2rem; margin-bottom: 10px;">⚙</div>
-            <div>No active tasks. You can ask SAVI to execute complex tasks in the chat, or create one here.</div>
+        <div style="text-align: center; color: var(--savi-text-dim); margin-top: 40px; padding: 30px 20px; background: rgba(0,0,0,0.25); border: 1px dashed var(--savi-border-subtle); border-radius: 8px; max-width: 620px; margin-left: auto; margin-right: auto;">
+            <div style="font-size: 2.2rem; margin-bottom: 10px;">⚙</div>
+            <div style="font-size: 1rem; color: var(--savi-text-primary); font-weight: bold; margin-bottom: 6px;">No active workflows</div>
+            <div style="font-size: 0.82rem; color: var(--savi-text-secondary); margin-bottom: 18px; line-height: 1.5;">
+                SAVI's Task Execution Matrix coordinates complex multi-step tasks using state machines with built-in safety gates.
+                Dangerous steps (such as file removals or database drops) pause for explicit user confirmation.
+            </div>
+            <button class="savi-btn active-voice-btn" style="padding: 8px 18px; font-size: 0.85rem;" @onclick="LoadExampleWorkflows">
+                ✨ Populate Example Workflows
+            </button>
         </div>
     }
     else
@@ -95,6 +122,13 @@
         <div class="savi-glass-panel savi-hud-bracket" style="width: 500px; max-width: 90%; padding: 24px;">
             <h3 class="savi-glow-text" style="margin-top: 0;">Create Multi-Step Workflow</h3>
 
+            <div style="display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap;">
+                <span style="font-size: 0.72rem; color: var(--savi-text-dim);">Template:</span>
+                <button type="button" class="savi-btn" style="padding: 2px 7px; font-size: 0.68rem;" @onclick="SetSecurityTemplate">Security</button>
+                <button type="button" class="savi-btn" style="padding: 2px 7px; font-size: 0.68rem;" @onclick="SetDbMigrationTemplate">DB Migration</button>
+                <button type="button" class="savi-btn" style="padding: 2px 7px; font-size: 0.68rem;" @onclick="SetAudioTestTemplate">Audio Test</button>
+            </div>
+
             <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
                 <div>
                     <label style="font-size: 0.8rem; color: var(--savi-text-secondary); display: block; margin-bottom: 4px;">Task Title</label>
@@ -138,6 +172,144 @@
     private async Task LoadTasks()
     {
         _tasks = (await TaskService.GetAllAsync()).ToList();
+    }
+
+    private void OpenCreateBlank()
+    {
+        _newTaskTitle = string.Empty;
+        _newTaskDesc = string.Empty;
+        _newTaskSteps = "Search files, Read documents, Summarize findings, Generate report";
+        _showCreateModal = true;
+    }
+
+    private void OpenSecurityAuditTemplate()
+    {
+        OpenCreateWithTemplate(
+            "Security & Dependency Audit",
+            "Inspects dependencies, scans for CVEs, and validates API boundaries.",
+            "Scan dependencies for CVEs, Static code analysis on API endpoints, Verify token security, Generate compliance report");
+    }
+
+    private void OpenDbMigrationTemplate()
+    {
+        OpenCreateWithTemplate(
+            "Database Migration & Schema Sync",
+            "Backs up local SQLite database, validates entity models, and executes schema updates.",
+            "Backup SQLite database savi.db, Validate entity schema diffs, Apply database migrations, Run data integrity tests");
+    }
+
+    private void OpenAudioBenchmarkTemplate()
+    {
+        OpenCreateWithTemplate(
+            "Real-Time Telemetry & Audio Benchmark",
+            "Evaluates WebAudio latency, VAD energy threshold, and neural voice latency.",
+            "Calibrate WebAudio sample rate, Benchmark VAD energy threshold, Synthesize test voice packet, Log diagnostics");
+    }
+
+    private void OpenContainerBuildTemplate()
+    {
+        OpenCreateWithTemplate(
+            "Container Build & Image Push",
+            "Builds multi-stage Docker image, runs container smoke tests, and publishes to local registry.",
+            "Lint Dockerfile, Build Docker image, Run container healthcheck, Tag and publish image");
+    }
+
+    private void OpenCreateWithTemplate(string title, string desc, string steps)
+    {
+        _newTaskTitle = title;
+        _newTaskDesc = desc;
+        _newTaskSteps = string.IsNullOrWhiteSpace(steps)
+            ? "Search files, Read documents, Summarize findings, Generate report"
+            : steps;
+        _showCreateModal = true;
+    }
+
+    private void SetSecurityTemplate()
+    {
+        SetModalTemplate(
+            "Security & Dependency Audit",
+            "Inspects dependencies, scans for CVEs, and validates API boundaries.",
+            "Scan dependencies for CVEs, Static code analysis on API endpoints, Verify token security, Generate compliance report");
+    }
+
+    private void SetDbMigrationTemplate()
+    {
+        SetModalTemplate(
+            "Database Migration & Schema Sync",
+            "Backs up local SQLite database, validates entity models, and executes schema updates.",
+            "Backup SQLite database savi.db, Validate entity schema diffs, Apply database migrations, Run data integrity tests");
+    }
+
+    private void SetAudioTestTemplate()
+    {
+        SetModalTemplate(
+            "Real-Time Telemetry & Audio Benchmark",
+            "Evaluates WebAudio latency, VAD energy threshold, and neural voice latency.",
+            "Calibrate WebAudio sample rate, Benchmark VAD energy threshold, Synthesize test voice packet, Log diagnostics");
+    }
+
+    private void SetModalTemplate(string title, string desc, string steps)
+    {
+        _newTaskTitle = title;
+        _newTaskDesc = desc;
+        _newTaskSteps = steps;
+    }
+
+    private async Task LoadExampleWorkflows()
+    {
+        // 1. Security audit task (step 1 completed, step 2 running)
+        var task1 = await TaskService.CreateTaskAsync(
+            "Automated Security & Dependency Audit",
+            "Scans NuGet package dependencies, runs static code analysis, and validates authentication boundaries.",
+            new List<string>
+            {
+                "Scan NuGet dependencies for reported CVE vulnerabilities",
+                "Execute static analysis across C# controller endpoints",
+                "Verify HMAC-SHA256 and JWT token signature checks",
+                "Compile unified security audit compliance summary"
+            });
+        if (task1.Steps.Count > 0)
+        {
+            await TaskService.UpdateStepAsync(task1.Id, task1.Steps[0].Id, TaskState.Completed, "0 known vulnerabilities detected.");
+        }
+
+        // 2. Database migration task with human approval step
+        var task2 = await TaskService.CreateTaskAsync(
+            "Database Schema Synchronization & Migration",
+            "Validates entity mappings against local SQLite database and pauses for approval before destructive schema changes.",
+            new List<string>
+            {
+                "Backup SQLite database file savi.db",
+                "Validate entity model schema diffs against migrations",
+                "Apply EF Core database migration (drop obsolete columns)",
+                "Execute data integrity and foreign key validation suite"
+            });
+        if (task2.Steps.Count > 1)
+        {
+            await TaskService.UpdateStepAsync(task2.Id, task2.Steps[0].Id, TaskState.Completed, "Backup saved to savi.db.bak");
+            await TaskService.UpdateStepAsync(task2.Id, task2.Steps[1].Id, TaskState.Completed, "1 pending schema change detected");
+        }
+
+        // 3. Audio & Telemetry diagnostics benchmark (completed)
+        var task3 = await TaskService.CreateTaskAsync(
+            "Real-Time Telemetry & Audio Diagnostics Pipeline",
+            "Calibrates WebAudio sample rate, tests VAD energy threshold, and generates end-to-end latency benchmarks.",
+            new List<string>
+            {
+                "Initialize AudioContext and inspect hardware AEC flags",
+                "Benchmark VAD noise floor and speech onset thresholds",
+                "Synthesize test speech utterance and measure duck latency",
+                "Log complete telemetry diagnostics report"
+            });
+        if (task3.Steps.Count == 4)
+        {
+            await TaskService.UpdateStepAsync(task3.Id, task3.Steps[0].Id, TaskState.Completed, "Sample rate: 48000Hz, AEC: Hardware Verified");
+            await TaskService.UpdateStepAsync(task3.Id, task3.Steps[1].Id, TaskState.Completed, "Noise floor: 0.02, Onset threshold: 0.12");
+            await TaskService.UpdateStepAsync(task3.Id, task3.Steps[2].Id, TaskState.Completed, "Barge-in latency: 4ms");
+            await TaskService.UpdateStepAsync(task3.Id, task3.Steps[3].Id, TaskState.Completed, "All diagnostics healthy");
+        }
+
+        await LoadTasks();
     }
 
     private async Task CreateTask()
