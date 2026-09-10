@@ -236,7 +236,7 @@ public static class ChatEndpoints
             CancellationToken ct) =>
         {
             var proc = Process.GetCurrentProcess();
-            var convCount = (await convRepo.GetAllAsync(true, ct)).Count;
+            var convCount = await convRepo.GetCountAsync(null, ct);
             var memCount = await memRepo.GetCountAsync(ct);
 
             return Results.Ok(new DiagnosticsDto

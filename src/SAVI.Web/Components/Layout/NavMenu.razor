@@ -109,7 +109,61 @@
             <span class="savi-icon">⚙</span>
             <span style="flex: 1;">Settings</span>
         </NavLink>
+
+        <AuthorizeView Roles="Owner">
+            <Authorized>
+                <div style="border-top: 1px solid var(--savi-border-subtle); margin-top: 4px; padding-top: 4px;">
+                    <div style="font-size: 0.62rem; color: var(--savi-cyan); font-family: var(--savi-font-mono); padding: 4px 10px; font-weight: bold; letter-spacing: 1px;">
+                        ADMIN CONSOLE
+                    </div>
+                    <NavLink class="savi-nav-item" href="/admin" Match="NavLinkMatch.All" @onclick="HandleNavClick">
+                        <span class="savi-icon">⚡</span>
+                        <span style="flex: 1;">Command Console</span>
+                    </NavLink>
+                    <NavLink class="savi-nav-item" href="/admin/users" Match="NavLinkMatch.Prefix" @onclick="HandleNavClick">
+                        <span class="savi-icon">👥</span>
+                        <span style="flex: 1;">Operators</span>
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
     </nav>
+
+    <!-- User Profile & Authentication Footer -->
+    <div style="border-top: 1px solid var(--savi-border-subtle); padding-top: 10px; margin-top: auto;">
+        <AuthorizeView>
+            <Authorized>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 6px;">
+                    <div style="display: flex; align-items: center; gap: 8px; overflow: hidden;">
+                        <div style="width: 28px; height: 28px; border-radius: 50%; background: rgba(0, 240, 255, 0.1); border: 1px solid var(--savi-cyan); display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; color: var(--savi-cyan); flex-shrink: 0;">
+                            @(context.User.Identity?.Name?.FirstOrDefault() ?? 'U')
+                        </div>
+                        <div style="overflow: hidden;">
+                            <div style="font-size: 0.75rem; font-weight: bold; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                @context.User.Identity?.Name
+                            </div>
+                            <div style="font-size: 0.62rem; color: var(--savi-cyan); font-family: var(--savi-font-mono);">
+                                @(context.User.IsInRole("Owner") ? "OWNER" : "OPERATOR")
+                            </div>
+                        </div>
+                    </div>
+                    <a href="/api/auth/logout" class="savi-btn savi-btn-sm" style="padding: 3px 8px; font-size: 0.68rem; color: #ff5555; border-color: rgba(255,85,85,0.3); text-decoration: none;" title="Sign out of SAVI">
+                        ⏻
+                    </a>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <div style="display: flex; gap: 6px;">
+                    <a href="/login" class="savi-btn savi-btn-sm" style="flex: 1; text-align: center; font-size: 0.75rem; text-decoration: none;">
+                        Sign In
+                    </a>
+                    <a href="/register" class="savi-btn savi-btn-sm" style="flex: 1; text-align: center; font-size: 0.75rem; text-decoration: none; border-color: var(--savi-cyan); color: var(--savi-cyan);">
+                        Register
+                    </a>
+                </div>
+            </NotAuthorized>
+        </AuthorizeView>
+    </div>
 </div>
 
 <!-- About SAVI Modal -->

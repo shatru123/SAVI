@@ -8,6 +8,7 @@
 @inject ISettingsService SettingsService
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
+@inject ICurrentUserService CurrentUserService
 @implements IAsyncDisposable
 
 <PageTitle>SAVI — Shatru's Adaptive Virtual Intelligence</PageTitle>
@@ -98,7 +99,7 @@
                     <div style="margin-bottom: 4px;">
                         <SaviCore VoiceState="_voiceState" ReducedMotion="_reducedMotion" />
                     </div>
-                    <div class="savi-empty-greeting">"I'm listening, Shatru."</div>
+                    <div class="savi-empty-greeting">"I'm listening, @UserFirstName."</div>
                     <div class="savi-empty-subtitle">
                         SAVI Neural Engine is online. Ask anything, write code, research topics, or give a voice command.
                     </div>
@@ -650,9 +651,11 @@
         }
     }
 
+    private string UserFirstName => CurrentUserService?.DisplayName?.Split(' ').FirstOrDefault() ?? "Operator";
+
     private async Task PlayVoiceGreeting()
     {
-        var greeting = "Hello Shatru! I am SAVI, your Smart Adaptive Virtual Intelligence, developed by Shatrughna Ambhore. All neural systems are online and ready. How can I help you today?";
+        var greeting = $"Hello {UserFirstName}! I am SAVI, your Smart Adaptive Virtual Intelligence, developed by Shatrughna Ambhore. All neural systems are online and ready. How can I help you today?";
         await JS.InvokeVoidAsync("saviVoice.speak", greeting, 1.0, "greeting");
     }
 

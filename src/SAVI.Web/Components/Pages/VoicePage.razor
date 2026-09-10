@@ -9,6 +9,7 @@
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
 @inject IWebHostEnvironment HostEnvironment
+@inject ICurrentUserService CurrentUserService
 @implements IAsyncDisposable
 
 <PageTitle>SAVI — Real-Time Voice Conversation</PageTitle>
@@ -52,7 +53,7 @@
             {
                 <div style="text-align: center; color: var(--savi-text-dim); margin: auto; padding: 24px; max-width: 440px;">
                     <div style="font-size: 1.15rem; color: var(--savi-text-primary); font-weight: 700; margin-bottom: 6px;">
-                        "I'm listening, Shatru."
+                        "I'm listening, @UserFirstName."
                     </div>
                     <div style="font-size: 0.82rem; color: var(--savi-text-secondary); line-height: 1.5;">
                         Speak naturally. Your questions and SAVI's spoken responses will remain right here in this timeline.
@@ -777,6 +778,8 @@
 @code {
     [Parameter]
     public string? ConversationId { get; set; }
+
+    private string UserFirstName => CurrentUserService?.DisplayName?.Split(' ').FirstOrDefault() ?? "Operator";
 
     private string _currentConversationId = string.Empty;
     private string _activeTitle = "Voice Conversation";

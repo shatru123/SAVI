@@ -1,0 +1,122 @@
+@page "/admin/audit"
+@attribute [Authorize(Roles = "Owner")]
+@inject IAdminService AdminService
+@inject NavigationManager Navigation
+
+<PageTitle>SAVI — Security Audit Logs</PageTitle>
+
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="border-b border-cyber-border/40 pb-4">
+        <div class="flex items-center gap-2 mb-2">
+            <a href="/admin" class="text-xs font-mono text-cyber-cyan hover:underline">&larr; Console</a>
+            <span class="text-gray-500 font-mono text-xs">/</span>
+            <span class="text-xs font-mono text-gray-400">Security Audit</span>
+        </div>
+
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+                <h1 class="text-3xl font-bold font-rajdhani text-white tracking-wide">
+                    SECURITY & SYSTEM AUDIT TRAIL
+                </h1>
+                <p class="text-sm font-mono text-gray-400">
+                    Cryptographically immutable log of user activity, privilege escalation checks, and administrative interventions.
+                </p>
+            </div>
+            <button @onclick="LoadLogs" class="px-3.5 py-1.5 rounded-lg bg-cyber-card border border-cyber-border hover:border-cyber-cyan text-white text-xs font-mono transition-all flex items-center gap-2">
+                <svg class="w-4 h-4 text-cyber-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Refresh Log
+            </button>
+        </div>
+    </div>
+
+    @if (IsLoading)
+    {
+        <div class="p-12 text-center text-cyber-cyan font-mono text-sm">
+            <div class="inline-block animate-spin h-6 w-6 border-2 border-cyber-cyan border-t-transparent rounded-full mb-3"></div>
+            <div>RETRIEVING AUDIT ARCHIVE...</div>
+        </div>
+    }
+    else if (Logs.Count == 0)
+    {
+        <div class="p-12 text-center border border-cyber-border/40 rounded-xl bg-cyber-card/30">
+            <p class="text-gray-400 font-mono text-sm">No security audit entries recorded.</p>
+        </div>
+    }
+    else
+    {
+        <div class="overflow-x-auto border border-cyber-border/40 rounded-xl bg-cyber-card/40">
+            <table class="w-full text-left font-mono text-xs">
+                <thead class="bg-cyber-darker/80 text-gray-400 uppercase tracking-wider border-b border-cyber-border/40">
+                    <tr>
+                        <th class="p-3.5">Timestamp</th>
+                        <th class="p-3.5">Action</th>
+                        <th class="p-3.5">Subsystem</th>
+                        <th class="p-3.5">Clearance</th>
+                        <th class="p-3.5">Status</th>
+                        <th class="p-3.5">Details</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-cyber-border/20">
+                    @foreach (var log in Logs)
+                    {
+                        <tr class="hover:bg-cyber-darker/40 transition-colors">
+                            <td class="p-3.5 text-gray-400 whitespace-nowrap">
+                                @log.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                            </td>
+                            <td class="p-3.5 font-bold text-cyber-cyan">
+                                @log.Action
+                            </td>
+                            <td class="p-3.5 text-gray-300">
+                                @(string.IsNullOrEmpty(log.ToolName) ? "System" : log.ToolName)
+                            </td>
+                            <td class="p-3.5">
+                                <span class="px-2 py-0.5 rounded text-[10px] uppercase font-bold @(log.PermissionLevel == PermissionLevel.Dangerous ? "bg-red-500/20 text-red-300 border border-red-500/30" : "bg-blue-500/20 text-blue-300 border border-blue-500/30")">
+                                    @log.PermissionLevel
+                                </span>
+                            </td>
+                            <td class="p-3.5">
+                                <span class="px-2 py-0.5 rounded text-[10px] uppercase font-bold @(log.Status == "Success" || log.Status == "Executed" ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/20" : "text-amber-400 bg-amber-500/10 border border-amber-500/20")">
+                                    @log.Status
+                                </span>
+                            </td>
+                            <td class="p-3.5 text-gray-300 max-w-md break-words">
+                                @log.Details
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private List<AuditLogEntry> Logs = new();
+    private bool IsLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLogs();
+    }
+
+    private async Task LoadLogs()
+    {
+        IsLoading = true;
+        try
+        {
+            var results = await AdminService.GetAuditLogsAsync(100);
+            Logs = results.ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading audit logs: {ex.Message}");
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+}

@@ -1,0 +1,40 @@
+@page "/access-denied"
+
+<PageTitle>SAVI — Access Denied</PageTitle>
+
+<div class="min-h-[80vh] flex items-center justify-center p-4">
+    <div class="max-w-md w-full border border-red-500/30 bg-cyber-darker/90 backdrop-blur-md rounded-xl p-8 shadow-2xl shadow-red-950/30 relative overflow-hidden">
+        <!-- Background accent grid -->
+        <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-red-500/10 via-transparent to-transparent pointer-events-none"></div>
+
+        <div class="relative z-10 text-center">
+            <!-- Icon -->
+            <div class="w-16 h-16 mx-auto mb-6 rounded-full border border-red-500/40 bg-red-500/10 flex items-center justify-center text-red-400">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+            </div>
+
+            <div class="inline-block px-3 py-1 mb-4 rounded-full border border-red-500/30 bg-red-950/40 text-xs font-mono text-red-400 uppercase tracking-widest">
+                Security Clearance Level 0
+            </div>
+
+            <h1 class="text-2xl font-bold font-rajdhani text-white tracking-wide mb-3">
+                ACCESS RESTRICTED
+            </h1>
+
+            <p class="text-gray-400 text-sm mb-8 font-mono leading-relaxed">
+                The requested operational sector requires elevated <span class="text-red-400 font-semibold">OWNER / ADMINISTRATOR</span> clearance. Your current account does not have permission to inspect or modify these assets.
+            </p>
+
+            <div class="flex flex-col sm:flex-row gap-3">
+                <a href="/" class="flex-1 py-2.5 px-4 rounded-lg bg-cyber-card border border-cyber-border hover:border-cyber-cyan/50 text-white font-mono text-sm transition-all text-center">
+                    Return to Terminal
+                </a>
+                <a href="/login" class="flex-1 py-2.5 px-4 rounded-lg bg-red-500/20 border border-red-500/50 hover:bg-red-500/30 text-red-300 font-mono text-sm transition-all text-center">
+                    Switch Account
+                </a>
+            </div>
+        </div>
+    </div>
+</div>

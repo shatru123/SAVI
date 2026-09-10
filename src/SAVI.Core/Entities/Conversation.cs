@@ -8,5 +8,7 @@ public sealed class Conversation
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public bool IsArchived { get; set; }
     public string? Summary { get; set; }
+    public string? UserId { get; set; }
+    public User? User { get; set; }
     public List<Message> Messages { get; set; } = new();
 }

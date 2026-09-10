@@ -13,4 +13,7 @@ public sealed class AuditLogEntry
     public string Details { get; set; } = string.Empty;
     public bool UserApproved { get; set; }
     public string? TaskId { get; set; }
+    public string? UserId { get; set; }
+    public string? TargetUserId { get; set; }
+    public string? TargetResourceId { get; set; }
 }

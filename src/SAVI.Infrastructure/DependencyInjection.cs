@@ -3,6 +3,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using SAVI.Application.Interfaces;
 using SAVI.Application.Services;
+using SAVI.Core.Constants;
+using SAVI.Core.Entities;
 using SAVI.Core.Interfaces;
 using SAVI.Infrastructure.Audit;
 using SAVI.Infrastructure.Caching;
@@ -40,6 +42,7 @@ public static class DependencyInjection
         });
 
         // Repositories
+        services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IConversationRepository, ConversationRepository>();
         services.AddScoped<IMemoryRepository, MemoryRepository>();
         services.AddScoped<ITaskRepository, TaskRepository>();
@@ -47,7 +50,11 @@ public static class DependencyInjection
         services.AddScoped<IAuditRepository, AuditRepository>();
         services.AddScoped<ISettingsRepository, SettingsRepository>();
 
-        // Application Services
+        // Application Services & Auth
+        services.AddScoped<Microsoft.AspNetCore.Identity.IPasswordHasher<User>, Microsoft.AspNetCore.Identity.PasswordHasher<User>>();
+        services.AddScoped<ICurrentUserService, CurrentUserService>();
+        services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IAdminService, AdminService>();
         services.AddScoped<IConversationService, ConversationService>();
         services.AddScoped<IMemoryService, MemoryService>();
         services.AddScoped<ITaskService, TaskService>();
@@ -107,5 +114,72 @@ public static class DependencyInjection
         // Seed default settings if empty
         var settingsRepo = scope.ServiceProvider.GetRequiredService<ISettingsRepository>();
         await settingsRepo.GetSettingsAsync();
+
+        // Bootstrap Owner Account if not present
+        var userRepo = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+        var passwordHasher = scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.IPasswordHasher<User>>();
+        var existingUsers = await userRepo.GetAllAsync(take: 100);
+        var ownerUser = existingUsers.FirstOrDefault(u => u.Role == SaviConstants.Roles.Owner);
+
+        if (ownerUser == null)
+        {
+            var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+            var ownerEmail = Environment.GetEnvironmentVariable("SAVI_OWNER_EMAIL")
+                             ?? config["Savi:OwnerEmail"]
+                             ?? "ambhoreshatrughna@gmail.com";
+            var ownerName = Environment.GetEnvironmentVariable("SAVI_OWNER_NAME")
+                            ?? config["Savi:OwnerName"]
+                            ?? "Shatrughna Ambhore";
+            var ownerPassword = Environment.GetEnvironmentVariable("SAVI_OWNER_PASSWORD")
+                                ?? config["Savi:OwnerPassword"]
+                                ?? "SaviOwner@2026";
+
+            var owner = new User
+            {
+                Id = Guid.NewGuid().ToString(),
+                Email = ownerEmail.Trim().ToLowerInvariant(),
+                DisplayName = ownerName.Trim(),
+                Role = SaviConstants.Roles.Owner,
+                CreatedAt = DateTimeOffset.UtcNow,
+                IsActive = true
+            };
+            owner.PasswordHash = passwordHasher.HashPassword(owner, ownerPassword);
+            await userRepo.AddAsync(owner);
+            ownerUser = owner;
+        }
+
+        // Migrate any unassigned conversations to Owner
+        if (ownerUser != null)
+        {
+            var unassignedConvs = await db.Conversations.Where(c => c.UserId == null).ToListAsync();
+            if (unassignedConvs.Count > 0)
+            {
+                foreach (var c in unassignedConvs)
+                {
+                    c.UserId = ownerUser.Id;
+                }
+                await db.SaveChangesAsync();
+            }
+
+            var unassignedMemories = await db.MemoryItems.Where(m => m.UserId == null).ToListAsync();
+            if (unassignedMemories.Count > 0)
+            {
+                foreach (var m in unassignedMemories)
+                {
+                    m.UserId = ownerUser.Id;
+                }
+                await db.SaveChangesAsync();
+            }
+
+            var unassignedTasks = await db.TaskItems.Where(t => t.UserId == null).ToListAsync();
+            if (unassignedTasks.Count > 0)
+            {
+                foreach (var t in unassignedTasks)
+                {
+                    t.UserId = ownerUser.Id;
+                }
+                await db.SaveChangesAsync();
+            }
+        }
     }
 }

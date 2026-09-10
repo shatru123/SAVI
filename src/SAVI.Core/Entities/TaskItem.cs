@@ -14,4 +14,5 @@ public sealed class TaskItem
     public string? StepsJson { get; set; }
     public string? ResultSummary { get; set; }
     public string? ErrorMessage { get; set; }
+    public string? UserId { get; set; }
 }

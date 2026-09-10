@@ -5,4 +5,7 @@
   <ItemGroup>
     <ProjectReference Include="..\SAVI.Core\SAVI.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
 </Project>

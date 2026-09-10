@@ -1,6 +1,25 @@
-﻿<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
     <Found Context="routeData">
-        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                @if (context.User.Identity?.IsAuthenticated != true)
+                {
+                    <RedirectToLogin />
+                }
+                else
+                {
+                    <SAVI.Web.Components.Pages.Auth.AccessDenied />
+                }
+            </NotAuthorized>
+            <Authorizing>
+                <div class="min-h-[50vh] flex items-center justify-center p-8">
+                    <div class="p-6 text-center text-cyber-cyan font-mono text-sm tracking-wider">
+                        <div class="inline-block animate-spin h-6 w-6 border-2 border-cyber-cyan border-t-transparent rounded-full mb-3"></div>
+                        <div>VERIFYING OPERATOR CLEARANCE...</div>
+                    </div>
+                </div>
+            </Authorizing>
+        </AuthorizeRouteView>
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>
 </Router>

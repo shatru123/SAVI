@@ -26,9 +26,13 @@ public class ConversationRepository : IConversationRepository
         return conv;
     }
 
-    public async Task<IReadOnlyList<Conversation>> GetAllAsync(bool includeArchived = false, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<Conversation>> GetAllAsync(string? userId = null, bool includeArchived = false, CancellationToken cancellationToken = default)
     {
         var query = _db.Conversations.Include(c => c.Messages).AsQueryable();
+        if (!string.IsNullOrEmpty(userId))
+        {
+            query = query.Where(c => c.UserId == userId);
+        }
         if (!includeArchived)
         {
             query = query.Where(c => !c.IsArchived);
@@ -37,15 +41,36 @@ public class ConversationRepository : IConversationRepository
         return list.OrderByDescending(c => c.UpdatedAt).ToList();
     }
 
-    public async Task<IReadOnlyList<Conversation>> SearchAsync(string query, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<Conversation>> SearchAsync(string query, string? userId = null, CancellationToken cancellationToken = default)
     {
         var qLower = query.ToLower();
-        var list = await _db.Conversations
+        var q = _db.Conversations
             .Include(c => c.Messages)
             .Where(c => c.Title.ToLower().Contains(qLower) ||
-                        c.Messages.Any(m => m.Content.ToLower().Contains(qLower)))
-            .ToListAsync(cancellationToken);
+                        c.Messages.Any(m => m.Content.ToLower().Contains(qLower)));
+
+        if (!string.IsNullOrEmpty(userId))
+        {
+            q = q.Where(c => c.UserId == userId);
+        }
+
+        var list = await q.ToListAsync(cancellationToken);
         return list.OrderByDescending(c => c.UpdatedAt).ToList();
+    }
+
+    public async Task<int> GetCountAsync(string? userId = null, CancellationToken cancellationToken = default)
+    {
+        var q = _db.Conversations.AsQueryable();
+        if (!string.IsNullOrEmpty(userId))
+        {
+            q = q.Where(c => c.UserId == userId);
+        }
+        return await q.CountAsync(cancellationToken);
+    }
+
+    public async Task<int> GetTotalMessagesCountAsync(CancellationToken cancellationToken = default)
+    {
+        return await _db.Messages.CountAsync(cancellationToken);
     }
 
     public async Task AddAsync(Conversation conversation, CancellationToken cancellationToken = default)

@@ -1,0 +1,232 @@
+@page "/admin/users/{UserId}"
+@attribute [Authorize(Roles = "Owner")]
+@inject IAdminService AdminService
+@inject NavigationManager Navigation
+
+<PageTitle>SAVI — Operator Profile Inspection</PageTitle>
+
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="border-b border-cyber-border/40 pb-4">
+        <div class="flex items-center gap-2 mb-2">
+            <a href="/admin/users" class="text-xs font-mono text-cyber-cyan hover:underline">&larr; Back to Operators</a>
+            <span class="text-gray-500 font-mono text-xs">/</span>
+            <span class="text-xs font-mono text-gray-400">Profile Inspection</span>
+        </div>
+
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+                <h1 class="text-3xl font-bold font-rajdhani text-white tracking-wide flex items-center gap-3">
+                    <span>@(Details?.User.DisplayName ?? "Loading...")</span>
+                    @if (Details != null)
+                    {
+                        <span class="px-2.5 py-0.5 rounded text-xs font-mono uppercase @(Details.User.Role == "Owner" ? "bg-amber-500/20 text-amber-300 border border-amber-500/40" : "bg-blue-500/20 text-blue-300 border border-blue-500/40")">
+                            @Details.User.Role
+                        </span>
+                    }
+                </h1>
+                <p class="text-xs font-mono text-gray-400 mt-1">
+                    Email: <span class="text-gray-200">@(Details?.User.Email ?? "-")</span> | ID: <span class="text-gray-500">@UserId</span>
+                </p>
+            </div>
+
+            <!-- Read-Only Banner Badge -->
+            <div class="px-3 py-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-300 text-xs font-mono flex items-center gap-2">
+                <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                <span>ADMIN READ-ONLY INSPECTION</span>
+            </div>
+        </div>
+    </div>
+
+    @if (IsLoading)
+    {
+        <div class="p-12 text-center text-cyber-cyan font-mono text-sm">
+            <div class="inline-block animate-spin h-6 w-6 border-2 border-cyber-cyan border-t-transparent rounded-full mb-3"></div>
+            <div>RETRIEVING OPERATOR TELEMETRY...</div>
+        </div>
+    }
+    else if (Details == null)
+    {
+        <div class="p-8 text-center border border-red-500/40 bg-red-950/20 rounded-xl">
+            <p class="text-red-300 font-mono text-sm">Operator not found.</p>
+            <a href="/admin/users" class="mt-4 inline-block text-xs font-mono text-cyber-cyan underline">Return to Operator Registry</a>
+        </div>
+    }
+    else
+    {
+        <!-- Tab Navigation -->
+        <div class="flex border-b border-cyber-border/40 gap-4 text-xs font-mono">
+            <button @onclick="@(() => ActiveTab = "conversations")" 
+                    class="pb-3 transition-colors border-b-2 @(ActiveTab == "conversations" ? "border-cyber-cyan text-cyber-cyan font-bold" : "border-transparent text-gray-400 hover:text-gray-200")">
+                Conversations (@Details.Conversations.Count)
+            </button>
+            <button @onclick="@(() => ActiveTab = "memory")" 
+                    class="pb-3 transition-colors border-b-2 @(ActiveTab == "memory" ? "border-cyber-cyan text-cyber-cyan font-bold" : "border-transparent text-gray-400 hover:text-gray-200")">
+                Memory Items (@Details.MemoryItems.Count)
+            </button>
+            <button @onclick="@(() => ActiveTab = "tasks")" 
+                    class="pb-3 transition-colors border-b-2 @(ActiveTab == "tasks" ? "border-cyber-cyan text-cyber-cyan font-bold" : "border-transparent text-gray-400 hover:text-gray-200")">
+                Tasks (@Details.Tasks.Count)
+            </button>
+            <button @onclick="@(() => ActiveTab = "audit")" 
+                    class="pb-3 transition-colors border-b-2 @(ActiveTab == "audit" ? "border-cyber-cyan text-cyber-cyan font-bold" : "border-transparent text-gray-400 hover:text-gray-200")">
+                Audit History (@Details.RecentAuditLogs.Count)
+            </button>
+        </div>
+
+        <!-- Conversations Tab -->
+        @if (ActiveTab == "conversations")
+        {
+            @if (Details.Conversations.Count == 0)
+            {
+                <div class="p-8 text-center border border-cyber-border/40 rounded-xl bg-cyber-card/30 text-gray-500 font-mono text-xs">
+                    No conversations initiated by this operator.
+                </div>
+            }
+            else
+            {
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    @foreach (var conv in Details.Conversations)
+                    {
+                        <div class="p-4 rounded-xl bg-cyber-card/50 border border-cyber-border hover:border-cyber-cyan/40 transition-colors flex flex-col justify-between">
+                            <div>
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-xs font-mono text-gray-500">@conv.UpdatedAt.ToString("yyyy-MM-dd HH:mm")</span>
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-cyber-cyan/10 text-cyber-cyan border border-cyber-cyan/20">
+                                        @conv.MessageCount turns
+                                    </span>
+                                </div>
+                                <h3 class="text-base font-bold text-white font-rajdhani mb-1">
+                                    @conv.Title
+                                </h3>
+                                @if (!string.IsNullOrEmpty(conv.Summary))
+                                {
+                                    <p class="text-xs text-gray-400 font-mono line-clamp-2">@conv.Summary</p>
+                                }
+                            </div>
+
+                            <div class="mt-4 pt-3 border-t border-cyber-border/30 flex justify-end">
+                                <a href="/admin/conversations/@conv.Id" class="text-xs font-mono text-cyber-cyan hover:underline flex items-center gap-1">
+                                    Inspect Transcript &rarr;
+                                </a>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+
+        <!-- Memory Tab -->
+        @if (ActiveTab == "memory")
+        {
+            @if (Details.MemoryItems.Count == 0)
+            {
+                <div class="p-8 text-center border border-cyber-border/40 rounded-xl bg-cyber-card/30 text-gray-500 font-mono text-xs">
+                    No memory items stored for this operator.
+                </div>
+            }
+            else
+            {
+                <div class="space-y-3">
+                    @foreach (var mem in Details.MemoryItems)
+                    {
+                        <div class="p-4 rounded-xl bg-cyber-card/50 border border-cyber-border font-mono text-xs">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="px-2 py-0.5 rounded text-[10px] uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                    @mem.Type
+                                </span>
+                                <span class="text-gray-500 text-[11px]">@mem.CreatedAt.ToString("g")</span>
+                            </div>
+                            <div class="text-gray-200 text-sm mt-2">@mem.Content</div>
+                            <div class="text-[10px] text-gray-500 mt-2">Importance: @mem.Importance | Confidence: @mem.Confidence</div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+
+        <!-- Tasks Tab -->
+        @if (ActiveTab == "tasks")
+        {
+            @if (Details.Tasks.Count == 0)
+            {
+                <div class="p-8 text-center border border-cyber-border/40 rounded-xl bg-cyber-card/30 text-gray-500 font-mono text-xs">
+                    No tasks registered for this operator.
+                </div>
+            }
+            else
+            {
+                <div class="space-y-3">
+                    @foreach (var task in Details.Tasks)
+                    {
+                        <div class="p-4 rounded-xl bg-cyber-card/50 border border-cyber-border font-mono text-xs">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="font-bold text-white text-sm font-rajdhani">@task.Title</span>
+                                <span class="px-2 py-0.5 rounded text-[10px] uppercase bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                                    @task.State
+                                </span>
+                            </div>
+                            <div class="text-gray-400 mt-1">@task.Description</div>
+                            <div class="mt-2 text-gray-500 text-[11px]">Progress: @task.ProgressPercentage% | Created: @task.CreatedAt.ToString("g")</div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+
+        <!-- Audit Tab -->
+        @if (ActiveTab == "audit")
+        {
+            @if (Details.RecentAuditLogs.Count == 0)
+            {
+                <div class="p-8 text-center border border-cyber-border/40 rounded-xl bg-cyber-card/30 text-gray-500 font-mono text-xs">
+                    No specific audit trail entries for this operator.
+                </div>
+            }
+            else
+            {
+                <div class="space-y-2 font-mono text-xs">
+                    @foreach (var audit in Details.RecentAuditLogs)
+                    {
+                        <div class="p-3 rounded-lg bg-cyber-darker/60 border border-cyber-border/30 flex justify-between items-center">
+                            <div>
+                                <span class="text-cyber-cyan font-semibold">@audit.Action</span>
+                                <span class="text-gray-400 ml-2">@audit.Details</span>
+                            </div>
+                            <span class="text-gray-500 text-[11px] shrink-0 ml-4">@audit.Timestamp.ToString("g")</span>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string UserId { get; set; } = string.Empty;
+
+    private AdminUserDetailsDto? Details;
+    private bool IsLoading = true;
+    private string ActiveTab = "conversations";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        IsLoading = true;
+        try
+        {
+            Details = await AdminService.GetUserDetailsAsync(UserId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error fetching user details: {ex.Message}");
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+}

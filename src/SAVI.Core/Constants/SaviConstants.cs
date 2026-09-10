@@ -7,6 +7,12 @@ public static class SaviConstants
     public const string Version = "1.0.0";
     public const string DefaultUser = "Shatru";
 
+    public static class Roles
+    {
+        public const string Owner = "Owner";
+        public const string User = "User";
+    }
+
     public static class Capabilities
     {
         public const string Weather = "weather";

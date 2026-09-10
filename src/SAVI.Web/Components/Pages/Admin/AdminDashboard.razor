@@ -1,0 +1,236 @@
+@page "/admin"
+@attribute [Authorize(Roles = "Owner")]
+@inject IAdminService AdminService
+@inject NavigationManager Navigation
+
+<PageTitle>SAVI — Owner Command Console</PageTitle>
+
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-cyber-border/40 pb-4">
+        <div>
+            <div class="flex items-center gap-2 mb-1">
+                <span class="inline-block w-2 h-2 rounded-full bg-cyber-cyan animate-pulse"></span>
+                <span class="text-xs font-mono text-cyber-cyan tracking-widest uppercase">Clearance: Level 1 (Owner)</span>
+            </div>
+            <h1 class="text-3xl font-bold font-rajdhani text-white tracking-wide">
+                SYSTEM COMMAND CONSOLE
+            </h1>
+            <p class="text-sm font-mono text-gray-400">
+                Platform telemetry, multi-user management, and autonomous agent supervision.
+            </p>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <a href="/admin/users" class="px-4 py-2 rounded-lg bg-cyber-card border border-cyber-border hover:border-cyber-cyan/50 text-white text-xs font-mono transition-all flex items-center gap-2">
+                <svg class="w-4 h-4 text-cyber-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+                Manage Users
+            </a>
+            <a href="/admin/audit" class="px-4 py-2 rounded-lg bg-cyber-card border border-cyber-border hover:border-cyber-cyan/50 text-white text-xs font-mono transition-all flex items-center gap-2">
+                <svg class="w-4 h-4 text-cyber-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Audit Trails
+            </a>
+        </div>
+    </div>
+
+    @if (IsLoading)
+    {
+        <div class="p-12 text-center text-cyber-cyan font-mono text-sm">
+            <div class="inline-block animate-spin h-6 w-6 border-2 border-cyber-cyan border-t-transparent rounded-full mb-3"></div>
+            <div>SYNCHRONIZING PLATFORM TELEMETRY...</div>
+        </div>
+    }
+    else if (Metrics != null)
+    {
+        <!-- Metrics Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Total Users -->
+            <div class="p-5 rounded-xl bg-cyber-card/60 border border-cyber-border hover:border-cyber-cyan/30 transition-all">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-mono text-gray-400 uppercase tracking-wider">Registered Operators</span>
+                    <span class="p-2 rounded-lg bg-cyber-cyan/10 text-cyber-cyan">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                    </span>
+                </div>
+                <div class="text-3xl font-bold font-rajdhani text-white">@Metrics.TotalUsers</div>
+                <div class="mt-2 text-xs font-mono text-emerald-400 flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    <span>@Metrics.ActiveUsers Active operators</span>
+                </div>
+            </div>
+
+            <!-- Conversations -->
+            <div class="p-5 rounded-xl bg-cyber-card/60 border border-cyber-border hover:border-cyber-cyan/30 transition-all">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-mono text-gray-400 uppercase tracking-wider">Conversations</span>
+                    <span class="p-2 rounded-lg bg-purple-500/10 text-purple-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                    </span>
+                </div>
+                <div class="text-3xl font-bold font-rajdhani text-white">@Metrics.TotalConversations</div>
+                <div class="mt-2 text-xs font-mono text-gray-400">
+                    <span>@Metrics.TotalMessages Total turns recorded</span>
+                </div>
+            </div>
+
+            <!-- Memory Subsystem -->
+            <div class="p-5 rounded-xl bg-cyber-card/60 border border-cyber-border hover:border-cyber-cyan/30 transition-all">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-mono text-gray-400 uppercase tracking-wider">Memory Nodes</span>
+                    <span class="p-2 rounded-lg bg-blue-500/10 text-blue-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                        </svg>
+                    </span>
+                </div>
+                <div class="text-3xl font-bold font-rajdhani text-white">@Metrics.TotalMemoryItems</div>
+                <div class="mt-2 text-xs font-mono text-gray-400">
+                    <span>Cross-session knowledge facts</span>
+                </div>
+            </div>
+
+            <!-- System Status -->
+            <div class="p-5 rounded-xl bg-cyber-card/60 border border-cyber-border hover:border-cyber-cyan/30 transition-all">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-mono text-gray-400 uppercase tracking-wider">Agent Engine</span>
+                    <span class="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </span>
+                </div>
+                <div class="text-3xl font-bold font-rajdhani text-emerald-400">@Metrics.SystemStatus</div>
+                <div class="mt-2 text-xs font-mono text-gray-400">
+                    <span>@Metrics.ProviderCount Deterministic providers online</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Secondary Section: Recent Users & Recent Audit -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-4">
+            <!-- Recent Users -->
+            <div class="p-5 rounded-xl bg-cyber-card/40 border border-cyber-border">
+                <div class="flex items-center justify-between mb-4 border-b border-cyber-border/30 pb-3">
+                    <h2 class="text-lg font-bold font-rajdhani text-white flex items-center gap-2">
+                        <svg class="w-5 h-5 text-cyber-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                        Recent Operators
+                    </h2>
+                    <a href="/admin/users" class="text-xs font-mono text-cyber-cyan hover:underline">
+                        View All &rarr;
+                    </a>
+                </div>
+
+                @if (RecentUsers.Count == 0)
+                {
+                    <p class="text-xs font-mono text-gray-500 py-4">No users registered yet.</p>
+                }
+                else
+                {
+                    <div class="space-y-3">
+                        @foreach (var user in RecentUsers)
+                        {
+                            <div class="flex items-center justify-between p-3 rounded-lg bg-cyber-darker/60 border border-cyber-border/30 hover:border-cyber-cyan/40 transition-colors">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-9 h-9 rounded-full bg-cyber-card border border-cyber-border flex items-center justify-center font-bold text-cyber-cyan text-sm">
+                                        @user.DisplayName[0]
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-medium text-white flex items-center gap-2">
+                                            <span>@user.DisplayName</span>
+                                            <span class="px-2 py-0.5 rounded text-[10px] font-mono @(user.Role == "Owner" ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" : "bg-blue-500/20 text-blue-300 border border-blue-500/30")">
+                                                @user.Role
+                                            </span>
+                                        </div>
+                                        <div class="text-xs font-mono text-gray-400">@user.Email</div>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-mono text-gray-500">@user.ConversationCount chats</span>
+                                    <a href="/admin/users/@user.Id" class="p-1.5 rounded bg-cyber-card border border-cyber-border text-gray-300 hover:text-cyber-cyan hover:border-cyber-cyan transition-colors" title="Inspect Operator">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <!-- Recent System Audits -->
+            <div class="p-5 rounded-xl bg-cyber-card/40 border border-cyber-border">
+                <div class="flex items-center justify-between mb-4 border-b border-cyber-border/30 pb-3">
+                    <h2 class="text-lg font-bold font-rajdhani text-white flex items-center gap-2">
+                        <svg class="w-5 h-5 text-cyber-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Security & System Audit
+                    </h2>
+                    <a href="/admin/audit" class="text-xs font-mono text-cyber-cyan hover:underline">
+                        View All &rarr;
+                    </a>
+                </div>
+
+                @if (RecentAudits.Count == 0)
+                {
+                    <p class="text-xs font-mono text-gray-500 py-4">No audit events recorded.</p>
+                }
+                else
+                {
+                    <div class="space-y-3 font-mono text-xs">
+                        @foreach (var audit in RecentAudits)
+                        {
+                            <div class="p-3 rounded-lg bg-cyber-darker/60 border border-cyber-border/30 flex flex-col gap-1">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-cyber-cyan font-semibold">@audit.Action</span>
+                                    <span class="text-gray-500 text-[11px]">@audit.Timestamp.ToLocalTime().ToString("g")</span>
+                                </div>
+                                <div class="text-gray-300 text-xs">@audit.Details</div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private PlatformMetricsDto? Metrics;
+    private List<AdminUserSummaryDto> RecentUsers = new();
+    private List<AuditLogEntry> RecentAudits = new();
+    private bool IsLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            Metrics = await AdminService.GetPlatformMetricsAsync();
+            var users = await AdminService.GetUsersAsync(null, 1, 5);
+            RecentUsers = users.ToList();
+            var logs = await AdminService.GetAuditLogsAsync(5);
+            RecentAudits = logs.ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading admin metrics: {ex.Message}");
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+}

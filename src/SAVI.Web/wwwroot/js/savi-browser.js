@@ -352,4 +352,34 @@
             return (el.scrollHeight - el.scrollTop - el.clientHeight) <= threshold;
         }
     }.init();
+
+    window.saviAuthLogin = async function (data) {
+        try {
+            const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            return await response.json();
+        } catch (e) {
+            return { success: false, message: e.message || 'Connection error' };
+        }
+    };
+
+    window.saviAuthRegister = async function (data) {
+        try {
+            const response = await fetch('/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            return await response.json();
+        } catch (e) {
+            return { success: false, message: e.message || 'Connection error' };
+        }
+    };
+
+    window.saviNavigateTo = function (url) {
+        window.location.href = url || '/';
+    };
 })(window, navigator);

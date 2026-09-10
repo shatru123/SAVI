@@ -10,6 +10,7 @@ public class SaviDbContext : DbContext
     {
     }
 
+    public DbSet<User> Users => Set<User>();
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<MemoryItem> MemoryItems => Set<MemoryItem>();
@@ -41,6 +42,20 @@ public class SaviDbContext : DbContext
             }
         }
 
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.HasKey(u => u.Id);
+            entity.Property(u => u.Email).HasMaxLength(256).IsRequired();
+            entity.Property(u => u.DisplayName).HasMaxLength(128).IsRequired();
+            entity.Property(u => u.Role).HasMaxLength(32).IsRequired();
+            entity.HasIndex(u => u.Email).IsUnique();
+            entity.HasIndex(u => u.Role);
+            entity.HasMany(u => u.Conversations)
+                  .WithOne(c => c.User)
+                  .HasForeignKey(c => c.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<Conversation>(entity =>
         {
             entity.HasKey(c => c.Id);
@@ -51,6 +66,7 @@ public class SaviDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(c => c.UpdatedAt);
             entity.HasIndex(c => c.IsArchived);
+            entity.HasIndex(c => c.UserId);
         });
 
         modelBuilder.Entity<Message>(entity =>

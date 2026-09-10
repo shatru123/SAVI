@@ -13,4 +13,5 @@ public sealed class UserSettings
     public double SpeechRate { get; set; } = 1.0;
     public bool AutoApproveSafeTools { get; set; } = true;
     public string StoragePath { get; set; } = string.Empty;
+    public string? UserId { get; set; }
 }
