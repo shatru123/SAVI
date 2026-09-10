@@ -5,74 +5,71 @@
 
 <PageTitle>SAVI — Operator Profile Inspection</PageTitle>
 
-<div class="space-y-6">
+<div class="savi-glass-panel savi-hud-bracket" style="padding: 24px; min-height: calc(100vh - 80px); box-sizing: border-box;">
     <!-- Header -->
-    <div class="border-b border-cyber-border/40 pb-4">
-        <div class="flex items-center gap-2 mb-2">
-            <a href="/admin/users" class="text-xs font-mono text-cyber-cyan hover:underline">&larr; Back to Operators</a>
-            <span class="text-gray-500 font-mono text-xs">/</span>
-            <span class="text-xs font-mono text-gray-400">Profile Inspection</span>
+    <div style="border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 18px; margin-bottom: 22px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+            <a href="/admin/users" style="font-size: 0.75rem; color: var(--savi-cyan); text-decoration: none; font-family: var(--savi-font);">&larr; Back to Operators</a>
+            <span style="color: var(--savi-text-dim); font-size: 0.75rem;">/</span>
+            <span style="font-size: 0.75rem; color: var(--savi-text-secondary); font-family: var(--savi-font);">Profile Inspection</span>
         </div>
 
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
             <div>
-                <h1 class="text-3xl font-bold font-rajdhani text-white tracking-wide flex items-center gap-3">
+                <h1 class="savi-glow-text" style="margin: 0; font-size: 1.45rem; font-weight: 800; letter-spacing: 2px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                     <span>@(Details?.User.DisplayName ?? "Loading...")</span>
                     @if (Details != null)
                     {
-                        <span class="px-2.5 py-0.5 rounded text-xs font-mono uppercase @(Details.User.Role == "Owner" ? "bg-amber-500/20 text-amber-300 border border-amber-500/40" : "bg-blue-500/20 text-blue-300 border border-blue-500/40")">
+                        <span class="savi-badge" style="font-size: 0.65rem; padding: 2px 8px; @(Details.User.Role == "Owner" ? "color: #ffaa00; border-color: rgba(255, 170, 0, 0.4); background: rgba(255, 170, 0, 0.1);" : "color: var(--savi-cyan); border-color: var(--savi-border-subtle);")">
                             @Details.User.Role
                         </span>
                     }
                 </h1>
-                <p class="text-xs font-mono text-gray-400 mt-1">
-                    Email: <span class="text-gray-200">@(Details?.User.Email ?? "-")</span> | ID: <span class="text-gray-500">@UserId</span>
-                </p>
+                <div style="font-size: 0.78rem; color: var(--savi-text-secondary); margin-top: 6px; font-family: var(--savi-font);">
+                    Email: <span style="color: var(--savi-text-primary);">@(Details?.User.Email ?? "-")</span> | ID: <span style="color: var(--savi-text-dim);">@UserId</span>
+                </div>
             </div>
 
             <!-- Read-Only Banner Badge -->
-            <div class="px-3 py-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-300 text-xs font-mono flex items-center gap-2">
-                <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                </svg>
-                <span>ADMIN READ-ONLY INSPECTION</span>
+            <div class="savi-glass-panel" style="padding: 8px 14px; border-color: rgba(255, 170, 0, 0.4); background: rgba(255, 170, 0, 0.08); display: flex; align-items: center; gap: 8px; color: #ffaa00; font-size: 0.75rem; letter-spacing: 0.5px;">
+                <span>🔒</span>
+                <span style="font-weight: 700;">ADMIN READ-ONLY INSPECTION</span>
             </div>
         </div>
     </div>
 
     @if (IsLoading)
     {
-        <div class="p-12 text-center text-cyber-cyan font-mono text-sm">
-            <div class="inline-block animate-spin h-6 w-6 border-2 border-cyber-cyan border-t-transparent rounded-full mb-3"></div>
-            <div>RETRIEVING OPERATOR TELEMETRY...</div>
+        <div style="text-align: center; padding: 60px 20px; color: var(--savi-cyan); font-family: var(--savi-font);">
+            <div style="display: inline-block; width: 28px; height: 28px; border: 2px solid var(--savi-cyan); border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 12px;"></div>
+            <div style="font-size: 0.85rem; letter-spacing: 1.5px;">RETRIEVING OPERATOR TELEMETRY...</div>
         </div>
     }
     else if (Details == null)
     {
-        <div class="p-8 text-center border border-red-500/40 bg-red-950/20 rounded-xl">
-            <p class="text-red-300 font-mono text-sm">Operator not found.</p>
-            <a href="/admin/users" class="mt-4 inline-block text-xs font-mono text-cyber-cyan underline">Return to Operator Registry</a>
+        <div class="savi-glass-panel" style="padding: 40px; text-align: center; border-color: rgba(255, 0, 85, 0.4); background: rgba(255, 0, 85, 0.05);">
+            <p style="color: #ff6688; font-size: 0.88rem; margin-bottom: 12px;">Operator not found.</p>
+            <a href="/admin/users" class="savi-btn savi-btn-sm" style="text-decoration: none;">Return to Operator Registry</a>
         </div>
     }
     else
     {
         <!-- Tab Navigation -->
-        <div class="flex border-b border-cyber-border/40 gap-4 text-xs font-mono">
+        <div style="display: flex; border-bottom: 1px solid var(--savi-border-subtle); gap: 8px; margin-bottom: 24px; font-size: 0.8rem; font-family: var(--savi-font); overflow-x: auto;">
             <button @onclick="@(() => ActiveTab = "conversations")" 
-                    class="pb-3 transition-colors border-b-2 @(ActiveTab == "conversations" ? "border-cyber-cyan text-cyber-cyan font-bold" : "border-transparent text-gray-400 hover:text-gray-200")">
+                    style="padding: 8px 16px; background: none; border: none; cursor: pointer; font-family: var(--savi-font); border-bottom: 2px solid @(ActiveTab == "conversations" ? "var(--savi-cyan)" : "transparent"); color: @(ActiveTab == "conversations" ? "var(--savi-cyan)" : "var(--savi-text-secondary)"); font-weight: @(ActiveTab == "conversations" ? "700" : "normal"); transition: all 0.2s;">
                 Conversations (@Details.Conversations.Count)
             </button>
             <button @onclick="@(() => ActiveTab = "memory")" 
-                    class="pb-3 transition-colors border-b-2 @(ActiveTab == "memory" ? "border-cyber-cyan text-cyber-cyan font-bold" : "border-transparent text-gray-400 hover:text-gray-200")">
+                    style="padding: 8px 16px; background: none; border: none; cursor: pointer; font-family: var(--savi-font); border-bottom: 2px solid @(ActiveTab == "memory" ? "var(--savi-cyan)" : "transparent"); color: @(ActiveTab == "memory" ? "var(--savi-cyan)" : "var(--savi-text-secondary)"); font-weight: @(ActiveTab == "memory" ? "700" : "normal"); transition: all 0.2s;">
                 Memory Items (@Details.MemoryItems.Count)
             </button>
             <button @onclick="@(() => ActiveTab = "tasks")" 
-                    class="pb-3 transition-colors border-b-2 @(ActiveTab == "tasks" ? "border-cyber-cyan text-cyber-cyan font-bold" : "border-transparent text-gray-400 hover:text-gray-200")">
+                    style="padding: 8px 16px; background: none; border: none; cursor: pointer; font-family: var(--savi-font); border-bottom: 2px solid @(ActiveTab == "tasks" ? "var(--savi-cyan)" : "transparent"); color: @(ActiveTab == "tasks" ? "var(--savi-cyan)" : "var(--savi-text-secondary)"); font-weight: @(ActiveTab == "tasks" ? "700" : "normal"); transition: all 0.2s;">
                 Tasks (@Details.Tasks.Count)
             </button>
             <button @onclick="@(() => ActiveTab = "audit")" 
-                    class="pb-3 transition-colors border-b-2 @(ActiveTab == "audit" ? "border-cyber-cyan text-cyber-cyan font-bold" : "border-transparent text-gray-400 hover:text-gray-200")">
+                    style="padding: 8px 16px; background: none; border: none; cursor: pointer; font-family: var(--savi-font); border-bottom: 2px solid @(ActiveTab == "audit" ? "var(--savi-cyan)" : "transparent"); color: @(ActiveTab == "audit" ? "var(--savi-cyan)" : "var(--savi-text-secondary)"); font-weight: @(ActiveTab == "audit" ? "700" : "normal"); transition: all 0.2s;">
                 Audit History (@Details.RecentAuditLogs.Count)
             </button>
         </div>
@@ -82,34 +79,34 @@
         {
             @if (Details.Conversations.Count == 0)
             {
-                <div class="p-8 text-center border border-cyber-border/40 rounded-xl bg-cyber-card/30 text-gray-500 font-mono text-xs">
+                <div class="savi-glass-panel" style="padding: 40px; text-align: center; color: var(--savi-text-dim); font-size: 0.85rem;">
                     No conversations initiated by this operator.
                 </div>
             }
             else
             {
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;">
                     @foreach (var conv in Details.Conversations)
                     {
-                        <div class="p-4 rounded-xl bg-cyber-card/50 border border-cyber-border hover:border-cyber-cyan/40 transition-colors flex flex-col justify-between">
+                        <div class="savi-glass-panel" style="padding: 16px; display: flex; flex-direction: column; justify-content: space-between; border-color: var(--savi-border-subtle); transition: all 0.2s;" onmouseover="this.style.borderColor='var(--savi-border-glow)'" onmouseout="this.style.borderColor='var(--savi-border-subtle)'">
                             <div>
-                                <div class="flex items-center justify-between mb-2">
-                                    <span class="text-xs font-mono text-gray-500">@conv.UpdatedAt.ToString("yyyy-MM-dd HH:mm")</span>
-                                    <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-cyber-cyan/10 text-cyber-cyan border border-cyber-cyan/20">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <span style="font-size: 0.7rem; color: var(--savi-text-dim); font-family: var(--savi-font);">@conv.UpdatedAt.ToString("yyyy-MM-dd HH:mm")</span>
+                                    <span class="savi-badge" style="font-size: 0.62rem; padding: 2px 6px;">
                                         @conv.MessageCount turns
                                     </span>
                                 </div>
-                                <h3 class="text-base font-bold text-white font-rajdhani mb-1">
+                                <h3 style="margin: 0 0 6px 0; font-size: 0.95rem; font-weight: 700; color: var(--savi-text-primary);">
                                     @conv.Title
                                 </h3>
                                 @if (!string.IsNullOrEmpty(conv.Summary))
                                 {
-                                    <p class="text-xs text-gray-400 font-mono line-clamp-2">@conv.Summary</p>
+                                    <p style="font-size: 0.75rem; color: var(--savi-text-secondary); margin: 0; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">@conv.Summary</p>
                                 }
                             </div>
 
-                            <div class="mt-4 pt-3 border-t border-cyber-border/30 flex justify-end">
-                                <a href="/admin/conversations/@conv.Id" class="text-xs font-mono text-cyber-cyan hover:underline flex items-center gap-1">
+                            <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--savi-border-subtle); display: flex; justify-content: flex-end;">
+                                <a href="/admin/conversations/@conv.Id" class="savi-btn savi-btn-sm" style="text-decoration: none;">
                                     Inspect Transcript &rarr;
                                 </a>
                             </div>
@@ -124,24 +121,24 @@
         {
             @if (Details.MemoryItems.Count == 0)
             {
-                <div class="p-8 text-center border border-cyber-border/40 rounded-xl bg-cyber-card/30 text-gray-500 font-mono text-xs">
+                <div class="savi-glass-panel" style="padding: 40px; text-align: center; color: var(--savi-text-dim); font-size: 0.85rem;">
                     No memory items stored for this operator.
                 </div>
             }
             else
             {
-                <div class="space-y-3">
+                <div style="display: flex; flex-direction: column; gap: 12px;">
                     @foreach (var mem in Details.MemoryItems)
                     {
-                        <div class="p-4 rounded-xl bg-cyber-card/50 border border-cyber-border font-mono text-xs">
-                            <div class="flex items-center justify-between mb-1">
-                                <span class="px-2 py-0.5 rounded text-[10px] uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                        <div class="savi-glass-panel" style="padding: 16px; border-color: var(--savi-border-subtle);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span class="savi-badge" style="color: #b784f6; border-color: rgba(183, 132, 246, 0.4); background: rgba(183, 132, 246, 0.1); font-size: 0.65rem;">
                                     @mem.Type
                                 </span>
-                                <span class="text-gray-500 text-[11px]">@mem.CreatedAt.ToString("g")</span>
+                                <span style="font-size: 0.72rem; color: var(--savi-text-dim);">@mem.CreatedAt.ToString("g")</span>
                             </div>
-                            <div class="text-gray-200 text-sm mt-2">@mem.Content</div>
-                            <div class="text-[10px] text-gray-500 mt-2">Importance: @mem.Importance | Confidence: @mem.Confidence</div>
+                            <div style="font-size: 0.85rem; color: var(--savi-text-primary); line-height: 1.5; margin-bottom: 8px;">@mem.Content</div>
+                            <div style="font-size: 0.7rem; color: var(--savi-text-dim);">Importance: @mem.Importance | Confidence: @mem.Confidence</div>
                         </div>
                     }
                 </div>
@@ -153,24 +150,24 @@
         {
             @if (Details.Tasks.Count == 0)
             {
-                <div class="p-8 text-center border border-cyber-border/40 rounded-xl bg-cyber-card/30 text-gray-500 font-mono text-xs">
+                <div class="savi-glass-panel" style="padding: 40px; text-align: center; color: var(--savi-text-dim); font-size: 0.85rem;">
                     No tasks registered for this operator.
                 </div>
             }
             else
             {
-                <div class="space-y-3">
+                <div style="display: flex; flex-direction: column; gap: 12px;">
                     @foreach (var task in Details.Tasks)
                     {
-                        <div class="p-4 rounded-xl bg-cyber-card/50 border border-cyber-border font-mono text-xs">
-                            <div class="flex items-center justify-between mb-1">
-                                <span class="font-bold text-white text-sm font-rajdhani">@task.Title</span>
-                                <span class="px-2 py-0.5 rounded text-[10px] uppercase bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                        <div class="savi-glass-panel" style="padding: 16px; border-color: var(--savi-border-subtle);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <span style="font-weight: 700; color: var(--savi-text-primary); font-size: 0.92rem;">@task.Title</span>
+                                <span class="savi-badge" style="font-size: 0.65rem;">
                                     @task.State
                                 </span>
                             </div>
-                            <div class="text-gray-400 mt-1">@task.Description</div>
-                            <div class="mt-2 text-gray-500 text-[11px]">Progress: @task.ProgressPercentage% | Created: @task.CreatedAt.ToString("g")</div>
+                            <div style="font-size: 0.8rem; color: var(--savi-text-secondary); margin-bottom: 8px;">@task.Description</div>
+                            <div style="font-size: 0.7rem; color: var(--savi-text-dim);">Progress: @task.ProgressPercentage% | Created: @task.CreatedAt.ToString("g")</div>
                         </div>
                     }
                 </div>
@@ -182,21 +179,21 @@
         {
             @if (Details.RecentAuditLogs.Count == 0)
             {
-                <div class="p-8 text-center border border-cyber-border/40 rounded-xl bg-cyber-card/30 text-gray-500 font-mono text-xs">
+                <div class="savi-glass-panel" style="padding: 40px; text-align: center; color: var(--savi-text-dim); font-size: 0.85rem;">
                     No specific audit trail entries for this operator.
                 </div>
             }
             else
             {
-                <div class="space-y-2 font-mono text-xs">
+                <div style="display: flex; flex-direction: column; gap: 8px;">
                     @foreach (var audit in Details.RecentAuditLogs)
                     {
-                        <div class="p-3 rounded-lg bg-cyber-darker/60 border border-cyber-border/30 flex justify-between items-center">
+                        <div class="savi-glass-panel" style="padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-color: var(--savi-border-subtle); background: rgba(7, 11, 20, 0.5);">
                             <div>
-                                <span class="text-cyber-cyan font-semibold">@audit.Action</span>
-                                <span class="text-gray-400 ml-2">@audit.Details</span>
+                                <span style="color: var(--savi-cyan); font-weight: 700; font-size: 0.8rem;">@audit.Action</span>
+                                <span style="color: var(--savi-text-secondary); margin-left: 10px; font-size: 0.78rem;">@audit.Details</span>
                             </div>
-                            <span class="text-gray-500 text-[11px] shrink-0 ml-4">@audit.Timestamp.ToString("g")</span>
+                            <span style="font-size: 0.7rem; color: var(--savi-text-dim); white-space: nowrap; margin-left: 16px;">@audit.Timestamp.ToString("g")</span>
                         </div>
                     }
                 </div>

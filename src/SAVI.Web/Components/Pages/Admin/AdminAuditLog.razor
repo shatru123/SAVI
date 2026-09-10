@@ -5,84 +5,80 @@
 
 <PageTitle>SAVI — Security Audit Logs</PageTitle>
 
-<div class="space-y-6">
+<div class="savi-glass-panel savi-hud-bracket" style="padding: 24px; min-height: calc(100vh - 80px); box-sizing: border-box;">
     <!-- Header -->
-    <div class="border-b border-cyber-border/40 pb-4">
-        <div class="flex items-center gap-2 mb-2">
-            <a href="/admin" class="text-xs font-mono text-cyber-cyan hover:underline">&larr; Console</a>
-            <span class="text-gray-500 font-mono text-xs">/</span>
-            <span class="text-xs font-mono text-gray-400">Security Audit</span>
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 18px; margin-bottom: 22px; flex-wrap: wrap; gap: 16px;">
+        <div>
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                <a href="/admin" style="font-size: 0.75rem; color: var(--savi-cyan); text-decoration: none; font-family: var(--savi-font);">&larr; Console</a>
+                <span style="color: var(--savi-text-dim); font-size: 0.75rem;">/</span>
+                <span style="font-size: 0.75rem; color: var(--savi-text-secondary); font-family: var(--savi-font);">Security Audit</span>
+            </div>
+            <h1 class="savi-glow-text" style="margin: 0; font-size: 1.45rem; font-weight: 800; letter-spacing: 2px;">
+                SECURITY &amp; SYSTEM AUDIT TRAIL
+            </h1>
+            <div style="font-size: 0.78rem; color: var(--savi-text-secondary); margin-top: 4px;">
+                Cryptographically immutable log of user activity, privilege escalation checks, and administrative interventions.
+            </div>
         </div>
 
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-                <h1 class="text-3xl font-bold font-rajdhani text-white tracking-wide">
-                    SECURITY & SYSTEM AUDIT TRAIL
-                </h1>
-                <p class="text-sm font-mono text-gray-400">
-                    Cryptographically immutable log of user activity, privilege escalation checks, and administrative interventions.
-                </p>
-            </div>
-            <button @onclick="LoadLogs" class="px-3.5 py-1.5 rounded-lg bg-cyber-card border border-cyber-border hover:border-cyber-cyan text-white text-xs font-mono transition-all flex items-center gap-2">
-                <svg class="w-4 h-4 text-cyber-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Refresh Log
-            </button>
-        </div>
+        <button @onclick="LoadLogs" class="savi-btn" style="display: inline-flex; align-items: center; gap: 8px;">
+            <span>🔄</span>
+            <span>Refresh Log</span>
+        </button>
     </div>
 
     @if (IsLoading)
     {
-        <div class="p-12 text-center text-cyber-cyan font-mono text-sm">
-            <div class="inline-block animate-spin h-6 w-6 border-2 border-cyber-cyan border-t-transparent rounded-full mb-3"></div>
-            <div>RETRIEVING AUDIT ARCHIVE...</div>
+        <div style="text-align: center; padding: 60px 20px; color: var(--savi-cyan); font-family: var(--savi-font);">
+            <div style="display: inline-block; width: 28px; height: 28px; border: 2px solid var(--savi-cyan); border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 12px;"></div>
+            <div style="font-size: 0.85rem; letter-spacing: 1.5px;">RETRIEVING AUDIT ARCHIVE...</div>
         </div>
     }
     else if (Logs.Count == 0)
     {
-        <div class="p-12 text-center border border-cyber-border/40 rounded-xl bg-cyber-card/30">
-            <p class="text-gray-400 font-mono text-sm">No security audit entries recorded.</p>
+        <div class="savi-glass-panel" style="text-align: center; padding: 48px 24px; color: var(--savi-text-dim); font-size: 0.85rem;">
+            No security audit entries recorded.
         </div>
     }
     else
     {
-        <div class="overflow-x-auto border border-cyber-border/40 rounded-xl bg-cyber-card/40">
-            <table class="w-full text-left font-mono text-xs">
-                <thead class="bg-cyber-darker/80 text-gray-400 uppercase tracking-wider border-b border-cyber-border/40">
-                    <tr>
-                        <th class="p-3.5">Timestamp</th>
-                        <th class="p-3.5">Action</th>
-                        <th class="p-3.5">Subsystem</th>
-                        <th class="p-3.5">Clearance</th>
-                        <th class="p-3.5">Status</th>
-                        <th class="p-3.5">Details</th>
+        <div class="savi-glass-panel" style="overflow-x: auto; border-color: var(--savi-border-subtle);">
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.78rem; font-family: var(--savi-font);">
+                <thead>
+                    <tr style="background: rgba(7, 11, 20, 0.85); border-bottom: 1px solid var(--savi-border-subtle); color: var(--savi-text-dim); text-transform: uppercase; letter-spacing: 1px; font-size: 0.7rem;">
+                        <th style="padding: 12px 16px;">Timestamp</th>
+                        <th style="padding: 12px 16px;">Action</th>
+                        <th style="padding: 12px 16px;">Subsystem</th>
+                        <th style="padding: 12px 16px;">Clearance</th>
+                        <th style="padding: 12px 16px;">Status</th>
+                        <th style="padding: 12px 16px;">Details</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-cyber-border/20">
+                <tbody>
                     @foreach (var log in Logs)
                     {
-                        <tr class="hover:bg-cyber-darker/40 transition-colors">
-                            <td class="p-3.5 text-gray-400 whitespace-nowrap">
+                        <tr style="border-bottom: 1px solid rgba(0, 240, 255, 0.08); transition: background 0.15s;" onmouseover="this.style.background='rgba(0, 240, 255, 0.04)'" onmouseout="this.style.background='transparent'">
+                            <td style="padding: 12px 16px; color: var(--savi-text-dim); white-space: nowrap;">
                                 @log.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
                             </td>
-                            <td class="p-3.5 font-bold text-cyber-cyan">
+                            <td style="padding: 12px 16px; font-weight: 700; color: var(--savi-cyan);">
                                 @log.Action
                             </td>
-                            <td class="p-3.5 text-gray-300">
+                            <td style="padding: 12px 16px; color: var(--savi-text-secondary);">
                                 @(string.IsNullOrEmpty(log.ToolName) ? "System" : log.ToolName)
                             </td>
-                            <td class="p-3.5">
-                                <span class="px-2 py-0.5 rounded text-[10px] uppercase font-bold @(log.PermissionLevel == PermissionLevel.Dangerous ? "bg-red-500/20 text-red-300 border border-red-500/30" : "bg-blue-500/20 text-blue-300 border border-blue-500/30")">
+                            <td style="padding: 12px 16px;">
+                                <span class="savi-badge" style="font-size: 0.62rem; padding: 2px 6px; @(log.PermissionLevel == PermissionLevel.Dangerous ? "color: #ff6688; border-color: rgba(255, 0, 85, 0.4); background: rgba(255, 0, 85, 0.1);" : "color: var(--savi-cyan); border-color: var(--savi-border-subtle);")">
                                     @log.PermissionLevel
                                 </span>
                             </td>
-                            <td class="p-3.5">
-                                <span class="px-2 py-0.5 rounded text-[10px] uppercase font-bold @(log.Status == "Success" || log.Status == "Executed" ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/20" : "text-amber-400 bg-amber-500/10 border border-amber-500/20")">
+                            <td style="padding: 12px 16px;">
+                                <span class="savi-badge" style="font-size: 0.62rem; padding: 2px 6px; @(log.Status == "Success" || log.Status == "Executed" ? "color: var(--savi-success); border-color: rgba(0, 255, 170, 0.3); background: rgba(0, 255, 170, 0.08);" : "color: var(--savi-warning); border-color: rgba(255, 170, 0, 0.3); background: rgba(255, 170, 0, 0.08);")">
                                     @log.Status
                                 </span>
                             </td>
-                            <td class="p-3.5 text-gray-300 max-w-md break-words">
+                            <td style="padding: 12px 16px; color: var(--savi-text-primary); max-width: 420px; word-break: break-word;">
                                 @log.Details
                             </td>
                         </tr>

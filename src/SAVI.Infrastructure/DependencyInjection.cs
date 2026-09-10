@@ -131,8 +131,10 @@ public static class DependencyInjection
                             ?? config["Savi:OwnerName"]
                             ?? "Shatrughna Ambhore";
             var ownerPassword = Environment.GetEnvironmentVariable("SAVI_OWNER_PASSWORD")
+                                ?? Environment.GetEnvironmentVariable("SAVI_OWNER_KEY")
                                 ?? config["Savi:OwnerPassword"]
-                                ?? "SaviOwner@2026";
+                                ?? config["Savi:OwnerKey"]
+                                ?? Guid.NewGuid().ToString("N")[..16];
 
             var owner = new User
             {

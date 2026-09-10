@@ -5,40 +5,38 @@
 
 <PageTitle>SAVI — Transcript Inspection [@ConversationId]</PageTitle>
 
-<div class="space-y-6">
+<div class="savi-glass-panel savi-hud-bracket" style="padding: 24px; min-height: calc(100vh - 80px); box-sizing: border-box;">
     <!-- Header Navigation -->
-    <div class="border-b border-cyber-border/40 pb-4">
-        <div class="flex items-center gap-2 mb-2">
-            <a href="/admin/users" class="text-xs font-mono text-cyber-cyan hover:underline">&larr; Operators</a>
+    <div style="border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 18px; margin-bottom: 22px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+            <a href="/admin/users" style="font-size: 0.75rem; color: var(--savi-cyan); text-decoration: none; font-family: var(--savi-font);">&larr; Operators</a>
             @if (Conversation?.UserId != null)
             {
-                <span class="text-gray-500 font-mono text-xs">/</span>
-                <a href="/admin/users/@Conversation.UserId" class="text-xs font-mono text-gray-400 hover:text-white">@(Conversation.UserDisplayName ?? "Operator")</a>
+                <span style="color: var(--savi-text-dim); font-size: 0.75rem;">/</span>
+                <a href="/admin/users/@Conversation.UserId" style="font-size: 0.75rem; color: var(--savi-text-secondary); text-decoration: none; font-family: var(--savi-font);">@(Conversation.UserDisplayName ?? "Operator")</a>
             }
-            <span class="text-gray-500 font-mono text-xs">/</span>
-            <span class="text-xs font-mono text-gray-400">Transcript</span>
+            <span style="color: var(--savi-text-dim); font-size: 0.75rem;">/</span>
+            <span style="font-size: 0.75rem; color: var(--savi-text-secondary); font-family: var(--savi-font);">Transcript</span>
         </div>
 
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
             <div>
-                <h1 class="text-2xl font-bold font-rajdhani text-white tracking-wide">
+                <h1 class="savi-glow-text" style="margin: 0; font-size: 1.35rem; font-weight: 800; letter-spacing: 2px;">
                     @(Conversation?.Title ?? "Conversation Inspection")
                 </h1>
-                <p class="text-xs font-mono text-gray-400 mt-1">
-                    Operator: <span class="text-cyber-cyan font-semibold">@(Conversation?.UserDisplayName ?? "Unknown")</span> | 
-                    Session ID: <span class="text-gray-500">@ConversationId</span> |
-                    Created: <span class="text-gray-300">@(Conversation?.CreatedAt.ToString("g") ?? "-")</span>
-                </p>
+                <div style="font-size: 0.78rem; color: var(--savi-text-secondary); margin-top: 6px; font-family: var(--savi-font);">
+                    Operator: <span style="color: var(--savi-cyan); font-weight: 700;">@(Conversation?.UserDisplayName ?? "Unknown")</span> | 
+                    Session ID: <span style="color: var(--savi-text-dim);">@ConversationId</span> |
+                    Created: <span style="color: var(--savi-text-primary);">@(Conversation?.CreatedAt.ToString("g") ?? "-")</span>
+                </div>
             </div>
 
             <!-- Prominent Read-Only Banner -->
-            <div class="px-4 py-2 rounded-xl border border-amber-500/50 bg-amber-950/30 text-amber-300 text-xs font-mono flex items-center gap-2 shadow-lg shadow-amber-950/20">
-                <svg class="w-5 h-5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
+            <div class="savi-glass-panel" style="padding: 10px 16px; border-color: rgba(255, 170, 0, 0.4); background: rgba(255, 170, 0, 0.08); display: flex; align-items: center; gap: 10px; color: #ffaa00;">
+                <span style="font-size: 1.2rem;">⚠️</span>
                 <div>
-                    <div class="font-bold tracking-wider">READ-ONLY INSPECTION CONTEXT</div>
-                    <div class="text-[10px] text-amber-400/80">Input submission & voice controls strictly disabled</div>
+                    <div style="font-size: 0.76rem; font-weight: 800; letter-spacing: 1px;">READ-ONLY INSPECTION CONTEXT</div>
+                    <div style="font-size: 0.68rem; color: rgba(255, 170, 0, 0.8);">Input submission &amp; voice controls strictly disabled</div>
                 </div>
             </div>
         </div>
@@ -46,74 +44,79 @@
 
     @if (IsLoading)
     {
-        <div class="p-12 text-center text-cyber-cyan font-mono text-sm">
-            <div class="inline-block animate-spin h-6 w-6 border-2 border-cyber-cyan border-t-transparent rounded-full mb-3"></div>
-            <div>DECRYPTING SESSION TRANSCRIPT...</div>
+        <div style="text-align: center; padding: 60px 20px; color: var(--savi-cyan); font-family: var(--savi-font);">
+            <div style="display: inline-block; width: 28px; height: 28px; border: 2px solid var(--savi-cyan); border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 12px;"></div>
+            <div style="font-size: 0.85rem; letter-spacing: 1.5px;">DECRYPTING SESSION TRANSCRIPT...</div>
         </div>
     }
     else if (Conversation == null)
     {
-        <div class="p-8 text-center border border-red-500/40 bg-red-950/20 rounded-xl">
-            <p class="text-red-300 font-mono text-sm">Conversation transcript could not be located.</p>
-            <a href="/admin/users" class="mt-4 inline-block text-xs font-mono text-cyber-cyan underline">Return to Operator Registry</a>
+        <div class="savi-glass-panel" style="padding: 40px; text-align: center; border-color: rgba(255, 0, 85, 0.4); background: rgba(255, 0, 85, 0.05);">
+            <p style="color: #ff6688; font-size: 0.88rem; margin-bottom: 12px;">Conversation transcript could not be located.</p>
+            <a href="/admin/users" class="savi-btn savi-btn-sm" style="text-decoration: none;">Return to Operator Registry</a>
         </div>
     }
     else if (Conversation.Messages.Count == 0)
     {
-        <div class="p-8 text-center border border-cyber-border/40 rounded-xl bg-cyber-card/30 text-gray-400 font-mono text-xs">
+        <div class="savi-glass-panel" style="padding: 40px; text-align: center; color: var(--savi-text-dim); font-size: 0.85rem;">
             This session contains no conversational turns.
         </div>
     }
     else
     {
         <!-- Transcript Feed -->
-        <div class="space-y-4 max-w-4xl mx-auto pb-12">
+        <div style="display: flex; flex-direction: column; gap: 16px; max-width: 900px; margin: 0 auto; padding-bottom: 24px;">
             @foreach (var msg in Conversation.Messages)
             {
-                <div class="flex @(msg.Role == MessageRole.User ? "justify-end" : "justify-start")">
-                    <div class="max-w-[85%] rounded-2xl p-4 @(msg.Role == MessageRole.User 
-                        ? "bg-cyber-cyan/10 border border-cyber-cyan/30 text-white rounded-br-sm" 
-                        : "bg-cyber-card border border-cyber-border text-gray-200 rounded-bl-sm")">
+                <div style="display: flex; justify-content: @(msg.Role == MessageRole.User ? "flex-end" : "flex-start");">
+                    <div class="savi-glass-panel" style="max-width: 85%; padding: 16px 20px; border-radius: var(--savi-radius-md); @(msg.Role == MessageRole.User 
+                        ? "background: rgba(0, 153, 255, 0.12); border-color: rgba(0, 153, 255, 0.35); border-bottom-right-radius: 2px;" 
+                        : "background: var(--savi-bg-glass); border-color: var(--savi-border-subtle); border-bottom-left-radius: 2px;")">
                         
-                        <div class="flex items-center justify-between gap-4 mb-2 pb-1 border-b @(msg.Role == MessageRole.User ? "border-cyber-cyan/20" : "border-cyber-border/30")">
-                            <span class="text-[11px] font-mono font-bold uppercase @(msg.Role == MessageRole.User ? "text-cyber-cyan" : "text-purple-400")">
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid @(msg.Role == MessageRole.User ? "rgba(0, 153, 255, 0.25)" : "var(--savi-border-subtle)");">
+                            <span style="font-size: 0.72rem; font-family: var(--savi-font); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: @(msg.Role == MessageRole.User ? "var(--savi-cyan)" : "#b784f6");">
                                 @(msg.Role == MessageRole.User ? (Conversation.UserDisplayName ?? "Operator") : "SAVI Core Intelligence")
                             </span>
-                            <span class="text-[10px] font-mono text-gray-500">
+                            <span style="font-size: 0.68rem; color: var(--savi-text-dim); font-family: var(--savi-font);">
                                 @msg.Timestamp.ToLocalTime().ToString("t")
                             </span>
                         </div>
 
                         <!-- Content -->
-                        <div class="text-sm font-mono whitespace-pre-wrap leading-relaxed">
+                        <div style="font-size: 0.88rem; font-family: var(--savi-font); white-space: pre-wrap; line-height: 1.6; color: var(--savi-text-primary);">
                             @msg.Content
                         </div>
 
                         <!-- Tool Executions Inspection -->
                         @if (msg.ToolExecutions != null && msg.ToolExecutions.Count > 0)
                         {
-                            <div class="mt-3 pt-2 border-t border-cyber-border/30 space-y-1">
-                                <span class="text-[10px] font-mono text-gray-500 uppercase tracking-wider block">Tools Invoked:</span>
-                                @foreach (var tool in msg.ToolExecutions)
-                                {
-                                    <div class="text-[11px] font-mono text-gray-400 bg-cyber-darker/60 px-2 py-1 rounded border border-cyber-border/30">
-                                        <span class="text-cyber-cyan font-semibold">@tool.ToolName</span>: @(tool.Success ? "Success" : "Failed")
-                                    </div>
-                                }
+                            <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--savi-border-subtle);">
+                                <span style="font-size: 0.68rem; color: var(--savi-text-dim); text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 6px;">Tools Invoked:</span>
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                    @foreach (var tool in msg.ToolExecutions)
+                                    {
+                                        <div style="font-size: 0.72rem; font-family: var(--savi-font); color: var(--savi-text-secondary); background: rgba(7, 11, 20, 0.6); padding: 4px 8px; border-radius: var(--savi-radius-sm); border: 1px solid var(--savi-border-subtle); display: flex; justify-content: space-between;">
+                                            <span style="color: var(--savi-cyan); font-weight: 700;">@tool.ToolName</span>
+                                            <span style="color: @(tool.Success ? "var(--savi-success)" : "var(--savi-danger)");">@(tool.Success ? "SUCCESS" : "FAILED")</span>
+                                        </div>
+                                    }
+                                </div>
                             </div>
                         }
 
                         <!-- Sources Inspection -->
                         @if (msg.Sources != null && msg.Sources.Count > 0)
                         {
-                            <div class="mt-2 pt-2 border-t border-cyber-border/30 flex flex-wrap gap-1">
-                                <span class="text-[10px] font-mono text-gray-500 uppercase tracking-wider block w-full">Verified Sources:</span>
-                                @foreach (var src in msg.Sources)
-                                {
-                                    <span class="text-[10px] font-mono text-blue-400 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-500/20">
-                                        @src.Title
-                                    </span>
-                                }
+                            <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--savi-border-subtle);">
+                                <span style="font-size: 0.68rem; color: var(--savi-text-dim); text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 6px;">Verified Sources:</span>
+                                <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                                    @foreach (var src in msg.Sources)
+                                    {
+                                        <span class="savi-badge" style="font-size: 0.65rem; color: #00bbff; border-color: rgba(0, 187, 255, 0.3); background: rgba(0, 187, 255, 0.08);">
+                                            @src.Title
+                                        </span>
+                                    }
+                                </div>
                             </div>
                         }
                     </div>

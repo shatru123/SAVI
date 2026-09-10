@@ -33,17 +33,6 @@
             </a>
         </div>
 
-        <!-- Owner Quick Fill Access Banner -->
-        <div style="background: rgba(0, 240, 255, 0.05); border: 1px dashed var(--savi-border-subtle); border-radius: var(--savi-radius-sm); padding: 10px 12px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-            <div style="font-size: 0.7rem; color: var(--savi-text-secondary); line-height: 1.4;">
-                <span style="color: var(--savi-cyan); font-weight: bold;">⚡ Owner Access:</span>
-                <span style="color: var(--savi-text-dim); display: block;">Default administrator credentials</span>
-            </div>
-            <button type="button" @onclick="FillOwnerCredentials" class="savi-btn savi-btn-sm" style="padding: 4px 10px; font-size: 0.68rem; letter-spacing: 0.5px; color: var(--savi-cyan); border-color: var(--savi-cyan);" title="Auto-fill default owner credentials">
-                Auto-Fill Owner
-            </button>
-        </div>
-
         @if (!string.IsNullOrEmpty(ErrorMessage))
         {
             <div style="margin-bottom: 18px; padding: 10px 14px; border-radius: var(--savi-radius-sm); background: rgba(255, 0, 85, 0.12); border: 1px solid rgba(255, 0, 85, 0.4); color: #ff80a0; font-size: 0.75rem; display: flex; align-items: center; gap: 8px;">
@@ -142,13 +131,6 @@
     private bool ShowPassword { get; set; } = false;
     private bool IsSubmitting { get; set; }
     private string? ErrorMessage { get; set; }
-
-    private void FillOwnerCredentials()
-    {
-        Email = "ambhoreshatrughna@gmail.com";
-        Password = "SaviOwner@2026";
-        ErrorMessage = null;
-    }
 
     private async Task HandleLogin()
     {

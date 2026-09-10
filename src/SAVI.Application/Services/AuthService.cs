@@ -100,8 +100,13 @@ public class AuthService : IAuthService
         {
             var expectedAdminKey = Environment.GetEnvironmentVariable("SAVI_OWNER_KEY")
                                    ?? Environment.GetEnvironmentVariable("SAVI_ADMIN_KEY")
-                                   ?? _configuration?["Savi:AdminKey"]
-                                   ?? "SaviOwner@2026";
+                                   ?? _configuration?["Savi:OwnerKey"]
+                                   ?? _configuration?["Savi:AdminKey"];
+
+            if (string.IsNullOrWhiteSpace(expectedAdminKey))
+            {
+                return (false, "Admin key registration is not configured on this server.", null);
+            }
 
             if (string.Equals(request.AdminKey.Trim(), expectedAdminKey.Trim(), StringComparison.Ordinal))
             {
@@ -109,7 +114,7 @@ public class AuthService : IAuthService
             }
             else
             {
-                return (false, "Invalid Admin Setup Key. Contact system administrator.", null);
+                return (false, "Invalid Admin Setup Key. Access denied.", null);
             }
         }
 
