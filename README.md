@@ -14,6 +14,7 @@
 [![EF Core](https://img.shields.io/badge/ORM-EF%20Core%20SQLite-green?style=flat)](https://learn.microsoft.com/en-us/ef/core/)
 [![Zero-Cost](https://img.shields.io/badge/Dependencies-Zero%20Paid%20APIs-brightgreen?style=flat)](#zero-cost-principle)
 [![Free Neural Model](https://img.shields.io/badge/AI%20Engine-Mistral%20%7C%20Llama%20(Free)-cyan?style=flat)](#5-built-in-capability-providers)
+[![Two-Tier Security](https://img.shields.io/badge/Security-Two--Tier%20RBAC%20(Owner%20%7C%20User)-red?style=flat)](#6-two-tier-access-architecture--owner-admin-console)
 
 ### 🚀 **Live Hosted App**: [https://savi-4grt.onrender.com](https://savi-4grt.onrender.com)
 
@@ -33,6 +34,7 @@ SAVI is **NOT** a simple chatbot or generic API wrapper. SAVI behaves like a per
 * **Real-Time Full-Duplex Voice Conversation**: Continuous conversational voice experience with live partial speech transcription, adaptive turn detection, streaming sentence-level speech playback, and instant barge-in interruption (<200ms stop latency).
 * **Dedicated Immersive Voice Screen (`VoiceOverlay`)**: Interactive full-screen HUD featuring a central reactive SAVI reactor orb, dynamic audio ripple waves responding to voice levels, live dual transcript streams, and instant voice controls.
 * **Auto-Speaking Welcome Voice**: Automatically begins speaking aloud ("Hello Shatru! I am SAVI...") when you open the URL, featuring browser autoplay security unlockers.
+* **Two-Tier Access & Multi-User Data Isolation**: Secure two-tier role architecture (`Owner` and `User`) with strict workspace isolation for conversations, memory facts, and task matrices. Includes an owner-only telemetry command console with read-only operator inspection.
 * **Maintain Deep Context & Long-Term Memory**: Remembers user preferences, past conversations, and facts in persistent SQLite memory.
 * **Search & Verify with Multi-Source Consensus**: Discovers public knowledge bases, live weather, currency rates, GitHub repositories, and system diagnostics, verifying consensus before responding.
 * **Execute Protected Local Tasks**: Guided by a strict 3-tier permission guard (Safe / Controlled / Dangerous) with interactive user confirmation modals for destructive actions.
@@ -181,7 +183,58 @@ SAVI executes independent primary and verification providers **concurrently** vi
 
 ---
 
-## 6. Safety & Tool Permissions
+## 6. Two-Tier Access Architecture & Owner Admin Console
+
+SAVI implements a robust multi-user role-based access control (RBAC) model with complete boundary isolation and dedicated administrative governance:
+
+```mermaid
+graph TD
+    Client([Authenticated Client]) --> Auth[Cookie Authentication / Claims]
+    Auth --> Router{Role Decision}
+    
+    Router -->|Role: Owner| OwnerSector[Owner Command Console]
+    Router -->|Role: User| UserSector[Personal Workspace]
+    
+    subgraph Owner Command Console
+        OwnerSector --> Telemetry[Platform Telemetry & Metrics]
+        OwnerSector --> Registry[Operator Management & Deactivation]
+        OwnerSector --> Inspection[Read-Only User Transcript Inspection]
+        OwnerSector --> AuditTrail[Security Audit Trail]
+    end
+    
+    subgraph Isolated Operator Workspace
+        UserSector --> PrivChats[Private Conversations]
+        UserSector --> PrivMem[Private Long-Term Memories]
+        UserSector --> PrivTasks[Private Task Matrix]
+        UserSector --> DynGreeting[Personalized Greetings]
+    end
+```
+
+### ✦ Security Guarantees & Access Matrix
+
+| Feature / Domain | Normal Operator (`User`) | Platform Owner (`Owner`) | Enforcement Mechanism |
+| :--- | :---: | :---: | :--- |
+| **Personal Chat & Voice** | ✅ Fully Private | ✅ Fully Private | Scoped by `UserId` in EF Core queries |
+| **Long-Term Memory Facts** | ✅ Isolated Scope | ✅ Isolated Scope | Queries filtered by `UserId` |
+| **Personal Task Matrix** | ✅ Isolated Scope | ✅ Isolated Scope | Queries filtered by `UserId` |
+| **Command Console (`/admin`)** | ❌ Forbidden (`403`) | ✅ Full Access | `[Authorize(Roles = "Owner")]` & `RequireRole("Owner")` |
+| **Operator Directory (`/admin/users`)** | ❌ Forbidden (`403`) | ✅ Full Access | Server-side authorization check |
+| **Operator Inspection Mode** | ❌ Forbidden (`403`) | 👁️ **Read-Only** | Dedicated inspection viewer without send/voice controls |
+| **User Deactivation / Status Toggle** | ❌ Forbidden (`403`) | ✅ Protected Action | Server-side `AdminService` with audit logging |
+| **Self-Promotion to Owner** | ❌ Impossible | 🔒 Immutable | Registration strictly assigns `Role = Roles.User` |
+
+### ✦ Key Security Principles
+1. **Zero Self-Promotion**: Public registration strictly assigns `Role = Roles.User`. Roles cannot be elevated via client payloads, query strings, or local storage.
+2. **Server-Side Authorization**: Security policies (`OwnerOnly`) are enforced at the ASP.NET Core pipeline and Blazor `AuthorizeRouteView` level.
+3. **Data Boundary Enforcement**: Attempting to view another operator's conversation ID yields a 404 / null, and mutation attempts throw `UnauthorizedAccessException`.
+4. **Read-Only Inspection Context**: When an Owner inspects an operator's conversation, a prominent `[READ-ONLY ADMINISTRATIVE INSPECTION MODE]` banner is displayed, and input submission or voice generation controls are physically omitted.
+5. **Cryptographic Credential Security**: Passwords are encrypted using salted PBKDF2 SHA-512 via ASP.NET Core's `PasswordHasher<User>`.
+6. **Automatic Owner Bootstrap & Data Migration**: If no Owner account exists on startup, SAVI bootstraps the primary Owner (`ambhoreshatrughna@gmail.com`) using environment variables (`SAVI_OWNER_EMAIL`, `SAVI_OWNER_PASSWORD`, `SAVI_OWNER_NAME`) and automatically migrates any pre-existing single-user data to the Owner profile.
+7. **Dynamic Persona Greeting**: The AI companion greets each operator by their registered name (e.g., *"I'm listening, Rahul."* vs *"I'm listening, Shatru."*).
+
+---
+
+## 7. Safety & Tool Permissions
 
 Every tool execution is guarded by the `IPermissionGuard`:
 * **SAFE**: Reading files, inspecting system telemetry, math evaluation, searching public knowledge.
@@ -191,7 +244,7 @@ Every tool execution is guarded by the `IPermissionGuard`:
 
 ---
 
-## 7. Quick Start & Deployment
+## 8. Quick Start & Deployment
 
 ### Run Locally
 ```bash
@@ -217,7 +270,7 @@ SAVI is deployed live on Render's Cloud platform:
 
 ---
 
-## 8. Creator Information
+## 9. Creator Information
 
 SAVI was designed, architected, and built by:
 
@@ -228,6 +281,7 @@ SAVI was designed, architected, and built by:
 
 ---
 
-## 9. License
+## 10. License
 
 This project is licensed under the [MIT License](LICENSE).
+
