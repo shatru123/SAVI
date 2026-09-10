@@ -2,126 +2,189 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 
-<PageTitle>SAVI — Operator Registration</PageTitle>
+<PageTitle>SAVI — Operator Onboarding</PageTitle>
 
-<div class="min-h-[85vh] flex items-center justify-center p-4">
-    <div class="max-w-md w-full border border-cyber-cyan/30 bg-cyber-darker/95 backdrop-blur-md rounded-xl p-8 shadow-2xl shadow-cyan-950/20 relative overflow-hidden">
-        <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyber-cyan/10 via-transparent to-transparent pointer-events-none"></div>
+<div class="savi-auth-container" style="min-height: 85vh; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
+    <div class="savi-glass-panel savi-hud-bracket" style="width: 100%; max-width: 520px; padding: 32px 28px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), inset 0 0 20px rgba(0, 240, 255, 0.08); border-color: var(--savi-border-glow); position: relative; overflow: hidden;">
+        
+        <!-- Top Holographic Ambient Light -->
+        <div style="position: absolute; top: -60px; left: 50%; transform: translateX(-50%); width: 240px; height: 120px; background: radial-gradient(circle, rgba(0, 240, 255, 0.25) 0%, transparent 70%); pointer-events: none;"></div>
 
-        <div class="relative z-10">
-            <!-- Header -->
-            <div class="text-center mb-8">
-                <div class="w-14 h-14 mx-auto mb-4 rounded-xl border border-cyber-cyan/50 bg-cyber-cyan/10 flex items-center justify-center text-cyber-cyan shadow-lg shadow-cyber-cyan/20">
-                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                    </svg>
+        <!-- Brand Header -->
+        <div style="text-align: center; margin-bottom: 24px; position: relative; z-index: 1;">
+            <div style="display: inline-flex; justify-content: center; margin-bottom: 12px;">
+                <SaviLogo Size="48" Animated="true" />
+            </div>
+            <h1 class="savi-glow-text" style="font-size: 1.5rem; font-weight: 800; letter-spacing: 3px; margin: 0; font-family: var(--savi-font);">
+                OPERATOR ONBOARDING
+            </h1>
+            <div style="font-size: 0.68rem; color: var(--savi-text-dim); letter-spacing: 1.5px; margin-top: 4px; text-transform: uppercase;">
+                Provision Sovereign Personal Assistant Workspace
+            </div>
+        </div>
+
+        <!-- Auth Navigation Tabs -->
+        <div style="display: flex; border-bottom: 1px solid var(--savi-border-subtle); margin-bottom: 22px; font-size: 0.78rem;">
+            <a href="/login" style="flex: 1; text-align: center; padding-bottom: 10px; color: var(--savi-text-dim); text-decoration: none; letter-spacing: 1px; transition: color 0.2s;" onmouseover="this.style.color='var(--savi-text-primary)'" onmouseout="this.style.color='var(--savi-text-dim)'">
+                SIGN IN
+            </a>
+            <div style="flex: 1; text-align: center; padding-bottom: 10px; border-bottom: 2px solid var(--savi-cyan); color: var(--savi-cyan); font-weight: bold; letter-spacing: 1px;">
+                NEW OPERATOR
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            <div style="margin-bottom: 18px; padding: 10px 14px; border-radius: var(--savi-radius-sm); background: rgba(255, 0, 85, 0.12); border: 1px solid rgba(255, 0, 85, 0.4); color: #ff80a0; font-size: 0.75rem; display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 1rem; line-height: 1;">⚠️</span>
+                <span style="flex: 1;">@ErrorMessage</span>
+            </div>
+        }
+
+        <!-- Registration Form -->
+        <form @onsubmit="HandleRegister" style="display: flex; flex-direction: column; gap: 14px;">
+            <div>
+                <label style="display: block; font-size: 0.68rem; color: var(--savi-text-secondary); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 5px;">
+                    Operator Full Name / Call Sign
+                </label>
+                <div style="position: relative;">
+                    <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 0.85rem; color: var(--savi-text-dim);">👤</span>
+                    <input type="text"
+                           @bind="DisplayName"
+                           required
+                           autocomplete="name"
+                           placeholder="e.g. Rahul Sharma or Shatrughna Ambhore"
+                           style="width: 100%; box-sizing: border-box; padding: 10px 12px 10px 36px; background: rgba(7, 11, 20, 0.7); border: 1px solid var(--savi-border-subtle); border-radius: var(--savi-radius-sm); color: var(--savi-text-primary); font-family: var(--savi-font); font-size: 0.82rem; outline: none; transition: all 0.2s;"
+                           onfocus="this.style.borderColor='var(--savi-cyan)'; this.style.boxShadow='0 0 10px rgba(0, 240, 255, 0.3)';"
+                           onblur="this.style.borderColor='var(--savi-border-subtle)'; this.style.boxShadow='none';" />
                 </div>
-                <h1 class="text-2xl font-bold font-rajdhani text-white tracking-wider">
-                    OPERATOR ONBOARDING
-                </h1>
-                <p class="text-xs font-mono text-gray-400 mt-1 uppercase tracking-widest">
-                    Create Personal SAVI Terminal Workspace
-                </p>
             </div>
 
-            @if (!string.IsNullOrEmpty(ErrorMessage))
-            {
-                <div class="mb-6 p-3 rounded-lg border border-red-500/40 bg-red-950/40 text-red-300 text-xs font-mono flex items-center gap-2">
-                    <svg class="w-4 h-4 text-red-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                    <span>@ErrorMessage</span>
-                </div>
-            }
-
-            <form @onsubmit="HandleRegister" class="space-y-4">
-                <div>
-                    <label class="block text-xs font-mono text-gray-300 uppercase tracking-wider mb-1.5">
-                        Display Name / Call Sign
-                    </label>
-                    <input type="text" 
-                           @bind="DisplayName" 
-                           required 
-                           autocomplete="name"
-                           placeholder="e.g. Rahul Sharma"
-                           class="w-full px-4 py-2.5 rounded-lg bg-cyber-card border border-cyber-border focus:border-cyber-cyan focus:outline-none text-white text-sm font-mono placeholder-gray-500 transition-colors" />
-                </div>
-
-                <div>
-                    <label class="block text-xs font-mono text-gray-300 uppercase tracking-wider mb-1.5">
-                        Email Address
-                    </label>
-                    <input type="email" 
-                           @bind="Email" 
-                           required 
+            <div>
+                <label style="display: block; font-size: 0.68rem; color: var(--savi-text-secondary); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 5px;">
+                    Email Address
+                </label>
+                <div style="position: relative;">
+                    <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 0.85rem; color: var(--savi-text-dim);">✉</span>
+                    <input type="email"
+                           @bind="Email"
+                           required
                            autocomplete="email"
-                           placeholder="operator@example.com"
-                           class="w-full px-4 py-2.5 rounded-lg bg-cyber-card border border-cyber-border focus:border-cyber-cyan focus:outline-none text-white text-sm font-mono placeholder-gray-500 transition-colors" />
+                           placeholder="operator@savi.net"
+                           style="width: 100%; box-sizing: border-box; padding: 10px 12px 10px 36px; background: rgba(7, 11, 20, 0.7); border: 1px solid var(--savi-border-subtle); border-radius: var(--savi-radius-sm); color: var(--savi-text-primary); font-family: var(--savi-font); font-size: 0.82rem; outline: none; transition: all 0.2s;"
+                           onfocus="this.style.borderColor='var(--savi-cyan)'; this.style.boxShadow='0 0 10px rgba(0, 240, 255, 0.3)';"
+                           onblur="this.style.borderColor='var(--savi-border-subtle)'; this.style.boxShadow='none';" />
                 </div>
+            </div>
 
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                 <div>
-                    <label class="block text-xs font-mono text-gray-300 uppercase tracking-wider mb-1.5">
-                        Security Passcode (min. 6 characters)
+                    <label style="display: block; font-size: 0.68rem; color: var(--savi-text-secondary); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 5px;">
+                        Passcode (min. 6)
                     </label>
-                    <input type="password" 
-                           @bind="Password" 
-                           required 
-                           minlength="6"
-                           autocomplete="new-password"
-                           placeholder="••••••••••••"
-                           class="w-full px-4 py-2.5 rounded-lg bg-cyber-card border border-cyber-border focus:border-cyber-cyan focus:outline-none text-white text-sm font-mono placeholder-gray-500 transition-colors" />
+                    <div style="position: relative;">
+                        <input type="password"
+                               @bind="Password"
+                               required
+                               minlength="6"
+                               autocomplete="new-password"
+                               placeholder="••••••••"
+                               style="width: 100%; box-sizing: border-box; padding: 10px 12px; background: rgba(7, 11, 20, 0.7); border: 1px solid var(--savi-border-subtle); border-radius: var(--savi-radius-sm); color: var(--savi-text-primary); font-family: var(--savi-font); font-size: 0.82rem; outline: none; transition: all 0.2s;"
+                               onfocus="this.style.borderColor='var(--savi-cyan)'; this.style.boxShadow='0 0 10px rgba(0, 240, 255, 0.3)';"
+                               onblur="this.style.borderColor='var(--savi-border-subtle)'; this.style.boxShadow='none';" />
+                    </div>
                 </div>
 
                 <div>
-                    <label class="block text-xs font-mono text-gray-300 uppercase tracking-wider mb-1.5">
+                    <label style="display: block; font-size: 0.68rem; color: var(--savi-text-secondary); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 5px;">
                         Confirm Passcode
                     </label>
-                    <input type="password" 
-                           @bind="ConfirmPassword" 
-                           required 
-                           minlength="6"
-                           autocomplete="new-password"
-                           placeholder="••••••••••••"
-                           class="w-full px-4 py-2.5 rounded-lg bg-cyber-card border border-cyber-border focus:border-cyber-cyan focus:outline-none text-white text-sm font-mono placeholder-gray-500 transition-colors" />
+                    <div style="position: relative;">
+                        <input type="password"
+                               @bind="ConfirmPassword"
+                               required
+                               minlength="6"
+                               autocomplete="new-password"
+                               placeholder="••••••••"
+                               style="width: 100%; box-sizing: border-box; padding: 10px 12px; background: rgba(7, 11, 20, 0.7); border: 1px solid var(--savi-border-subtle); border-radius: var(--savi-radius-sm); color: var(--savi-text-primary); font-family: var(--savi-font); font-size: 0.82rem; outline: none; transition: all 0.2s;"
+                               onfocus="this.style.borderColor='var(--savi-cyan)'; this.style.boxShadow='0 0 10px rgba(0, 240, 255, 0.3)';"
+                               onblur="this.style.borderColor='var(--savi-border-subtle)'; this.style.boxShadow='none';" />
+                    </div>
                 </div>
-
-                <div class="pt-2">
-                    <button type="submit" 
-                            disabled="@IsSubmitting"
-                            class="w-full py-3 px-4 rounded-lg bg-cyber-cyan text-cyber-dark font-rajdhani font-bold text-base tracking-wider uppercase hover:bg-cyan-300 transition-all shadow-lg shadow-cyber-cyan/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                        @if (IsSubmitting)
-                        {
-                            <svg class="animate-spin h-4 w-4 text-cyber-dark" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-                            </svg>
-                            <span>Creating Workspace...</span>
-                        }
-                        else
-                        {
-                            <span>Register & Access Terminal</span>
-                        }
-                    </button>
-                </div>
-            </form>
-
-            <div class="mt-8 pt-6 border-t border-cyber-border/40 text-center">
-                <p class="text-xs font-mono text-gray-400">
-                    Already registered? 
-                    <a href="/login" class="text-cyber-cyan hover:underline font-semibold ml-1">
-                        Sign In &rarr;
-                    </a>
-                </p>
             </div>
+
+            <!-- Admin / Owner Setup Option -->
+            <div style="margin-top: 4px; border: 1px solid @(IsAdminRegistration ? "rgba(255, 170, 0, 0.5)" : "var(--savi-border-subtle)"); border-radius: var(--savi-radius-sm); padding: 12px; background: @(IsAdminRegistration ? "rgba(255, 170, 0, 0.08)" : "rgba(11, 19, 34, 0.4)"); transition: all 0.2s;">
+                <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 0.95rem;">@(IsAdminRegistration ? "🛡️" : "⚙️")</span>
+                        <div>
+                            <div style="font-size: 0.74rem; font-weight: bold; color: @(IsAdminRegistration ? "#ffaa00" : "var(--savi-text-primary)");">
+                                Register as System Owner / Admin
+                            </div>
+                            <div style="font-size: 0.65rem; color: var(--savi-text-dim);">
+                                Requires platform Master Setup Key
+                            </div>
+                        </div>
+                    </div>
+                    <input type="checkbox" @bind="IsAdminRegistration" style="accent-color: #ffaa00;" />
+                </label>
+
+                @if (IsAdminRegistration)
+                {
+                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(255, 170, 0, 0.3);">
+                        <label style="display: block; font-size: 0.65rem; color: #ffaa00; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">
+                            Master Setup Key / Passkey
+                        </label>
+                        <input type="password"
+                               @bind="AdminKey"
+                               placeholder="Default: SaviOwner@2026 or SAVI_OWNER_KEY"
+                               style="width: 100%; box-sizing: border-box; padding: 8px 10px; background: rgba(7, 11, 20, 0.85); border: 1px solid rgba(255, 170, 0, 0.4); border-radius: var(--savi-radius-sm); color: #ffcc66; font-family: var(--savi-font); font-size: 0.78rem; outline: none;" />
+                        <div style="font-size: 0.62rem; color: var(--savi-text-dim); margin-top: 4px;">
+                            * Grants access to Platform Telemetry, Operator Registry &amp; Diagnostics.
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <button type="submit"
+                    disabled="@IsSubmitting"
+                    class="savi-btn savi-btn-primary"
+                    style="width: 100%; padding: 12px; font-size: 0.88rem; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; margin-top: 6px; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;">
+                @if (IsSubmitting)
+                {
+                    <span class="inline-block animate-spin" style="display: inline-block; animation: spin 1s linear infinite;">↻</span>
+                    <span>CREATING WORKSPACE...</span>
+                }
+                else
+                {
+                    <span>CREATE OPERATOR ACCOUNT &rarr;</span>
+                }
+            </button>
+        </form>
+
+        <!-- System Architecture Footnote -->
+        <div style="margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--savi-border-subtle); display: flex; justify-content: space-between; align-items: center; font-size: 0.65rem; color: var(--savi-text-dim);">
+            <span>SAVI v1.0 • .NET 10</span>
+            <span>END-TO-END DATA ISOLATION</span>
         </div>
     </div>
 </div>
+
+<style>
+@@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+</style>
 
 @code {
     private string DisplayName { get; set; } = string.Empty;
     private string Email { get; set; } = string.Empty;
     private string Password { get; set; } = string.Empty;
     private string ConfirmPassword { get; set; } = string.Empty;
+    private bool IsAdminRegistration { get; set; } = false;
+    private string AdminKey { get; set; } = string.Empty;
     private bool IsSubmitting { get; set; }
     private string? ErrorMessage { get; set; }
 
@@ -141,6 +204,12 @@
             return;
         }
 
+        if (IsAdminRegistration && string.IsNullOrWhiteSpace(AdminKey))
+        {
+            ErrorMessage = "Master Setup Key is required for Admin registration.";
+            return;
+        }
+
         IsSubmitting = true;
         ErrorMessage = null;
 
@@ -151,7 +220,8 @@
                 displayName = DisplayName,
                 email = Email,
                 password = Password,
-                confirmPassword = ConfirmPassword
+                confirmPassword = ConfirmPassword,
+                adminKey = IsAdminRegistration ? AdminKey : null
             });
 
             if (result != null && result.Success)
@@ -160,7 +230,7 @@
             }
             else
             {
-                ErrorMessage = result?.Message ?? "Registration failed.";
+                ErrorMessage = result?.Message ?? "Registration failed. Please review your input.";
             }
         }
         catch (Exception ex)

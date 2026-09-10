@@ -189,4 +189,54 @@ public class AuthServiceTests
         Assert.False(await _authService.ValidateUserAsync("inactive1"));
         Assert.False(await _authService.ValidateUserAsync("missing"));
     }
+
+    [Fact]
+    public async Task RegisterAsync_WithValidAdminKey_AssignsOwnerRole()
+    {
+        var request = new RegisterRequestDto
+        {
+            DisplayName = "System Architect",
+            Email = "architect@savi.net",
+            Password = "SecurePassword123!",
+            ConfirmPassword = "SecurePassword123!",
+            AdminKey = "SaviOwner@2026"
+        };
+
+        User? savedUser = null;
+        _mockUserRepo.Setup(r => r.GetByEmailAsync("architect@savi.net", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+        _mockUserRepo.Setup(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .Callback<User, CancellationToken>((u, ct) => savedUser = u)
+            .Returns(Task.CompletedTask);
+
+        var result = await _authService.RegisterAsync(request);
+
+        Assert.True(result.Success);
+        Assert.NotNull(result.User);
+        Assert.Equal(SaviConstants.Roles.Owner, result.User.Role);
+        Assert.NotNull(savedUser);
+        Assert.Equal(SaviConstants.Roles.Owner, savedUser.Role);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_WithInvalidAdminKey_ReturnsError()
+    {
+        var request = new RegisterRequestDto
+        {
+            DisplayName = "Intruder",
+            Email = "intruder@savi.net",
+            Password = "Password123!",
+            ConfirmPassword = "Password123!",
+            AdminKey = "WrongKey123"
+        };
+
+        _mockUserRepo.Setup(r => r.GetByEmailAsync("intruder@savi.net", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        var result = await _authService.RegisterAsync(request);
+
+        Assert.False(result.Success);
+        Assert.Contains("Invalid Admin Setup Key", result.Error, StringComparison.OrdinalIgnoreCase);
+        _mockUserRepo.Verify(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }

@@ -10,13 +10,16 @@ public class AuthService : IAuthService
 {
     private readonly IUserRepository _userRepository;
     private readonly IPasswordHasher<User> _passwordHasher;
+    private readonly Microsoft.Extensions.Configuration.IConfiguration? _configuration;
 
     public AuthService(
         IUserRepository userRepository,
-        IPasswordHasher<User> passwordHasher)
+        IPasswordHasher<User> passwordHasher,
+        Microsoft.Extensions.Configuration.IConfiguration? configuration = null)
     {
         _userRepository = userRepository;
         _passwordHasher = passwordHasher;
+        _configuration = configuration;
     }
 
     public async Task<(bool Success, string? Error, UserDto? User)> LoginAsync(
@@ -90,12 +93,32 @@ public class AuthService : IAuthService
             return (false, "An account with this email address already exists.", null);
         }
 
+        string role = SaviConstants.Roles.User;
+
+        // If an AdminKey was submitted, validate it against the configured server secret
+        if (!string.IsNullOrWhiteSpace(request.AdminKey))
+        {
+            var expectedAdminKey = Environment.GetEnvironmentVariable("SAVI_OWNER_KEY")
+                                   ?? Environment.GetEnvironmentVariable("SAVI_ADMIN_KEY")
+                                   ?? _configuration?["Savi:AdminKey"]
+                                   ?? "SaviOwner@2026";
+
+            if (string.Equals(request.AdminKey.Trim(), expectedAdminKey.Trim(), StringComparison.Ordinal))
+            {
+                role = SaviConstants.Roles.Owner;
+            }
+            else
+            {
+                return (false, "Invalid Admin Setup Key. Contact system administrator.", null);
+            }
+        }
+
         var user = new User
         {
             Id = Guid.NewGuid().ToString(),
             Email = normalizedEmail,
             DisplayName = request.DisplayName.Trim(),
-            Role = SaviConstants.Roles.User, // Always User on registration. Zero self-promotion.
+            Role = role,
             CreatedAt = DateTimeOffset.UtcNow,
             IsActive = true
         };
