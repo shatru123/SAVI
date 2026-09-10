@@ -10,6 +10,7 @@ using SAVI.Core.Interfaces;
 
 using SAVI.Agent.Understanding;
 using SAVI.Agent.Synthesis;
+using SAVI.Agent.Knowledge;
 
 namespace SAVI.Agent;
 
@@ -17,6 +18,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddSaviAgent(this IServiceCollection services)
     {
+        services.AddSingleton<ISaviSelfKnowledgeService, SaviSelfKnowledgeService>();
         services.AddSingleton<IQueryUnderstandingService, QueryUnderstandingService>();
         services.AddSingleton<EvidenceAggregator>();
         services.AddSingleton<IAnswerSynthesisService, AnswerSynthesisService>();

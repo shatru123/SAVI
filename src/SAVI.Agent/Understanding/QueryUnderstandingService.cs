@@ -61,7 +61,8 @@ public class QueryUnderstandingService : IQueryUnderstandingService
             ["docker"] = ("Docker container platform", "DevOps", "Platform"),
             ["kubernetes"] = ("Kubernetes container orchestration system", "DevOps", "Platform"),
             ["git"] = ("Git distributed version control system", "DevOps", "Tool"),
-            ["github"] = ("GitHub software development platform", "DevOps", "Platform")
+            ["github"] = ("GitHub software development platform", "DevOps", "Platform"),
+            ["savi"] = ("SAVI", "General", "Assistant")
         };
 
     private static readonly Regex GenericTechnicalRegex = new(
@@ -71,6 +72,13 @@ public class QueryUnderstandingService : IQueryUnderstandingService
     private static readonly Regex PronounRegex = new(
         @"\b(?:it|its|they|them|their|this|that|this language|this framework|this tool)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private readonly ISaviSelfKnowledgeService? _selfKnowledgeService;
+
+    public QueryUnderstandingService(ISaviSelfKnowledgeService? selfKnowledgeService = null)
+    {
+        _selfKnowledgeService = selfKnowledgeService;
+    }
 
     public QueryAnalysisResult Analyze(string prompt, ContextPackage? context = null)
     {
@@ -173,6 +181,12 @@ public class QueryUnderstandingService : IQueryUnderstandingService
                           Regex.IsMatch(clean, @"^(?:what is|who is|tell me about|explain)\s+[^?]{1,40}\??$", RegexOptions.IgnoreCase) &&
                           !Regex.IsMatch(lower, @"\b(?:programming|language|company|fruit|weather|capital|president|history|protocol|database|framework)\b");
 
+        var effectivePrompt = resolvedContextQuery ?? clean;
+        var selfKnowledgeMatch = _selfKnowledgeService?.MatchQuery(clean, context) ??
+                                 _selfKnowledgeService?.MatchQuery(effectivePrompt, context);
+        bool isSelfKnowledge = selfKnowledgeMatch != null;
+        SelfKnowledgeCategory? selfKnowledgeCategory = selfKnowledgeMatch?.Category;
+
         return new QueryAnalysisResult
         {
             RawPrompt = rawPrompt,
@@ -190,6 +204,8 @@ public class QueryUnderstandingService : IQueryUnderstandingService
             RequiresFreshness = requiresFreshness,
             IsComputational = isComputational,
             IsAmbiguous = isAmbiguous,
+            IsSelfKnowledge = isSelfKnowledge,
+            SelfKnowledgeCategory = selfKnowledgeCategory,
             Confidence = isTechnical ? 0.95 : 0.90,
             PolicyOverride = policyOverride
         };

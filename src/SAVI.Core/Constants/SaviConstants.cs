@@ -29,6 +29,7 @@ public static class SaviConstants
         public const string TechNews = "technews";
         public const string Crypto = "crypto";
         public const string Location = "location";
+        public const string SelfKnowledge = "self_knowledge";
     }
 
     public static class Providers

@@ -19,6 +19,8 @@ public record QueryAnalysisResult
     public bool RequiresFreshness { get; init; }
     public bool IsComputational { get; init; }
     public bool IsAmbiguous { get; init; }
+    public bool IsSelfKnowledge { get; init; }
+    public SelfKnowledgeCategory? SelfKnowledgeCategory { get; init; }
     public double Confidence { get; init; } = 0.90;
     public VerificationPolicy? PolicyOverride { get; init; }
 }

@@ -98,14 +98,23 @@ public class IntentDetectorTests
     [Theory]
     [InlineData("What kind of help you can provide?")]
     [InlineData("How can you help me?")]
-    [InlineData("What are your capabilities?")]
     [InlineData("What help can you provide?")]
-    [InlineData("What can you do?")]
-    public void Detect_HelpAndCapabilitiesQueries_ShouldRouteToChitchatIdentity(string prompt)
+    public void Detect_HelpQueries_ShouldRouteToChitchatIdentity(string prompt)
     {
         var intent = _detector.Detect(prompt);
         Assert.Equal("chitchat", intent.Capability);
         Assert.Equal("identity", intent.Operation);
+        Assert.True(intent.Confidence >= 0.95);
+    }
+
+    [Theory]
+    [InlineData("What are your capabilities?")]
+    [InlineData("What can you do?")]
+    public void Detect_SelfKnowledgeCapabilities_ShouldRouteToSelfKnowledge(string prompt)
+    {
+        var intent = _detector.Detect(prompt);
+        Assert.Equal(SaviConstants.Capabilities.SelfKnowledge, intent.Capability);
+        Assert.Equal("capabilities", intent.Operation);
         Assert.True(intent.Confidence >= 0.95);
     }
 }

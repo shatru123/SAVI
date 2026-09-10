@@ -17,10 +17,14 @@ public record DetectedIntent(
 public class IntentDetector
 {
     private readonly IQueryUnderstandingService _queryUnderstanding;
+    private readonly ISaviSelfKnowledgeService? _selfKnowledge;
 
-    public IntentDetector(IQueryUnderstandingService? queryUnderstanding = null)
+    public IntentDetector(
+        IQueryUnderstandingService? queryUnderstanding = null,
+        ISaviSelfKnowledgeService? selfKnowledge = null)
     {
-        _queryUnderstanding = queryUnderstanding ?? new Understanding.QueryUnderstandingService();
+        _selfKnowledge = selfKnowledge ?? new Knowledge.SaviSelfKnowledgeService();
+        _queryUnderstanding = queryUnderstanding ?? new Understanding.QueryUnderstandingService(_selfKnowledge);
     }
 
     private static readonly Regex WeatherRegex = new(@"(?:weather|forecast|temperature|rain|climate|snow)\s+(?:like in|in|for|at)?\s*([a-zA-Z\s]+)?", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -124,6 +128,22 @@ public class IntentDetector
         if (lowerTrimmed is "never mind" or "nevermind" or "actually never mind" or "actually nevermind")
         {
             return new DetectedIntent("chitchat", "never_mind", new(), 1.0, policyOverride);
+        }
+
+        // 1.5 SAVI Self-Knowledge Fast Path (Immediate local deterministic resolution)
+        var skMatch = _selfKnowledge?.MatchQuery(clean, context);
+        if (skMatch != null)
+        {
+            return new DetectedIntent(
+                SaviConstants.Capabilities.SelfKnowledge,
+                skMatch.Category.ToString().ToLowerInvariant(),
+                new Dictionary<string, string>
+                {
+                    ["topic"] = skMatch.Topic,
+                    ["subTopic"] = skMatch.SubTopic ?? string.Empty
+                },
+                skMatch.Confidence,
+                policyOverride);
         }
 
         // Handle "Actually never mind, what about Berlin?" or "Never mind, what about Berlin?"

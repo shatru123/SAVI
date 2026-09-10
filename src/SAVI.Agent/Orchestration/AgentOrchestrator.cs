@@ -34,6 +34,7 @@ public class AgentOrchestrator : IAgentOrchestrator
     private readonly IAnswerSynthesisService _answerSynthesisService;
     private readonly EvidenceAggregator _evidenceAggregator;
     private readonly IVoiceResponseFormatter? _voiceResponseFormatter;
+    private readonly ISaviSelfKnowledgeService _selfKnowledgeService;
 
     public AgentOrchestrator(
         IContextBuilder contextBuilder,
@@ -51,7 +52,8 @@ public class AgentOrchestrator : IAgentOrchestrator
         IQueryUnderstandingService? queryUnderstandingService = null,
         IAnswerSynthesisService? answerSynthesisService = null,
         EvidenceAggregator? evidenceAggregator = null,
-        IVoiceResponseFormatter? voiceResponseFormatter = null)
+        IVoiceResponseFormatter? voiceResponseFormatter = null,
+        ISaviSelfKnowledgeService? selfKnowledgeService = null)
     {
         _contextBuilder = contextBuilder;
         _intentDetector = intentDetector;
@@ -65,7 +67,8 @@ public class AgentOrchestrator : IAgentOrchestrator
         _toolRegistry = toolRegistry;
         _permissionGuard = permissionGuard;
         _providerCache = providerCache;
-        _queryUnderstandingService = queryUnderstandingService ?? new Understanding.QueryUnderstandingService();
+        _selfKnowledgeService = selfKnowledgeService ?? new Knowledge.SaviSelfKnowledgeService();
+        _queryUnderstandingService = queryUnderstandingService ?? new Understanding.QueryUnderstandingService(_selfKnowledgeService);
         _answerSynthesisService = answerSynthesisService ?? new Synthesis.AnswerSynthesisService();
         _evidenceAggregator = evidenceAggregator ?? new Synthesis.EvidenceAggregator();
         _voiceResponseFormatter = voiceResponseFormatter;
@@ -103,6 +106,31 @@ public class AgentOrchestrator : IAgentOrchestrator
         var intent = _intentDetector.Detect(request.Message, context);
         EmitEvent("request.classified", new { Capability = intent.Capability, Operation = intent.Operation, IsTechnical = analysis.IsTechnical, Topic = analysis.Topic });
         LogActivity($"2. Analyzed query '{analysis.Topic}' (Domain: {analysis.Domain}) -> Routed capability '{intent.Capability}' (Operation: {intent.Operation})");
+
+        // Stage 2.5: SAVI Self-Knowledge Fast Path (Immediate Deterministic Response, 0 Network Calls)
+        if (intent.Capability == SaviConstants.Capabilities.SelfKnowledge || _selfKnowledgeService.IsSelfKnowledgeQuery(request.Message, context))
+        {
+            var answer = _selfKnowledgeService.GetAnswer(request.Message, context);
+            if (answer != null)
+            {
+                LogActivity($"SAVI Self-Knowledge Fast Path -> Category: {answer.Category}, Topic: {answer.Topic} ({answer.ExecutionTimeMs}ms, 0 external calls)");
+                var voiceReply = _voiceResponseFormatter?.FormatForSpeech(answer.SpeechResponse) ?? answer.SpeechResponse;
+
+                await _conversationService.AppendMessageAsync(conversationId, MessageRole.Assistant, answer.TextResponse, MessageType.Text, cancellationToken: cancellationToken);
+                EmitEvent("response.completed", new { Message = answer.TextResponse });
+
+                return new AgentResponse
+                {
+                    Message = answer.TextResponse,
+                    VoiceFriendlyMessage = voiceReply,
+                    ConversationId = conversationId,
+                    Success = true,
+                    Confidence = answer.Confidence,
+                    ActiveVoiceState = VoiceState.Speaking,
+                    ActivityLogs = activityLogs
+                };
+            }
+        }
 
         if (intent.Capability == SaviConstants.Capabilities.Weather &&
             string.IsNullOrWhiteSpace(intent.Parameters.GetValueOrDefault("city")) &&

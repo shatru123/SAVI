@@ -169,6 +169,46 @@ public class EndToEndAssistantTests
         Assert.Contains("157115", response.Message);
     }
 
+    [Fact]
+    public async Task Query_SaviIdentity_ReturnsImmediatelyFromLocalKnowledge_WithoutProviderCalls()
+    {
+        var request = new AgentRequest
+        {
+            Message = "What is SAVI?",
+            ConversationId = "test-savi-identity",
+            VoiceActive = false
+        };
+
+        var response = await _orchestrator.ProcessAsync(request);
+
+        Assert.True(response.Success);
+        Assert.Contains("SAVI", response.Message);
+        Assert.Contains("Shatrughna Ambhore", response.Message);
+        Assert.False(string.IsNullOrWhiteSpace(response.VoiceFriendlyMessage));
+        Assert.DoesNotContain("**", response.VoiceFriendlyMessage);
+        Assert.Equal(VoiceState.Speaking, response.ActiveVoiceState);
+        Assert.Contains(response.ActivityLogs, log => log.Contains("SAVI Self-Knowledge Fast Path"));
+    }
+
+    [Fact]
+    public async Task Query_SaviTechStack_ReturnsDotNetAndCSharp_Locally()
+    {
+        var request = new AgentRequest
+        {
+            Message = "What tech stack does SAVI use?",
+            ConversationId = "test-savi-tech",
+            VoiceActive = false
+        };
+
+        var response = await _orchestrator.ProcessAsync(request);
+
+        Assert.True(response.Success);
+        Assert.Contains(".NET", response.Message);
+        Assert.Contains("C#", response.Message);
+        Assert.Contains("SQLite", response.Message);
+        Assert.Contains(response.ActivityLogs, log => log.Contains("SAVI Self-Knowledge Fast Path"));
+    }
+
     private sealed class DeterministicKnowledgeHandler : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
