@@ -13,130 +13,120 @@
 
 <PageTitle>SAVI — Shatru's Adaptive Virtual Intelligence</PageTitle>
 
-<div class="savi-chat-workspace" style="display: flex; height: 100%; gap: 14px; position: relative;">
-    <!-- Backdrop for Mobile Conversations Drawer -->
-    <div class="savi-drawer-backdrop @(_mobileConvDrawerOpen ? "active" : "")" @onclick="() => _mobileConvDrawerOpen = false"></div>
-
-    <!-- Conversations Sidebar (Static Aside on Desktop / Slide-over Drawer on Mobile) -->
-    <div class="savi-glass-panel savi-hud-bracket savi-conv-sidebar @(_mobileConvDrawerOpen ? "open" : "")" data-testid="conversation-list" style="width: 240px; min-width: 240px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
-            <button class="savi-btn" style="flex: 1; justify-content: center; font-size: 0.8rem; padding: 6px 12px;" @onclick="StartNewChat">
-                + New Chat
-            </button>
-            <button class="savi-btn savi-mobile-only" style="padding: 4px 8px; font-size: 0.8rem; line-height: 1;" @onclick="() => _mobileConvDrawerOpen = false" title="Close Chats">
-                ✕
-            </button>
-        </div>
-
-        <!-- Compact Search Input -->
-        <div style="position: relative; display: flex; align-items: center;">
-            <span style="position: absolute; left: 7px; font-size: 0.68rem; color: var(--savi-text-dim); pointer-events: none; line-height: 1;">🔍</span>
-            <input type="text" placeholder="Search..." 
-                   style="width: 100%; height: 26px; padding: 2px 22px 2px 24px; border: 1px solid var(--savi-border-subtle); border-radius: 4px; font-size: 0.72rem; background: rgba(11, 19, 34, 0.6); color: var(--savi-text-primary); outline: none; box-sizing: border-box; font-family: var(--savi-font);"
-                   @bind="_searchQuery" @bind:event="oninput" @bind:after="FilterConversations" />
-            @if (!string.IsNullOrEmpty(_searchQuery))
-            {
-                <button style="position: absolute; right: 5px; background: none; border: none; color: var(--savi-text-dim); cursor: pointer; font-size: 0.65rem; padding: 0;" @onclick="ClearSearch" title="Clear search">✕</button>
-            }
-        </div>
-
-        <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding-right: 2px;">
-            @if (_conversations.Count == 0)
-            {
-                <div style="font-size: 0.72rem; color: var(--savi-text-dim); text-align: center; margin-top: 20px;">
-                    No past conversations
-                </div>
-            }
-            else
-            {
-                @foreach (var c in _conversations)
-                {
-                    <div class="conv-item @(c.Id == _currentConversationId ? "active" : "")" @onclick="() => SelectConversation(c.Id)">
-                        <div style="flex: 1; min-width: 0;">
-                            <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.78rem; font-weight: 500;">
-                                @c.Title
-                            </div>
-                            <div style="font-size: 0.64rem; color: var(--savi-text-dim); margin-top: 2px;">
-                                @c.UpdatedAt.ToLocalTime().ToString("MMM dd, HH:mm")
-                            </div>
-                        </div>
-                        <button class="conv-del-btn" title="Delete conversation" @onclick="() => DeleteConversation(c.Id)" @onclick:stopPropagation="true">
-                            🗑
-                        </button>
-                    </div>
-                }
-            }
-        </div>
-    </div>
-
-    <!-- Central Stage: Core & Chat Stream -->
-    <div class="savi-glass-panel savi-hud-bracket savi-chat-panel" style="flex: 1; display: flex; flex-direction: column; padding: 14px; min-width: 0;">
-        <!-- Top Toolbar (Mobile Responsive) -->
-        <div class="savi-top-toolbar">
+<div class="savi-chat-workspace" style="display: flex; height: 100%; position: relative; width: 100%;">
+    <!-- Central Stage: Core & Chat Stream (Occupies 100% of Workspace) -->
+    <div class="savi-glass-panel savi-hud-bracket savi-chat-panel" style="flex: 1; display: flex; flex-direction: column; padding: 14px; min-width: 0; height: 100%; box-sizing: border-box;">
+        <!-- Top Toolbar (Uncluttered) -->
+        <div class="savi-top-toolbar" style="padding-bottom: 8px; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
             <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
-                <!-- Mobile Chats Toggle Button -->
-                <button class="savi-btn savi-mobile-only" style="padding: 4px 8px; font-size: 0.78rem; border-radius: 4px; flex-shrink: 0;" @onclick="() => _mobileConvDrawerOpen = !_mobileConvDrawerOpen" title="Conversations">
-                    💬 Chats
-                </button>
-                <span class="savi-glow-text" style="font-size: 0.88rem; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@_activeTitle</span>
+                <span class="savi-glow-text" style="font-size: 0.92rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@_activeTitle</span>
                 @if (_messages.Count > 0)
                 {
-                    <span class="savi-badge savi-desktop-only" style="font-size: 0.68rem; padding: 2px 6px;">@_messages.Count</span>
+                    <span class="savi-badge" style="font-size: 0.65rem; padding: 1px 6px;">@_messages.Count turns</span>
                 }
             </div>
 
-            <div class="savi-top-actions">
-                <!-- Immersive Voice Mode Screen Button (Prominent on Mobile & Desktop) -->
-                <button class="savi-btn active-voice-btn" style="padding: 4px 12px; font-size: 0.75rem; background: linear-gradient(135deg, rgba(0, 240, 255, 0.25) 0%, rgba(59, 130, 246, 0.25) 100%); border-color: rgba(0, 240, 255, 0.6); color: #00f0ff; font-weight: 700;" @onclick="NavigateToVoicePage" title="Open Dedicated Real-Time Voice Screen">
-                    🎙️ Voice Screen
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <!-- Dedicated Real-Time Voice Screen Button -->
+                <button class="savi-btn savi-btn-sm savi-btn-primary" @onclick="NavigateToVoicePage" title="Switch to Dedicated Voice Mode">
+                    <span>🎙️ Voice Screen</span>
                 </button>
-                <!-- Verification Mode Selector Button -->
-                <button class="savi-btn" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="CycleVerificationPolicy" title="Toggle verification mode (Fast, Balanced, Verified)">
-                    @(_activePolicy switch
-                    {
-                        VerificationPolicy.Fast => "⚡ Fast",
-                        VerificationPolicy.Verified => "🛡 Verified",
-                        _ => "⚖ Balanced"
-                    })
-                </button>
-                <!-- Voice Talk-Back Toggle Button (Mobile & Desktop) -->
-                <button class="savi-btn @(_talkBackEnabled ? "active-voice-btn" : "")" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="ToggleTalkBack" title="Toggle Voice Talk-Back (Speech Synthesis)">
-                    @(_talkBackEnabled ? "🔊 Voice: ON" : "🔇 Voice: OFF")
-                </button>
-                <!-- Desktop Only: Continuous Conversational Voice Mode Button -->
-                <button class="savi-btn savi-desktop-only @(_continuousVoiceMode ? "active-voice-btn" : "")" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="ToggleContinuousVoice" title="Toggle Real-Time Conversational Voice Mode (Continuous Full-Duplex)">
-                    @(_continuousVoiceMode ? "🎙 Mode: Live" : "🎙 Mode: Std")
-                </button>
-                @if (!string.IsNullOrEmpty(_currentConversationId))
-                {
-                    <button class="savi-btn" style="padding: 4px 8px; font-size: 0.75rem; border-color: rgba(255, 0, 85, 0.4); color: #ff6688;" @onclick="() => DeleteConversation(_currentConversationId)" title="Delete active chat">
-                        🗑 <span class="savi-desktop-only">Delete</span>
+
+                <!-- Progressive Disclosure Menu -->
+                <div class="savi-menu-wrapper">
+                    <button class="savi-btn savi-btn-sm savi-btn-subtle" @onclick="() => _showToolbarMenu = !_showToolbarMenu" title="More options">
+                        <span>⋮</span>
                     </button>
-                }
-                <button class="savi-btn" style="padding: 4px 10px; font-size: 0.75rem;" @onclick="ToggleActivityDrawer">
-                    <span class="savi-desktop-only">Telemetry: </span>@(_showActivity ? "Hide" : "Show")
-                </button>
-            </div>
-        </div>
+                    @if (_showToolbarMenu)
+                    {
+                        <div class="savi-menu-dropdown" @onclick:stopPropagation="true">
+                            <!-- Verification Mode -->
+                            <button class="savi-menu-item" @onclick="CycleVerificationPolicy">
+                                <span>Verification Mode</span>
+                                <span class="savi-badge" style="font-size: 0.62rem;">
+                                    @(_activePolicy switch
+                                    {
+                                        VerificationPolicy.Fast => "⚡ Fast",
+                                        VerificationPolicy.Verified => "🛡 Verified",
+                                        _ => "⚖ Balanced"
+                                    })
+                                </span>
+                            </button>
 
-        <!-- Animated SAVI Core (Shrinks when active chat) -->
-        <div style="text-align: center; margin-bottom: @_messages.Count == 0 ? "24px" : "10px";">
-            <SaviCore VoiceState="_voiceState" ReducedMotion="_reducedMotion" />
+                            <!-- Voice Talk-Back -->
+                            <button class="savi-menu-item" @onclick="ToggleTalkBack">
+                                <span>Voice Talk-Back</span>
+                                <span style="font-size: 0.72rem; color: @(_talkBackEnabled ? "var(--savi-cyan)" : "var(--savi-text-dim)");">
+                                    @(_talkBackEnabled ? "🔊 ON" : "🔇 OFF")
+                                </span>
+                            </button>
+
+                            <!-- Continuous Voice Mode -->
+                            <button class="savi-menu-item" @onclick="ToggleContinuousVoice">
+                                <span>Continuous Voice</span>
+                                <span style="font-size: 0.72rem; color: @(_continuousVoiceMode ? "#00f0ff" : "var(--savi-text-dim)");">
+                                    @(_continuousVoiceMode ? "🎙 LIVE" : "STD")
+                                </span>
+                            </button>
+
+                            <div class="savi-menu-divider"></div>
+
+                            <!-- Telemetry Activity Drawer -->
+                            <button class="savi-menu-item" @onclick="ToggleActivityDrawer">
+                                <span>Execution Details</span>
+                                <span style="font-size: 0.72rem;">@(_showActivity ? "Hide" : "Show")</span>
+                            </button>
+
+                            @if (!string.IsNullOrEmpty(_currentConversationId))
+                            {
+                                <div class="savi-menu-divider"></div>
+                                <button class="savi-menu-item" style="color: #ff6688;" @onclick="DeleteActiveChat">
+                                    <span>Delete Chat</span>
+                                    <span>🗑</span>
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
         </div>
 
         <!-- Messages Stream -->
         <div class="savi-messages-stream" id="messages-container" data-testid="chat-messages" tabindex="0" aria-live="polite">
             @if (_messages.Count == 0)
             {
-                <div style="text-align: center; color: var(--savi-text-secondary); margin-top: 36px; font-size: 0.9rem; max-width: 540px; margin-left: auto; margin-right: auto;">
-                    <div class="savi-glow-text" style="font-size: 1.25rem; font-weight: 700; margin-bottom: 8px;">"I'm listening, Shatru."</div>
-                    <div style="font-size: 0.85rem; color: var(--savi-text-primary); margin-bottom: 14px;">
-                        SAVI Neural Engine is online. Ask anything, write code, research topics, or issue system commands.
+                <div class="savi-empty-state">
+                    <div style="margin-bottom: 4px;">
+                        <SaviCore VoiceState="_voiceState" ReducedMotion="_reducedMotion" />
                     </div>
-                    <div style="display: inline-flex; align-items: center; gap: 8px; padding: 7px 16px; background: rgba(0, 240, 255, 0.09); border: 1px solid var(--savi-border-subtle); border-radius: 20px; font-size: 0.78rem; color: var(--savi-cyan); cursor: pointer; transition: all 0.2s;"
+                    <div class="savi-empty-greeting">"I'm listening, Shatru."</div>
+                    <div class="savi-empty-subtitle">
+                        SAVI Neural Engine is online. Ask anything, write code, research topics, or give a voice command.
+                    </div>
+
+                    <div style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 16px; background: rgba(0, 240, 255, 0.08); border: 1px solid var(--savi-border-subtle); border-radius: 20px; font-size: 0.78rem; color: var(--savi-cyan); cursor: pointer; transition: all 0.2s;"
                          @onclick="PlayVoiceGreeting" title="Play SAVI Voice Greeting">
                         <span style="font-size: 1rem;">🔊</span>
                         <span>Tap anywhere or click here to hear SAVI speak</span>
+                    </div>
+
+                    <div class="savi-suggestions-grid">
+                        <div class="savi-suggestion-chip" @onclick='() => AskPreset("What is SAVI and what are its core capabilities?")'>
+                            <span class="chip-label">Identity &amp; Stack</span>
+                            <span>"What is SAVI and how does it work?"</span>
+                        </div>
+                        <div class="savi-suggestion-chip" @onclick='() => AskPreset("Explain dependency injection lifetimes (transient, scoped, singleton) in ASP.NET Core with code examples.")'>
+                            <span class="chip-label">Architecture</span>
+                            <span>"Explain dependency injection in .NET"</span>
+                        </div>
+                        <div class="savi-suggestion-chip" @onclick='() => AskPreset("Write a thread-safe exponential backoff retry handler in C#.")'>
+                            <span class="chip-label">Code Synthesis</span>
+                            <span>"Write a thread-safe retry handler in C#"</span>
+                        </div>
+                        <div class="savi-suggestion-chip" @onclick='() => AskPreset("Research recent breakthroughs in room-temperature quantum computing.")'>
+                            <span class="chip-label">Deep Research</span>
+                            <span>"Research quantum computing breakthroughs"</span>
+                        </div>
                     </div>
                 </div>
             }
@@ -146,8 +136,8 @@
                 {
                     <div class="savi-message @(msg.Role == MessageRole.User ? "savi-message-user" : "savi-message-assistant")">
                         <div style="font-size: 0.72rem; color: var(--savi-cyan); margin-bottom: 4px; display: flex; justify-content: space-between;">
-                            <span>@(msg.Role == MessageRole.User ? "SHATRU" : "SAVI CORE")</span>
-                            <span style="color: var(--savi-text-dim);">@msg.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                            <span style="font-weight: 700; letter-spacing: 0.5px;">@(msg.Role == MessageRole.User ? "YOU" : "SAVI")</span>
+                            <span style="color: var(--savi-text-dim); font-size: 0.68rem;">@msg.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
                         </div>
 
                         <div class="savi-message-content">@RenderMarkdown(msg.Content)</div>
@@ -179,7 +169,7 @@
                         {
                             <details class="savi-workflow-details">
                                 <summary class="savi-workflow-summary">
-                                    <span>◈ Execution Workflow (@msg.ActivityLogs.Count steps)</span>
+                                    <span>▸ How SAVI handled this (@msg.ActivityLogs.Count steps)</span>
                                 </summary>
                                 <div class="savi-workflow-box">
                                     @foreach (var log in msg.ActivityLogs)
@@ -198,43 +188,13 @@
 
             @if (_isProcessing)
             {
-                <div class="savi-message savi-message-assistant" style="padding: 10px 14px; max-width: 90%;">
-                    <div style="font-size: 0.82rem; color: var(--savi-cyan); margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 0.95rem;">⚡</span>
-                        <span class="savi-glow-text">"Sure, Shatru. Checking that now..."</span>
+                <div class="savi-message savi-message-assistant" style="padding: 12px 16px;">
+                    <div style="font-size: 0.85rem; color: var(--savi-cyan); display: flex; align-items: center; gap: 8px;">
+                        <span style="animation: savi-spin-slow 1.5s linear infinite; display: inline-block;">◈</span>
+                        <span class="savi-glow-text">Thinking &amp; synthesizing response...</span>
                     </div>
-                    <div class="savi-agent-progress-card">
-                        <div class="savi-agent-progress-header">
-                            <div class="savi-agent-progress-title">
-                                <span style="animation: savi-spin-slow 2s linear infinite; display: inline-block;">◈</span>
-                                <span>Agentic Task Execution</span>
-                            </div>
-                            <span class="savi-agent-progress-badge">
-                                <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--savi-success); animation: savi-pulse 1.2s infinite; display: inline-block;"></span>
-                                ACTIVE
-                            </span>
-                        </div>
-                        <div class="savi-agent-steps-list">
-                            <div class="savi-agent-step-item @(_executionStep >= 1 ? (_executionStep == 1 ? "active" : "completed") : "pending")">
-                                <span class="step-icon">@(_executionStep > 1 ? "✓" : (_executionStep == 1 ? "◈" : "○"))</span>
-                                <span>1. Analyzing prompt intent &amp; task requirements</span>
-                            </div>
-                            <div class="savi-agent-step-item @(_executionStep >= 2 ? (_executionStep == 2 ? "active" : "completed") : "pending")">
-                                <span class="step-icon">@(_executionStep > 2 ? "✓" : (_executionStep == 2 ? "◈" : "○"))</span>
-                                <span>2. Routing to optimal AI neural engine &amp; tools</span>
-                            </div>
-                            <div class="savi-agent-step-item @(_executionStep >= 3 ? (_executionStep == 3 ? "active" : "completed") : "pending")">
-                                <span class="step-icon">@(_executionStep > 3 ? "✓" : (_executionStep == 3 ? "◈" : "○"))</span>
-                                <span>3. Executing task &amp; synthesizing code/solution</span>
-                            </div>
-                            <div class="savi-agent-step-item @(_executionStep >= 4 ? (_executionStep == 4 ? "active" : "completed") : "pending")">
-                                <span class="step-icon">@(_executionStep > 4 ? "✓" : (_executionStep == 4 ? "◈" : "○"))</span>
-                                <span>4. Verifying syntax, safety &amp; confidence boundaries</span>
-                            </div>
-                        </div>
-                    </div>
+                    <button class="savi-btn savi-btn-sm" style="align-self: flex-start; margin-top: 10px;" @onclick="StopGenerating">Stop generating</button>
                 </div>
-                <button class="savi-btn" style="align-self: flex-start; margin-top: 4px;" @onclick="StopGenerating">Stop generating</button>
             }
         </div>
 
@@ -251,7 +211,7 @@
             </button>
 
             <!-- Send Button -->
-            <button class="savi-btn" data-testid="chat-send" @onclick="SendMessage" disabled="@(string.IsNullOrWhiteSpace(_userInput) || _isProcessing)">
+            <button class="savi-btn savi-btn-primary" data-testid="chat-send" @onclick="SendMessage" disabled="@(string.IsNullOrWhiteSpace(_userInput) || _isProcessing)">
                 Send ↵
             </button>
         </div>
@@ -264,7 +224,7 @@
                     <span class="core-center-pulse" style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #00f0ff;"></span>
                     <span class="savi-glow-text" style="font-weight: 700; letter-spacing: 0.5px;">LIVE FULL-DUPLEX VOICE</span>
                     <span style="color: var(--savi-text-dim);">• Continuous</span>
-                    <button class="savi-btn" style="padding: 2px 7px; font-size: 0.68rem; border-radius: 4px;" @onclick="ToggleAudioOutputMode" title="Toggle Speaker Mode (echo rejection active) vs Headphone Mode">
+                    <button class="savi-btn savi-btn-sm" style="padding: 2px 7px; font-size: 0.68rem; border-radius: 4px;" @onclick="ToggleAudioOutputMode" title="Toggle Speaker Mode (echo rejection active) vs Headphone Mode">
                         @(_audioOutputMode == "speaker" ? "🔊 Speaker" : "🎧 Headphone")
                     </button>
                     @if (_falseSelfDetectionCount > 0)
@@ -459,7 +419,7 @@
     private bool _reducedMotion = false;
     private bool _voiceSupported = true;
     private bool _voiceJsReady = false;
-    private bool _mobileConvDrawerOpen = false;
+    private bool _showToolbarMenu = false;
     private string? _voiceError;
     private VoiceState _voiceState = VoiceState.Idle;
     private VerificationPolicy _activePolicy = VerificationPolicy.Balanced;
@@ -485,6 +445,20 @@
     private List<string> _activityLogs = new();
     private ActionApprovalRequest? _pendingApproval;
     private DotNetObjectReference<Home>? _dotNetRef;
+
+    private async Task AskPreset(string text)
+    {
+        if (_isProcessing) return;
+        _userInput = text;
+        await SendMessage();
+    }
+
+    private async Task DeleteActiveChat()
+    {
+        _showToolbarMenu = false;
+        if (string.IsNullOrEmpty(_currentConversationId)) return;
+        await DeleteConversation(_currentConversationId);
+    }
 
     private async Task ToggleAudioOutputMode()
     {
@@ -728,7 +702,6 @@
 
     private async Task SelectConversation(string id)
     {
-        _mobileConvDrawerOpen = false;
         _currentConversationId = id;
         if (!Navigation.Uri.EndsWith($"/chat/{id}", StringComparison.OrdinalIgnoreCase))
         {
@@ -749,7 +722,6 @@
 
     private async Task StartNewChat()
     {
-        _mobileConvDrawerOpen = false;
         var newConv = await ConversationService.GetOrCreateAsync(null);
         _currentConversationId = newConv.Id;
         Navigation.NavigateTo($"/chat/{_currentConversationId}", replace: true);

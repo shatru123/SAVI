@@ -1,129 +1,161 @@
+@using SAVI.Application.DTOs
+@using SAVI.Application.Interfaces
+@inject IConversationService ConversationService
 @inject ISettingsService SettingsService
+@inject NavigationManager Navigation
 @inject IJSRuntime JS
+@implements IDisposable
 
-<div class="savi-glass-panel savi-hud-bracket" style="padding: 16px; height: 100%; display: flex; flex-direction: column; gap: 14px; box-sizing: border-box;">
+<div class="savi-glass-panel savi-hud-bracket savi-sidebar-shell" style="padding: 14px; height: 100%; display: flex; flex-direction: column; gap: 10px; box-sizing: border-box;">
     <!-- Logo & Brand -->
-    <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 14px;">
-        <div style="display: flex; align-items: center; gap: 12px;">
-            <SaviLogo Size="36" Animated="true" />
+    <div class="savi-sidebar-brand">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <SaviLogo Size="30" Animated="true" />
             <div>
-                <div class="savi-glow-text" style="font-weight: 700; font-size: 1.1rem; letter-spacing: 2.5px;">SAVI</div>
-                <div style="font-size: 0.65rem; color: var(--savi-text-dim); letter-spacing: 0.6px;">VIRTUAL INTELLIGENCE</div>
+                <div class="savi-glow-text" style="font-weight: 800; font-size: 1.05rem; letter-spacing: 2px;">SAVI</div>
+                <div style="font-size: 0.62rem; color: var(--savi-text-dim); letter-spacing: 0.5px;">PERSONAL AI ASSISTANT</div>
             </div>
         </div>
         @if (ShowCloseButton)
         {
-            <button class="savi-btn" style="padding: 4px 8px; font-size: 0.85rem; border-radius: 4px; line-height: 1;" @onclick="CloseDrawer" title="Close Menu">✕</button>
+            <button class="savi-btn savi-btn-sm" style="padding: 2px 8px; line-height: 1;" @onclick="CloseDrawer" title="Close Menu">✕</button>
         }
     </div>
 
-    <!-- Navigation links -->
-    <nav style="display: flex; flex-direction: column; gap: 6px; flex: 1; overflow-y: auto;">
-        <NavLink class="savi-nav-item" href="" Match="NavLinkMatch.All" @onclick="HandleNavClick">
-            <span class="savi-icon">◈</span> Command Deck
+    <!-- + New Chat Action -->
+    <button class="savi-btn savi-sidebar-newchat" @onclick="CreateNewChat" title="Start a fresh conversation">
+        <span>+ New Chat</span>
+    </button>
+
+    <!-- Search Conversations -->
+    <div class="savi-sidebar-search">
+        <span class="savi-sidebar-search-icon">🔍</span>
+        <input type="text" class="savi-sidebar-search-input" placeholder="Search chats..."
+               @bind="_searchQuery" @bind:event="oninput" @bind:after="FilterConversations" />
+        @if (!string.IsNullOrEmpty(_searchQuery))
+        {
+            <button class="savi-sidebar-search-clear" @onclick="ClearSearch" title="Clear search">✕</button>
+        }
+    </div>
+
+    <!-- Conversation History List (Date Grouped) -->
+    <div class="savi-conv-list-container">
+        @if (_conversations.Count == 0)
+        {
+            <div style="font-size: 0.74rem; color: var(--savi-text-dim); text-align: center; margin-top: 24px; padding: 0 10px;">
+                @(string.IsNullOrWhiteSpace(_searchQuery) ? "No saved conversations yet" : "No matching conversations")
+            </div>
+        }
+        else
+        {
+            @RenderGroup("Today", _todayConversations)
+            @RenderGroup("Yesterday", _yesterdayConversations)
+            @RenderGroup("Previous 7 Days", _pastWeekConversations)
+            @RenderGroup("Older", _olderConversations)
+        }
+    </div>
+
+    <!-- Primary Navigation Links -->
+    <nav style="display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--savi-border-subtle); padding-top: 8px;">
+        <NavLink class="savi-nav-item" href="@(string.IsNullOrEmpty(_currentConvId) ? "chat" : $"chat/{_currentConvId}")" Match="NavLinkMatch.Prefix" @onclick="HandleNavClick">
+            <span class="savi-icon">💬</span>
+            <span style="flex: 1;">Chat</span>
         </NavLink>
-
-        <!-- SAVI Voice Assistant Quick Options Card -->
-        <div class="savi-voice-menu-card" style="background: linear-gradient(135deg, rgba(0, 240, 255, 0.08) 0%, rgba(59, 130, 246, 0.05) 100%); border: 1px solid rgba(0, 240, 255, 0.28); border-radius: 8px; padding: 10px; margin: 4px 0; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 0 14px rgba(0, 240, 255, 0.08);">
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="font-size: 0.95rem; color: #00f0ff;">🎙️</span>
-                    <span style="font-size: 0.72rem; font-weight: 700; color: #00f0ff; letter-spacing: 0.8px; text-transform: uppercase;">Voice Assistant</span>
-                </div>
-                <span class="savi-badge" style="color: #00f0ff; border-color: rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.12); font-size: 0.6rem; padding: 1px 5px;">LIVE</span>
-            </div>
-
-            <!-- Dedicated Voice Screen Link -->
-            <NavLink class="savi-btn" href="voice" @onclick="HandleNavClick" style="justify-content: center; font-size: 0.76rem; font-weight: 700; padding: 6px 10px; background: rgba(0, 240, 255, 0.18); border-color: rgba(0, 240, 255, 0.5); color: #00f0ff; text-decoration: none; display: flex; align-items: center; gap: 6px; border-radius: 5px;">
-                <span>🎙️ Real-Time Voice Screen</span>
-            </NavLink>
-
-            <!-- Voice Controls Row -->
-            <div style="display: flex; gap: 6px;">
-                <button class="savi-btn @(_voiceEnabled ? "active-voice-btn" : "")" style="flex: 1; font-size: 0.72rem; padding: 5px 6px; justify-content: center;" @onclick="ToggleVoiceOutput" title="Toggle voice talk-back (spoken responses)">
-                    @(_voiceEnabled ? "🔊 Voice: ON" : "🔇 Voice: OFF")
-                </button>
-                <button class="savi-btn" style="flex: 1; font-size: 0.72rem; padding: 5px 6px; justify-content: center;" @onclick="TestAudioAsync" title="Test audio volume and unlock mobile audio">
-                    @(_isTestingAudio ? "⚡ Testing..." : "🧪 Test Audio")
-                </button>
-            </div>
-
-            <!-- Acoustic Mode Selector -->
-            <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.68rem; color: var(--savi-text-dim); padding: 2px 2px 0;">
-                <span>Acoustic Output:</span>
-                <button class="savi-btn" style="padding: 2px 8px; font-size: 0.66rem; border-radius: 4px;" @onclick="ToggleAudioMode" title="Toggle between Speaker Mode (echo filter active) and Headphone Mode">
-                    @(_audioOutputMode == "speaker" ? "🔊 Speaker" : "🎧 Headphone")
-                </button>
-            </div>
-        </div>
-
-        <NavLink class="savi-nav-item" href="memory" @onclick="HandleNavClick">
-            <span class="savi-icon">🧠</span> Long-Term Memory
+        <NavLink class="savi-nav-item" href="@(string.IsNullOrEmpty(_currentConvId) ? "voice" : $"voice/{_currentConvId}")" Match="NavLinkMatch.Prefix" @onclick="HandleNavClick">
+            <span class="savi-icon">🎙️</span>
+            <span style="flex: 1;">Voice</span>
+            <span class="savi-badge" style="font-size: 0.58rem; padding: 1px 5px; color: #00f0ff;">LIVE</span>
         </NavLink>
         <NavLink class="savi-nav-item" href="tasks" @onclick="HandleNavClick">
-            <span class="savi-icon">⚙</span> Task Matrix
+            <span class="savi-icon">⚙</span>
+            <span style="flex: 1;">Tasks</span>
         </NavLink>
-        <NavLink class="savi-nav-item" href="providers" @onclick="HandleNavClick">
-            <span class="savi-icon">📡</span> Provider Registry
+        <NavLink class="savi-nav-item" href="memory" @onclick="HandleNavClick">
+            <span class="savi-icon">🧠</span>
+            <span style="flex: 1;">Memory</span>
         </NavLink>
-        <NavLink class="savi-nav-item" href="diagnostics" @onclick="HandleNavClick">
-            <span class="savi-icon">📊</span> Telemetry Diagnostics
-        </NavLink>
-        <NavLink class="savi-nav-item" href="audit" @onclick="HandleNavClick">
-            <span class="savi-icon">🛡</span> Security & Audit
-        </NavLink>
+
+        <!-- Progressive Disclosure for More / System -->
+        <div style="position: relative;">
+            <button class="savi-nav-item" style="width: 100%; border: none; cursor: pointer; text-align: left; background: transparent; font-family: var(--savi-font);"
+                    @onclick="() => _showMoreMenu = !_showMoreMenu">
+                <span class="savi-icon">⋯</span>
+                <span style="flex: 1;">More</span>
+                <span style="font-size: 0.7rem; color: var(--savi-text-dim); transition: transform 0.2s; transform: rotate(@(_showMoreMenu ? "180deg" : "0deg"));">▼</span>
+            </button>
+
+            @if (_showMoreMenu)
+            {
+                <div style="margin-left: 12px; padding-left: 10px; border-left: 1px solid var(--savi-border-subtle); display: flex; flex-direction: column; gap: 3px; margin-top: 2px;">
+                    <NavLink class="savi-nav-item" href="providers" @onclick="HandleNavClick" style="padding: 6px 10px; font-size: 0.8rem;">
+                        <span class="savi-icon" style="font-size: 0.85rem;">📡</span> Sources &amp; Providers
+                    </NavLink>
+                    <NavLink class="savi-nav-item" href="diagnostics" @onclick="HandleNavClick" style="padding: 6px 10px; font-size: 0.8rem;">
+                        <span class="savi-icon" style="font-size: 0.85rem;">📊</span> System Diagnostics
+                    </NavLink>
+                    <NavLink class="savi-nav-item" href="audit" @onclick="HandleNavClick" style="padding: 6px 10px; font-size: 0.8rem;">
+                        <span class="savi-icon" style="font-size: 0.85rem;">🛡</span> Security &amp; Audit
+                    </NavLink>
+                    <button class="savi-nav-item" style="padding: 6px 10px; font-size: 0.8rem; background: transparent; border: none; cursor: pointer; text-align: left; font-family: var(--savi-font);"
+                            @onclick="() => _showAboutModal = true">
+                        <span class="savi-icon" style="font-size: 0.85rem;">ℹ</span> About SAVI
+                    </button>
+                </div>
+            }
+        </div>
+
         <NavLink class="savi-nav-item" href="settings" @onclick="HandleNavClick">
-            <span class="savi-icon">⚙</span> Configuration
+            <span class="savi-icon">⚙</span>
+            <span style="flex: 1;">Settings</span>
         </NavLink>
     </nav>
+</div>
 
-    <!-- Creator Details & System Status -->
-    <div style="border-top: 1px solid var(--savi-border-subtle); padding-top: 10px; display: flex; flex-direction: column; gap: 8px;">
-        <div style="font-size: 0.62rem; letter-spacing: 1px; color: var(--savi-text-dim); text-transform: uppercase; display: flex; align-items: center; justify-content: space-between;">
-            <span>CREATOR</span>
-            <span style="color: var(--savi-success); font-size: 0.6rem;">● ARCHITECT</span>
-        </div>
-
-        <div style="background: rgba(0, 240, 255, 0.04); border: 1px solid var(--savi-border-subtle); border-radius: 6px; padding: 8px; display: flex; align-items: center; gap: 8px;">
-            <div style="width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #00f0ff, #7928ca); display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.75rem; color: #fff; box-shadow: 0 0 8px rgba(0, 240, 255, 0.4); flex-shrink: 0;">
-                SA
+<!-- About SAVI Modal -->
+@if (_showAboutModal)
+{
+    <div class="savi-drawer-backdrop active" @onclick="() => _showAboutModal = false" style="z-index: 2000;">
+        <div class="savi-glass-panel" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 440px; padding: 20px; z-index: 2001;" @onclick:stopPropagation="true">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 10px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <SaviLogo Size="24" Animated="false" />
+                    <span class="savi-glow-text" style="font-weight: 700; font-size: 1rem;">ABOUT SAVI</span>
+                </div>
+                <button class="savi-btn savi-btn-sm" @onclick="() => _showAboutModal = false">✕</button>
             </div>
-            <div style="flex: 1; min-width: 0; line-height: 1.25;">
-                <div style="font-size: 0.78rem; font-weight: bold; color: var(--savi-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                    Shatrughna Ambhore
+            <div style="font-size: 0.82rem; color: var(--savi-text-secondary); line-height: 1.6; display: flex; flex-direction: column; gap: 10px;">
+                <div>
+                    <strong style="color: var(--savi-text-primary);">Shatru's Adaptive Virtual Intelligence</strong> is a sovereign, zero-cost, local-first personal AI assistant and conversational companion.
                 </div>
-                <div style="font-size: 0.64rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                    <a href="mailto:ambhoreshatrughna@gmail.com" style="color: var(--savi-cyan); text-decoration: none;" title="ambhoreshatrughna@gmail.com">
-                        ✉ ambhoreshatrughna@gmail.com
-                    </a>
+                <div style="background: rgba(0, 240, 255, 0.05); border: 1px solid var(--savi-border-subtle); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 4px;">
+                    <div><strong>Architecture:</strong> C# 13 / .NET 10 (ASP.NET Core Blazor)</div>
+                    <div><strong>Storage:</strong> SQLite with EF Core</div>
+                    <div><strong>Cost:</strong> 100% Free / Zero API keys required</div>
+                    <div><strong>Host:</strong> @Environment.MachineName</div>
                 </div>
-                <div style="font-size: 0.64rem;">
-                    <a href="tel:+919604466334" style="color: var(--savi-text-secondary); text-decoration: none;" title="+91 9604466334">
-                        📞 +91 9604466334
-                    </a>
+                <div style="background: rgba(0, 240, 255, 0.05); border: 1px solid var(--savi-border-subtle); border-radius: 6px; padding: 10px;">
+                    <div style="font-weight: bold; color: var(--savi-cyan); margin-bottom: 4px;">Creator &amp; Architect:</div>
+                    <div>Shatrughna Ambhore</div>
+                    <div><a href="mailto:ambhoreshatrughna@gmail.com" style="color: var(--savi-cyan); text-decoration: none;">✉ ambhoreshatrughna@gmail.com</a></div>
+                    <div><a href="tel:+919604466334" style="color: var(--savi-text-secondary); text-decoration: none;">📞 +91 9604466334</a></div>
                 </div>
             </div>
-        </div>
-
-        <div style="font-size: 0.68rem; color: var(--savi-text-dim); display: flex; align-items: center; justify-content: space-between;">
-            <span style="color: var(--savi-success);">● ZERO-COST CORE</span>
-            <span>.NET 10</span>
         </div>
     </div>
-</div>
+}
 
 <style>
 .savi-nav-item {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 14px;
+    padding: 8px 12px;
     color: var(--savi-text-secondary);
     text-decoration: none;
-    font-size: 0.86rem;
-    border-radius: 4px;
+    font-size: 0.84rem;
+    border-radius: var(--savi-radius-sm);
     border: 1px solid transparent;
-    transition: all 0.2s ease;
+    transition: all 0.18s ease;
 }
 .savi-nav-item:hover, .savi-nav-item.active {
     color: var(--savi-cyan);
@@ -132,7 +164,7 @@
     box-shadow: 0 0 10px rgba(0, 240, 255, 0.15);
 }
 .savi-icon {
-    font-size: 1rem;
+    font-size: 0.95rem;
 }
 </style>
 
@@ -146,61 +178,165 @@
     [Parameter]
     public EventCallback OnNavigate { get; set; }
 
-    private bool _voiceEnabled = true;
-    private string _audioOutputMode = "speaker";
-    private bool _isTestingAudio = false;
+    private List<ConversationSummaryDto> _conversations = new();
+    private List<ConversationSummaryDto> _todayConversations = new();
+    private List<ConversationSummaryDto> _yesterdayConversations = new();
+    private List<ConversationSummaryDto> _pastWeekConversations = new();
+    private List<ConversationSummaryDto> _olderConversations = new();
+
+    private string _searchQuery = string.Empty;
+    private string? _currentConvId;
+    private bool _showMoreMenu = false;
+    private bool _showAboutModal = false;
+    private CancellationTokenSource? _searchCts;
 
     protected override async Task OnInitializedAsync()
     {
-        try
-        {
-            var settings = await SettingsService.GetSettingsAsync();
-            _voiceEnabled = settings.VoiceEnabled;
-        }
-        catch { }
+        ExtractCurrentConvId();
+        Navigation.LocationChanged += HandleLocationChanged;
+        await LoadConversationsAsync();
     }
 
-    private async Task ToggleVoiceOutput()
+    private void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
     {
-        _voiceEnabled = !_voiceEnabled;
+        ExtractCurrentConvId();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void ExtractCurrentConvId()
+    {
+        var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var parts = relative.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2 && (parts[0].Equals("chat", StringComparison.OrdinalIgnoreCase) || parts[0].Equals("voice", StringComparison.OrdinalIgnoreCase)))
+        {
+            _currentConvId = parts[1];
+        }
+        else if (parts.Length == 1 && parts[0].Equals("chat", StringComparison.OrdinalIgnoreCase))
+        {
+            _currentConvId = null;
+        }
+    }
+
+    private async Task LoadConversationsAsync()
+    {
         try
         {
-            var settings = await SettingsService.GetSettingsAsync();
-            settings.VoiceEnabled = _voiceEnabled;
-            await SettingsService.UpdateSettingsAsync(settings);
-            if (!_voiceEnabled)
+            if (string.IsNullOrWhiteSpace(_searchQuery))
             {
-                await JS.InvokeVoidAsync("saviVoice.stopSpeaking");
+                _conversations = (await ConversationService.GetSummariesAsync()).ToList();
             }
+            else
+            {
+                _conversations = (await ConversationService.SearchAsync(_searchQuery)).ToList();
+            }
+            GroupConversations();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"NavMenu load error: {ex}");
+        }
         StateHasChanged();
     }
 
-    private async Task TestAudioAsync()
+    private void GroupConversations()
     {
-        _isTestingAudio = true;
-        StateHasChanged();
-        try
-        {
-            await JS.InvokeVoidAsync("saviVoice.testAudio");
-        }
-        catch { }
-        await Task.Delay(1200);
-        _isTestingAudio = false;
-        StateHasChanged();
+        var now = DateTimeOffset.UtcNow;
+        var today = now.Date;
+        var yesterday = today.AddDays(-1);
+        var weekAgo = today.AddDays(-7);
+
+        _todayConversations = _conversations.Where(c => c.UpdatedAt.UtcDateTime.Date == today).ToList();
+        _yesterdayConversations = _conversations.Where(c => c.UpdatedAt.UtcDateTime.Date == yesterday).ToList();
+        _pastWeekConversations = _conversations.Where(c => c.UpdatedAt.UtcDateTime.Date < yesterday && c.UpdatedAt.UtcDateTime.Date >= weekAgo).ToList();
+        _olderConversations = _conversations.Where(c => c.UpdatedAt.UtcDateTime.Date < weekAgo).ToList();
     }
 
-    private async Task ToggleAudioMode()
+    private async Task CreateNewChat()
     {
-        _audioOutputMode = _audioOutputMode == "speaker" ? "headphone" : "speaker";
         try
         {
-            await JS.InvokeVoidAsync("saviVoice.setAudioOutputMode", _audioOutputMode);
+            var newConv = await ConversationService.GetOrCreateAsync(null);
+            _currentConvId = newConv.Id;
+            var isVoice = Navigation.Uri.Contains("/voice", StringComparison.OrdinalIgnoreCase);
+            var target = isVoice ? $"/voice/{newConv.Id}" : $"/chat/{newConv.Id}";
+            Navigation.NavigateTo(target);
+            await LoadConversationsAsync();
+            await HandleNavClick();
         }
-        catch { }
-        StateHasChanged();
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Create chat error: {ex}");
+        }
     }
+
+    private async Task SelectConversation(string id)
+    {
+        _currentConvId = id;
+        var isVoice = Navigation.Uri.Contains("/voice", StringComparison.OrdinalIgnoreCase);
+        var target = isVoice ? $"/voice/{id}" : $"/chat/{id}";
+        Navigation.NavigateTo(target);
+        await HandleNavClick();
+    }
+
+    private async Task DeleteConversation(string id)
+    {
+        try
+        {
+            await ConversationService.DeleteAsync(id);
+            if (_currentConvId == id)
+            {
+                _currentConvId = null;
+                var isVoice = Navigation.Uri.Contains("/voice", StringComparison.OrdinalIgnoreCase);
+                Navigation.NavigateTo(isVoice ? "/voice" : "/chat");
+            }
+            await LoadConversationsAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Delete error: {ex}");
+        }
+    }
+
+    private async Task FilterConversations()
+    {
+        _searchCts?.Cancel();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
+        try
+        {
+            await Task.Delay(250, token);
+            await LoadConversationsAsync();
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task ClearSearch()
+    {
+        _searchQuery = string.Empty;
+        await LoadConversationsAsync();
+    }
+
+    private RenderFragment RenderGroup(string title, List<ConversationSummaryDto> items) => __builder =>
+    {
+        if (items.Count == 0) return;
+
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+            <div class="savi-conv-group-title">@title</div>
+            @foreach (var c in items)
+            {
+                var isCurrent = c.Id == _currentConvId;
+                <div class="savi-conv-link @(isCurrent ? "active" : "")" @onclick="() => SelectConversation(c.Id)">
+                    <div style="flex: 1; min-width: 0;">
+                        <div class="savi-conv-link-title">@c.Title</div>
+                        <div class="savi-conv-link-time">@c.UpdatedAt.ToLocalTime().ToString("MMM dd, HH:mm")</div>
+                    </div>
+                    <button class="savi-conv-del-btn" @onclick="() => DeleteConversation(c.Id)" @onclick:stopPropagation="true" title="Delete conversation">
+                        🗑
+                    </button>
+                </div>
+            }
+        </div>
+    };
 
     private async Task CloseDrawer()
     {
@@ -216,5 +352,11 @@
         {
             await OnNavigate.InvokeAsync();
         }
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= HandleLocationChanged;
+        _searchCts?.Dispose();
     }
 }

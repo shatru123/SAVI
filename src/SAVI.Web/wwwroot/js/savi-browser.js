@@ -339,6 +339,17 @@
                 return true;
             }
             return false;
+        },
+        scrollToBottom(elementId) {
+            const el = document.getElementById(elementId);
+            if (el) {
+                el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+            }
+        },
+        isScrolledNearBottom(elementId, threshold = 80) {
+            const el = document.getElementById(elementId);
+            if (!el) return true;
+            return (el.scrollHeight - el.scrollTop - el.clientHeight) <= threshold;
         }
     }.init();
 })(window, navigator);

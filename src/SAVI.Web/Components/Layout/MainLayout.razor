@@ -1,32 +1,36 @@
 @inherits LayoutComponentBase
+@inject NavigationManager Navigation
 
 <div class="savi-app-shell">
-    <!-- Top Futuristic Telemetry Banner -->
-    <header class="savi-app-header" style="height: 48px; background: rgba(7, 11, 20, 0.95); border-bottom: 1px solid var(--savi-border-subtle); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; z-index: 1000;">
+    <!-- Clean Top Header -->
+    <header class="savi-app-header" style="height: 50px; background: rgba(7, 11, 20, 0.95); border-bottom: 1px solid var(--savi-border-subtle); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; z-index: 1000; box-sizing: border-box;">
         <div style="display: flex; align-items: center; gap: 10px;">
-            <!-- Mobile Hamburger Menu Button -->
-            <button class="savi-btn savi-mobile-only" style="padding: 4px 8px; font-size: 1rem; border-radius: 4px; line-height: 1;" @onclick="ToggleDrawer" title="Toggle Navigation Menu">
+            <!-- Mobile Hamburger Button -->
+            <button class="savi-btn savi-btn-sm savi-mobile-only" style="padding: 4px 8px; line-height: 1;" @onclick="ToggleDrawer" title="Toggle Navigation & Chats">
                 ☰
             </button>
-            <SaviLogo Size="24" Animated="false" />
-            <span class="savi-glow-text" style="font-weight: bold; font-size: 0.9rem; letter-spacing: 1.5px;">SAVI // HUD</span>
-            <span class="savi-badge" style="color: var(--savi-success); border-color: rgba(0,255,170,0.3); font-size: 0.68rem; padding: 2px 6px;">
+            <SaviLogo Size="26" Animated="false" />
+            <span class="savi-glow-text" style="font-weight: 800; font-size: 0.95rem; letter-spacing: 1.5px;">SAVI</span>
+            <span class="savi-badge" style="color: var(--savi-success); border-color: rgba(0,255,170,0.3); font-size: 0.65rem; padding: 2px 6px;">
                 ● ONLINE
             </span>
         </div>
 
-        <!-- Mobile Quick Voice Action in Header -->
-        <div class="savi-mobile-only" style="display: flex; align-items: center; gap: 6px;">
-            <a href="voice" class="savi-btn" style="padding: 4px 10px; font-size: 0.76rem; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; border-color: rgba(0, 240, 255, 0.6); color: #00f0ff; background: rgba(0, 240, 255, 0.18); font-weight: 700; border-radius: 6px; box-shadow: 0 0 10px rgba(0, 240, 255, 0.25);" title="Open Real-Time Voice Screen">
-                <span>🎙️ Voice</span>
-            </a>
-        </div>
+        <!-- Right Header Actions -->
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <!-- Mobile Voice Quick Action if not already on voice -->
+            <div class="savi-mobile-only">
+                <a href="voice" class="savi-btn savi-btn-sm savi-btn-primary" style="text-decoration: none; padding: 4px 10px; font-size: 0.74rem;" title="Open Dedicated Voice Mode">
+                    🎙️ Voice
+                </a>
+            </div>
 
-        <!-- Desktop Telemetry Badges -->
-        <div class="savi-desktop-only" style="align-items: center; gap: 16px; font-size: 0.75rem; color: var(--savi-text-secondary);">
-            <span>HOST: <strong>@Environment.MachineName</strong></span>
-            <span>ZERO-COST CORE</span>
-            <span>ARCH: <strong>.NET 10</strong></span>
+            <!-- Desktop Clean Info -->
+            <div class="savi-desktop-only" style="align-items: center; gap: 12px; font-size: 0.75rem; color: var(--savi-text-dim);">
+                <a href="voice" class="savi-btn savi-btn-sm savi-btn-primary" style="text-decoration: none; padding: 4px 12px; font-size: 0.76rem;" title="Open Dedicated Voice Screen">
+                    🎙️ Voice Screen
+                </a>
+            </div>
         </div>
     </header>
 
@@ -35,41 +39,37 @@
         <!-- Backdrop Scrim for Mobile Drawer -->
         <div class="savi-drawer-backdrop @(_mainDrawerOpen ? "active" : "")" @onclick="CloseDrawer"></div>
 
-        <!-- Left Sidebar (Responsive Drawer on Mobile / Static Aside on Desktop) -->
-        <aside class="savi-main-sidebar @(_mainDrawerOpen ? "open" : "")" style="width: 260px; min-width: 260px; padding: 12px; height: calc(100vh - 48px); height: calc(100dvh - 48px); box-sizing: border-box;">
+        <!-- Unified Left Sidebar (Static Aside on Desktop >= 992px / Slide-over Drawer on Mobile < 992px) -->
+        <aside class="savi-main-sidebar @(_mainDrawerOpen ? "open" : "")" style="width: 280px; min-width: 280px; padding: 10px; height: calc(100vh - 50px); height: calc(100dvh - 50px); box-sizing: border-box;">
             <NavMenu ShowCloseButton="_mainDrawerOpen" OnClose="CloseDrawer" OnNavigate="CloseDrawer" />
         </aside>
 
         <!-- Main Center Stage -->
-        <main class="savi-main-content" style="flex: 1; padding: 12px; height: calc(100vh - 48px); height: calc(100dvh - 48px); box-sizing: border-box; overflow-y: auto;">
+        <main class="savi-main-content" style="flex: 1; padding: 12px; height: calc(100vh - 50px); height: calc(100dvh - 50px); box-sizing: border-box; overflow-y: auto;">
             @Body
         </main>
     </div>
 
-    <!-- Cybernetic Mobile Bottom Navigation Bar (Docked Native App Bar) -->
+    <!-- Pinned Cybernetic Mobile Bottom Navigation Bar (Docked Native App Bar) -->
     <nav class="savi-bottom-nav">
-        <NavLink class="savi-bottom-nav-item" href="" Match="NavLinkMatch.All">
+        <NavLink class="savi-bottom-nav-item" href="chat" Match="NavLinkMatch.Prefix">
             <span class="nav-icon">💬</span>
             <span>Chat</span>
         </NavLink>
-        <NavLink class="savi-bottom-nav-item savi-bottom-voice-item" href="voice">
+        <NavLink class="savi-bottom-nav-item savi-bottom-voice-item" href="voice" Match="NavLinkMatch.Prefix">
             <div class="savi-voice-bottom-orb">
                 <span class="nav-icon" style="font-size: 1.25rem;">🎙</span>
             </div>
             <span style="font-weight: 700;">Voice</span>
         </NavLink>
-        <NavLink class="savi-bottom-nav-item" href="memory">
-            <span class="nav-icon">🧠</span>
-            <span>Memory</span>
-        </NavLink>
-        <NavLink class="savi-bottom-nav-item" href="tasks">
+        <NavLink class="savi-bottom-nav-item" href="tasks" Match="NavLinkMatch.Prefix">
             <span class="nav-icon">⚙</span>
             <span>Tasks</span>
         </NavLink>
-        <NavLink class="savi-bottom-nav-item" href="settings">
-            <span class="nav-icon">⚙</span>
-            <span>Config</span>
-        </NavLink>
+        <button class="savi-bottom-nav-item" style="background: transparent; border: none; cursor: pointer; font-family: var(--savi-font);" @onclick="ToggleDrawer">
+            <span class="nav-icon">⋯</span>
+            <span>More</span>
+        </button>
     </nav>
 </div>
 

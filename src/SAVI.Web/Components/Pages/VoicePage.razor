@@ -14,199 +14,183 @@
 
 <PageTitle>SAVI — Real-Time Voice Conversation</PageTitle>
 
-<div class="savi-voice-page-root @(_voiceState == VoiceState.Interrupted ? "savi-interrupted-pulse" : "")" role="region" aria-label="SAVI Real-Time Voice Conversation">
-    <!-- Top HUD Bar -->
-    <header class="voice-page-header">
-        <div class="voice-page-brand">
-            <span class="voice-live-dot @(_voiceState == VoiceState.Listening || _voiceState == VoiceState.DetectingSpeech || _voiceState == VoiceState.Speaking ? "live-active" : "")"></span>
-            <div style="display: flex; flex-direction: column;">
-                <span class="voice-brand-title">SAVI NEURAL VOICE</span>
-                <span class="voice-conv-title">@(_activeTitle.Length > 28 ? _activeTitle.Substring(0, 26) + "..." : _activeTitle)</span>
+<div class="savi-voice-timeline-shell @(_voiceState == VoiceState.Interrupted ? "savi-interrupted-pulse" : "")" role="region" aria-label="SAVI Real-Time Voice Conversation">
+    <!-- Clean Top Header -->
+    <header class="voice-page-header" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid rgba(0, 240, 255, 0.12); background: rgba(3, 7, 18, 0.6); flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1;">
+            <span class="voice-live-dot @(_voiceState == VoiceState.Listening || _voiceState == VoiceState.DetectingSpeech || _voiceState == VoiceState.Speaking || _voiceState == VoiceState.UserSpeaking ? "live-active" : "")"></span>
+            <div style="display: flex; flex-direction: column; min-width: 0;">
+                <span style="font-family: var(--savi-font); font-weight: 800; font-size: 0.88rem; letter-spacing: 1.5px; color: var(--savi-cyan);">SAVI NEURAL VOICE</span>
+                <span style="font-size: 0.68rem; color: var(--savi-text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 280px;">@_activeTitle</span>
             </div>
-            <span class="voice-brand-badge">REAL-TIME FULL DUPLEX</span>
+            <span class="voice-brand-badge savi-desktop-only">REAL-TIME CONVERSATION</span>
         </div>
 
-        <!-- Diagnostics HUD -->
-        <div class="voice-telemetry-hud">
-            @if (_lastAudioStopLatencyMs > 0)
-            {
-                <span class="telemetry-pill barge-in-pill" title="Last Barge-In / Audio Duck Latency">
-                    ⚡ Stop: @(Math.Round(_lastAudioStopLatencyMs)) ms
-                </span>
-            }
-            <span class="telemetry-pill desktop-only" title="Acoustic Echo Cancellation Status">
-                AEC: @GetAudioCapabilityStatus(_hardwareAec)
-            </span>
-            @if (_falseSelfDetectionCount > 0)
-            {
-                <span class="telemetry-pill" style="color: #00f0ff; border-color: rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.1);" title="SAVI self-echo transcripts suppressed">
-                    🛡 Echo Filter: @_falseSelfDetectionCount
-                </span>
-            }
+        <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+            <!-- Acoustic Mode Pill -->
             <button class="telemetry-pill" style="cursor: pointer; background: rgba(0, 240, 255, 0.1); border-color: rgba(0, 240, 255, 0.3); color: #00f0ff;" @onclick="ToggleAudioOutputMode" title="Toggle Speaker Mode (echo filter active) vs Headphone Mode">
                 @(_audioOutputMode == "speaker" ? "🔊 Speaker" : "🎧 Headphone")
             </button>
-            @if (HostEnvironment.IsDevelopment())
-            {
-                <button class="telemetry-pill" @onclick="RefreshDiagnostics" title="Show browser and audio diagnostics">Diagnostics</button>
-            }
-        </div>
 
-        <!-- Back to Chat Button -->
-        <button class="voice-back-btn" @onclick="NavigateBackToChat" title="Return to Text Chat Screen">
-            <span class="back-icon">💬</span>
-            <span class="back-label">Back to Chat</span>
-        </button>
+            <!-- Advanced Voice Settings Toggle -->
+            <button class="savi-btn savi-btn-sm savi-btn-subtle" @onclick="() => _showSettingsModal = !_showSettingsModal" title="Voice Settings & Diagnostics">
+                <span>⚙</span>
+            </button>
+
+            <!-- Back to Chat -->
+            <button class="voice-back-btn" @onclick="NavigateBackToChat" title="Return to Text Chat Screen">
+                <span class="back-icon">💬</span>
+                <span class="back-label savi-desktop-only">Back to Chat</span>
+            </button>
+        </div>
     </header>
 
-    <!-- Center Interactive Stage -->
-    <main class="voice-page-center">
-        <!-- Reactive Orb Container -->
-        <div class="voice-orb-container state-@_voiceState.ToString().ToLowerInvariant()">
-            <!-- Dynamic Audio Rings -->
-            <div class="voice-audio-ripple ring-1"></div>
-            <div class="voice-audio-ripple ring-2"></div>
-            <div class="voice-audio-ripple ring-3"></div>
-
-            <!-- Central SAVI Reactor Orb SVG -->
-            <div class="voice-orb-svg-wrapper">
-                <svg class="voice-reactor-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-                    <defs>
-                        <filter id="voice-glow-page" x="-20%" y="-20%" width="140%" height="140%">
-                            <feGaussianBlur stdDeviation="4" result="blur" />
-                            <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                        </filter>
-                        <radialGradient id="voice-reactor-grad-page" cx="50%" cy="50%" r="50%">
-                            <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.9" />
-                            <stop offset="60%" stop-color="#0066cc" stop-opacity="0.5" />
-                            <stop offset="100%" stop-color="#050b14" stop-opacity="0.1" />
-                        </radialGradient>
-                    </defs>
-
-                    <!-- Outer Dashed Ring -->
-                    <circle cx="100" cy="100" r="90" fill="none" stroke="rgba(0, 240, 255, 0.2)" stroke-width="1.5" stroke-dasharray="6 8" />
-
-                    <!-- Rotating Outer Ring -->
-                    <g class="voice-rotating-ring">
-                        <circle cx="100" cy="100" r="80" fill="none" stroke="#00f0ff" stroke-width="2" stroke-dasharray="50 30 20 30 80 20" filter="url(#voice-glow-page)" />
-                        <circle cx="100" cy="20" r="4" fill="#00f0ff" />
-                        <circle cx="100" cy="180" r="4" fill="#00f0ff" />
-                    </g>
-
-                    <!-- Counter Rotating Ring -->
-                    <g class="voice-counter-ring">
-                        <circle cx="100" cy="100" r="62" fill="none" stroke="#0099ff" stroke-width="2" stroke-dasharray="35 15 25 15" />
-                    </g>
-
-                    <!-- Core Glowing Pulsing Circle -->
-                    <circle class="voice-center-orb" cx="100" cy="100" r="38" fill="url(#voice-reactor-grad-page)" stroke="#00f0ff" stroke-width="2" filter="url(#voice-glow-page)" />
-
-                    <!-- Center Emblem -->
-                    <text x="100" y="105" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="800" letter-spacing="3" font-family="'JetBrains Mono', monospace">SAVI</text>
-                </svg>
-            </div>
-        </div>
-
-        <!-- State Status Pill -->
-        <div class="voice-state-pill-wrapper">
-            <div class="voice-state-pill pill-@_voiceState.ToString().ToLowerInvariant()">
-                @switch (_voiceState)
+    <!-- Main Content Area: Timeline (65-75%) + Voice Controls/Orb (25-35%) -->
+    <div style="display: flex; flex-direction: column; flex: 1; min-height: 0; position: relative; overflow: hidden;">
+        <!-- Persistent Conversation Timeline -->
+        <section class="savi-voice-timeline" id="voice-timeline-container" tabindex="0" aria-live="polite" @onscroll="HandleTimelineScroll">
+            @if (_messages.Count == 0 && string.IsNullOrWhiteSpace(_liveInterimTranscript) && !_showGotItBanner)
+            {
+                <div style="text-align: center; color: var(--savi-text-dim); margin: auto; padding: 24px; max-width: 440px;">
+                    <div style="font-size: 1.15rem; color: var(--savi-text-primary); font-weight: 700; margin-bottom: 6px;">
+                        "I'm listening, Shatru."
+                    </div>
+                    <div style="font-size: 0.82rem; color: var(--savi-text-secondary); line-height: 1.5;">
+                        Speak naturally. Your questions and SAVI's spoken responses will remain right here in this timeline.
+                    </div>
+                </div>
+            }
+            else
+            {
+                @foreach (var msg in _messages)
                 {
-                    case VoiceState.Listening:
-                        <span class="pill-dot listening-dot"></span>
-                        <span>LISTENING</span>
-                        break;
-                    case VoiceState.DetectingSpeech:
-                        <span class="pill-dot detecting-dot"></span>
-                        <span>TRANSCRIBING SPEECH</span>
-                        break;
-                    case VoiceState.Processing:
-                        <span class="pill-dot thinking-dot"></span>
-                        <span>THINKING & REASONING</span>
-                        break;
-                    case VoiceState.RequestingPermission:
-                        <span class="pill-dot thinking-dot"></span>
-                        <span>REQUESTING MICROPHONE</span>
-                        break;
-                    case VoiceState.Starting:
-                        <span class="pill-dot thinking-dot"></span>
-                        <span>STARTING AUDIO</span>
-                        break;
-                    case VoiceState.UserSpeaking:
-                        <span class="pill-dot detecting-dot"></span>
-                        <span>YOU ARE SPEAKING</span>
-                        break;
-                    case VoiceState.Recovering:
-                        <span class="pill-dot thinking-dot"></span>
-                        <span>RECOVERING AUDIO</span>
-                        break;
-                    case VoiceState.Paused:
-                        <span class="pill-dot idle-dot"></span>
-                        <span>PAUSED</span>
-                        break;
-                    case VoiceState.Speaking:
-                        <span class="pill-dot speaking-dot"></span>
-                        <span>SPEAKING</span>
-                        break;
-                    case VoiceState.Interrupted:
-                        <span class="pill-dot interrupted-dot"></span>
-                        <span>⚡ INTERRUPTED — LISTENING RESUMED</span>
-                        break;
-                    case VoiceState.Error:
-                        <span class="pill-dot error-dot"></span>
-                        <span>MIC ATTENTION NEEDED</span>
-                        break;
-                    default:
-                        <span class="pill-dot idle-dot"></span>
-                        <span>STANDING BY</span>
-                        break;
+                    <div class="savi-voice-turn @(msg.Role == MessageRole.User ? "savi-voice-turn-user" : "savi-voice-turn-assistant")">
+                        <div class="savi-voice-turn-header">
+                            <span>@(msg.Role == MessageRole.User ? "YOU" : "SAVI")</span>
+                            <span style="color: var(--savi-text-dim); font-size: 0.65rem; font-weight: normal;">
+                                @msg.Timestamp.ToLocalTime().ToString("HH:mm:ss")
+                            </span>
+                        </div>
+                        <div style="font-size: 0.94rem; line-height: 1.5; word-break: break-word;">
+                            @msg.Content
+                        </div>
+                    </div>
                 }
-            </div>
-        </div>
+            }
 
-        <!-- Live Dual Transcript Stream Display -->
-        <section class="voice-transcript-stream" aria-live="polite">
-            <!-- User Speech Stream -->
-            <div class="transcript-row user-transcript-row @(!string.IsNullOrWhiteSpace(DisplayUserTranscript) ? "visible" : "dimmed")">
-                <span class="speaker-tag user-tag">YOU</span>
-                <p class="transcript-text">
-                    @(string.IsNullOrWhiteSpace(DisplayUserTranscript) ? "Speak naturally to SAVI..." : DisplayUserTranscript)
-                </p>
-            </div>
+            <!-- Live Speech Card (Actively Transcribing) -->
+            @if (!string.IsNullOrWhiteSpace(_liveInterimTranscript))
+            {
+                <div class="savi-voice-live-turn" aria-live="assertive">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; font-size: 0.72rem; color: #00f0ff; font-weight: 700;">
+                        <span style="display: flex; align-items: center; gap: 6px;">
+                            <span style="animation: savi-pulse 0.8s infinite; display: inline-block;">🎙️</span>
+                            <span>YOU · LIVE</span>
+                        </span>
+                        <span style="font-size: 0.68rem; color: #aaffcc;">HEARING YOU...</span>
+                    </div>
+                    <div style="font-size: 0.96rem; font-style: italic; color: #ffffff;">
+                        "@_liveInterimTranscript"
+                    </div>
+                </div>
+            }
 
-            <!-- SAVI Spoken Response Stream -->
-            <div class="transcript-row savi-transcript-row @(!string.IsNullOrWhiteSpace(DisplayAssistantTranscript) ? "visible" : "")">
-                <span class="speaker-tag savi-tag">SAVI</span>
-                <p class="transcript-text">
-                    @(string.IsNullOrWhiteSpace(DisplayAssistantTranscript) ? "I am online and listening. Ask anything or give a command." : DisplayAssistantTranscript)
-                </p>
-            </div>
+            <!-- GOT IT Confirmation (Brief 600ms banner) -->
+            @if (_showGotItBanner)
+            {
+                <div class="savi-voice-turn savi-voice-turn-user" style="border-color: var(--savi-success);">
+                    <div class="savi-voice-turn-header" style="color: var(--savi-success);">
+                        <span class="savi-got-it-banner">✓ GOT IT</span>
+                        <span style="color: var(--savi-text-dim); font-size: 0.65rem;">Now</span>
+                    </div>
+                    <div style="font-size: 0.94rem; color: #fff;">
+                        @_lastConfirmedUserSpeech
+                    </div>
+                </div>
+            }
+
+            <!-- Thinking Indicator (Question stays visible above!) -->
+            @if (_voiceState == VoiceState.Processing)
+            {
+                <div class="savi-voice-thinking-indicator">
+                    <span style="animation: savi-spin-slow 1.5s linear infinite; display: inline-block;">◈</span>
+                    <span>THINKING &amp; REASONING...</span>
+                </div>
+            }
+
+            <!-- Speaking Indicator -->
+            @if (_voiceState == VoiceState.Speaking)
+            {
+                <div class="savi-voice-speaking-indicator">
+                    <span class="core-center-pulse" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e;"></span>
+                    <span>SAVI IS SPEAKING...</span>
+                </div>
+            }
         </section>
 
-        @if (!string.IsNullOrEmpty(_voiceError))
+        <!-- Floating "↓ New activity" Auto-Scroll Button -->
+        @if (_hasNewUnreadActivity)
         {
-            <div class="voice-error-banner">
-                <span>⚠️ @_voiceError</span>
-                <button class="voice-error-dismiss" @onclick="() => _voiceError = null">✕</button>
+            <button class="savi-scroll-bottom-btn" @onclick="ScrollToBottomExplicit" title="Jump to latest turn">
+                <span>↓ New activity</span>
+            </button>
+        }
+
+        <!-- Compact Orb & State Pill Stage -->
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px 16px 6px; background: rgba(3, 7, 18, 0.4); border-top: 1px solid rgba(0, 240, 255, 0.1); flex-shrink: 0; gap: 8px;">
+            <!-- Scaled Reactive Orb SVG -->
+            <div class="voice-orb-container state-@_voiceState.ToString().ToLowerInvariant()" style="width: 130px; height: 130px;">
+                <div class="voice-audio-ripple ring-1"></div>
+                <div class="voice-audio-ripple ring-2"></div>
+                <div class="voice-audio-ripple ring-3"></div>
+
+                <div class="voice-orb-svg-wrapper" style="width: 105px; height: 105px;">
+                    <svg class="voice-reactor-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <filter id="voice-glow-page" x="-20%" y="-20%" width="140%" height="140%">
+                                <feGaussianBlur stdDeviation="4" result="blur" />
+                                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                            </filter>
+                            <radialGradient id="voice-reactor-grad-page" cx="50%" cy="50%" r="50%">
+                                <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.9" />
+                                <stop offset="60%" stop-color="#0066cc" stop-opacity="0.5" />
+                                <stop offset="100%" stop-color="#050b14" stop-opacity="0.1" />
+                            </radialGradient>
+                        </defs>
+
+                        <circle cx="100" cy="100" r="90" fill="none" stroke="rgba(0, 240, 255, 0.2)" stroke-width="1.5" stroke-dasharray="6 8" />
+                        <g class="voice-rotating-ring">
+                            <circle cx="100" cy="100" r="80" fill="none" stroke="#00f0ff" stroke-width="2" stroke-dasharray="50 30 20 30 80 20" filter="url(#voice-glow-page)" />
+                            <circle cx="100" cy="20" r="4" fill="#00f0ff" />
+                            <circle cx="100" cy="180" r="4" fill="#00f0ff" />
+                        </g>
+                        <g class="voice-counter-ring">
+                            <circle cx="100" cy="100" r="62" fill="none" stroke="#0099ff" stroke-width="2" stroke-dasharray="35 15 25 15" />
+                        </g>
+                        <circle class="voice-center-orb" cx="100" cy="100" r="38" fill="url(#voice-reactor-grad-page)" stroke="#00f0ff" stroke-width="2" filter="url(#voice-glow-page)" />
+                        <text x="100" y="105" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="800" letter-spacing="3" font-family="'JetBrains Mono', monospace">SAVI</text>
+                    </svg>
+                </div>
             </div>
-        }
-        @if (!_voiceSupported)
-        {
-            <div class="voice-error-banner" role="status">
-                <span>Voice recognition is not available in this browser. You can continue this conversation in Chat mode.</span>
+
+            <!-- Authoritative State Status Pill -->
+            <div class="voice-state-pill pill-@GetVisualStatePillClass()">
+                <span class="pill-dot @GetVisualStateDotClass()"></span>
+                <span>@GetVisualStateText()</span>
             </div>
-        }
-        @if (_showDiagnostics)
-        {
-            <details class="voice-diagnostics" open>
-                <summary>Browser diagnostics</summary>
-                <pre>@_browserDiagnosticsJson</pre>
-            </details>
-        }
-    </main>
+
+            @if (!string.IsNullOrEmpty(_voiceError))
+            {
+                <div class="voice-error-banner" style="max-width: 600px;">
+                    <span>⚠️ @_voiceError</span>
+                    <button class="voice-error-dismiss" @onclick="() => _voiceError = null">✕</button>
+                </div>
+            }
+        </div>
+    </div>
 
     <!-- Bottom Controls Toolbar -->
-    <footer class="voice-page-footer">
+    <footer class="voice-page-footer" style="padding: 12px 18px calc(14px + var(--savi-safe-bottom)); background: rgba(3, 7, 18, 0.9); border-top: 1px solid rgba(0, 240, 255, 0.12); flex-shrink: 0;">
         <div class="voice-controls-bar">
             <!-- Mute / Unmute Button -->
             <button class="voice-ctl-btn @(_isMicMuted ? "btn-danger" : "btn-subtle")" @onclick="ToggleVoiceMute" title="Mute / Unmute Microphone">
@@ -214,10 +198,10 @@
                 <span class="ctl-label">@(_isMicMuted ? "Unmute Mic" : "Mute Mic")</span>
             </button>
 
-            <!-- Interrupt / Silence Button (Instant Barge-in) -->
+            <!-- Instant Barge-In Stop Button (Active while speaking or thinking) -->
             @if (_voiceState == VoiceState.Speaking || _voiceState == VoiceState.Processing)
             {
-                <button class="voice-ctl-btn btn-danger-accent barge-in-btn" @onclick="InterruptSpeaking" title="Barge-in / Stop Audio (Esc)">
+                <button class="voice-ctl-btn btn-danger-accent barge-in-btn" @onclick="InterruptSpeaking" title="Barge-in / Stop Audio Immediately (Esc)">
                     <span class="ctl-icon">⏹</span>
                     <span class="ctl-label">Stop Speaking</span>
                 </button>
@@ -229,8 +213,8 @@
                 <span class="ctl-label">@(!_isListening ? "Resume" : "Pause")</span>
             </button>
 
-            <!-- Audio Output Mode Toggle (Speaker vs Headphone) -->
-            <button class="voice-ctl-btn btn-subtle" @onclick="ToggleAudioOutputMode" title="Toggle between Speaker Mode and Headphone Mode">
+            <!-- Output Mode Toggle -->
+            <button class="voice-ctl-btn btn-subtle" @onclick="ToggleAudioOutputMode" title="Toggle between Speaker and Headphone mode">
                 <span class="ctl-icon">@(_audioOutputMode == "speaker" ? "🔊" : "🎧")</span>
                 <span class="ctl-label">@(_audioOutputMode == "speaker" ? "Speaker" : "Headphone")</span>
             </button>
@@ -238,15 +222,59 @@
             <!-- Return to Chat Button -->
             <button class="voice-ctl-btn btn-exit-primary" @onclick="NavigateBackToChat" title="Return to text conversation">
                 <span class="ctl-icon">💬</span>
-                <span class="ctl-label">Back to Chat</span>
+                <span class="ctl-label">Chat</span>
             </button>
-        </div>
-
-        <div class="voice-shortcuts-hint">
-                <span>💡 <strong>Tip:</strong> Speak freely without pressing buttons. You can interrupt the assistant at any time.</span>
         </div>
     </footer>
 </div>
+
+<!-- Voice Settings & Telemetry Modal -->
+@if (_showSettingsModal)
+{
+    <div class="savi-drawer-backdrop active" @onclick="() => _showSettingsModal = false" style="z-index: 2000;">
+        <div class="savi-glass-panel" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 480px; padding: 22px; z-index: 2001;" @onclick:stopPropagation="true">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--savi-border-subtle); padding-bottom: 10px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 1.1rem; color: var(--savi-cyan);">⚙</span>
+                    <span class="savi-glow-text" style="font-weight: 700; font-size: 1rem;">VOICE SETTINGS &amp; TELEMETRY</span>
+                </div>
+                <button class="savi-btn savi-btn-sm" @onclick="() => _showSettingsModal = false">✕</button>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 14px; font-size: 0.84rem; color: var(--savi-text-secondary);">
+                <!-- Output Mode -->
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-weight: 600; color: var(--savi-text-primary);">Acoustic Mode</div>
+                        <div style="font-size: 0.72rem; color: var(--savi-text-dim);">Speaker mode activates real-time acoustic self-echo rejection</div>
+                    </div>
+                    <button class="savi-btn savi-btn-sm" @onclick="ToggleAudioOutputMode">
+                        @(_audioOutputMode == "speaker" ? "🔊 Speaker" : "🎧 Headphone")
+                    </button>
+                </div>
+
+                <!-- Telemetry Stats -->
+                <div style="background: rgba(0, 240, 255, 0.05); border: 1px solid var(--savi-border-subtle); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 6px; font-family: var(--savi-font); font-size: 0.74rem;">
+                    <div>AEC Hardware: <strong style="color: #00f0ff;">@GetAudioCapabilityStatus(_hardwareAec)</strong></div>
+                    <div>Noise Suppression: <strong style="color: #00f0ff;">@GetAudioCapabilityStatus(_hardwareNs)</strong></div>
+                    <div>Echo Suppressions: <strong style="color: #00f0ff;">@_falseSelfDetectionCount</strong></div>
+                    @if (_lastAudioStopLatencyMs > 0)
+                    {
+                        <div>Last Barge-in Latency: <strong style="color: #fbbf24;">@(Math.Round(_lastAudioStopLatencyMs)) ms</strong></div>
+                    }
+                </div>
+
+                <button class="savi-btn savi-btn-sm savi-btn-subtle" @onclick="RefreshDiagnostics">
+                    ⟳ Reload Diagnostics
+                </button>
+                @if (_showDiagnostics)
+                {
+                    <pre style="max-height: 140px; overflow: auto; background: rgba(0,0,0,0.5); padding: 8px; border-radius: 4px; font-size: 0.7rem; color: #a5f3fc;">@_browserDiagnosticsJson</pre>
+                }
+            </div>
+        </div>
+    </div>
+}
 
 <style>
     .savi-voice-page-root {
@@ -776,6 +804,15 @@
     private string? _voiceGenerationId;
     private CancellationTokenSource? _processingCts;
 
+    private List<MessageDto> _messages = new();
+    private bool _showGotItBanner = false;
+    private string _lastConfirmedUserSpeech = string.Empty;
+    private bool _showSettingsModal = false;
+    private bool _isUserScrolledUp = false;
+    private bool _hasNewUnreadActivity = false;
+    private string _lastTurnNormalizedText = string.Empty;
+    private DateTime _lastTurnTime = DateTime.MinValue;
+
     private DotNetObjectReference<VoicePage>? _dotNetRef;
 
     private string DisplayUserTranscript =>
@@ -792,6 +829,7 @@
             if (conv != null)
             {
                 _activeTitle = conv.Title;
+                _messages = conv.Messages.ToList();
                 var lastUser = conv.Messages.LastOrDefault(m => m.Role == MessageRole.User);
                 if (lastUser != null) _lastUserUtterance = lastUser.Content;
                 var lastAsst = conv.Messages.LastOrDefault(m => m.Role == MessageRole.Assistant);
@@ -803,6 +841,7 @@
             var newConv = await ConversationService.GetOrCreateAsync(null);
             _currentConversationId = newConv.Id;
             _activeTitle = newConv.Title;
+            _messages = newConv.Messages.ToList();
             Navigation.NavigateTo($"/voice/{_currentConversationId}", replace: true);
         }
     }
@@ -944,6 +983,7 @@
             _liveInterimTranscript = text;
             _voiceState = VoiceState.DetectingSpeech;
             _voiceError = null;
+            _ = AutoScrollIfNeeded();
             InvokeAsync(StateHasChanged);
         }
     }
@@ -954,9 +994,44 @@
         if (string.IsNullOrWhiteSpace(transcript)) return;
         if (!AcceptVoiceCallback(turnId, generationId, sessionId)) return;
 
+        var cleanText = transcript.Trim();
+        var normalized = cleanText.ToLowerInvariant();
+
+        // Turn deduplication: reject if identical phrase arrives within 1200ms
+        if (_lastTurnNormalizedText == normalized && (DateTime.UtcNow - _lastTurnTime).TotalMilliseconds < 1200)
+        {
+            return;
+        }
+
+        _lastTurnNormalizedText = normalized;
+        _lastTurnTime = DateTime.UtcNow;
+
         _liveInterimTranscript = string.Empty;
-        _lastUserUtterance = transcript.Trim();
+        _lastUserUtterance = cleanText;
+        _lastConfirmedUserSpeech = cleanText;
         _voiceError = null;
+
+        // Immediately commit user turn to visible timeline
+        var userMsg = new MessageDto
+        {
+            Role = MessageRole.User,
+            Content = cleanText,
+            Timestamp = DateTime.UtcNow
+        };
+        _messages.Add(userMsg);
+
+        // Show brief "✓ GOT IT" confirmation banner
+        _showGotItBanner = true;
+        await AutoScrollIfNeeded();
+        StateHasChanged();
+
+        // After 600ms, hide the banner as processing continues
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(600);
+            _showGotItBanner = false;
+            await InvokeAsync(StateHasChanged);
+        });
 
         var assignedTurnId = turnId ?? ("turn_" + Guid.NewGuid().ToString("N"));
         _activeTurnId = assignedTurnId;
@@ -973,6 +1048,7 @@
         catch { }
 
         _voiceState = VoiceState.Processing;
+        await AutoScrollIfNeeded();
         StateHasChanged();
 
         try
@@ -980,7 +1056,7 @@
             try { await JS.InvokeVoidAsync("saviVoice.markProcessing", assignedTurnId, generationId); } catch { }
             var req = new AgentRequest
             {
-                Message = transcript.Trim(),
+                Message = cleanText,
                 ConversationId = _currentConversationId,
                 VoiceActive = true,
                 ClientType = "VoicePage"
@@ -995,7 +1071,18 @@
                 : res.Message;
 
             _lastAssistantResponse = spokenText;
+
+            // Commit assistant response to timeline
+            var asstMsg = new MessageDto
+            {
+                Role = MessageRole.Assistant,
+                Content = spokenText,
+                Timestamp = DateTime.UtcNow
+            };
+            _messages.Add(asstMsg);
+
             _voiceState = VoiceState.Speaking;
+            await AutoScrollIfNeeded();
             StateHasChanged();
 
             try
@@ -1081,6 +1168,84 @@
         _falseSelfDetectionCount = count;
         InvokeAsync(StateHasChanged);
     }
+
+    private async Task HandleTimelineScroll()
+    {
+        try
+        {
+            var isNearBottom = await JS.InvokeAsync<bool>("saviBrowser.isScrolledNearBottom", "voice-timeline-container", 80);
+            _isUserScrolledUp = !isNearBottom;
+            if (!_isUserScrolledUp)
+            {
+                _hasNewUnreadActivity = false;
+            }
+        }
+        catch { }
+    }
+
+    private async Task ScrollToBottomExplicit()
+    {
+        _isUserScrolledUp = false;
+        _hasNewUnreadActivity = false;
+        try
+        {
+            await JS.InvokeVoidAsync("saviBrowser.scrollToBottom", "voice-timeline-container");
+        }
+        catch { }
+        StateHasChanged();
+    }
+
+    private async Task AutoScrollIfNeeded()
+    {
+        if (_isUserScrolledUp)
+        {
+            _hasNewUnreadActivity = true;
+        }
+        else
+        {
+            _hasNewUnreadActivity = false;
+            try
+            {
+                await JS.InvokeVoidAsync("saviBrowser.scrollToBottom", "voice-timeline-container");
+            }
+            catch { }
+        }
+    }
+
+    private string GetVisualStateText() => _voiceState switch
+    {
+        VoiceState.Listening => "Listening...",
+        VoiceState.UserSpeaking => "You're speaking...",
+        VoiceState.DetectingSpeech => "Hearing you...",
+        VoiceState.Processing => "SAVI is thinking...",
+        VoiceState.Speaking => "SAVI is speaking...",
+        VoiceState.Interrupted => "Barged in / Interrupted",
+        VoiceState.Paused => "Listening Paused",
+        VoiceState.Error => "Voice Error",
+        _ => "Voice Ready"
+    };
+
+    private string GetVisualStatePillClass() => _voiceState switch
+    {
+        VoiceState.Listening => "listening",
+        VoiceState.UserSpeaking or VoiceState.DetectingSpeech => "detectingspeech",
+        VoiceState.Processing => "processing",
+        VoiceState.Speaking => "speaking",
+        VoiceState.Interrupted => "interrupted",
+        VoiceState.Error => "error",
+        _ => "idle"
+    };
+
+    private string GetVisualStateDotClass() => _voiceState switch
+    {
+        VoiceState.Listening => "listening-dot",
+        VoiceState.UserSpeaking or VoiceState.DetectingSpeech => "detecting-dot",
+        VoiceState.Processing => "thinking-dot",
+        VoiceState.Speaking => "speaking-dot",
+        VoiceState.Interrupted => "interrupted-dot",
+        VoiceState.Error => "error-dot",
+        _ => "idle-dot"
+    };
 
     public async ValueTask DisposeAsync()
     {
