@@ -1,5 +1,6 @@
 @using SAVI.Application.DTOs
 @using SAVI.Application.Interfaces
+@using SAVI.Application.Common
 @inject IConversationService ConversationService
 @inject ISettingsService SettingsService
 @inject NavigationManager Navigation
@@ -57,20 +58,20 @@
 
     <!-- Primary Navigation Links -->
     <nav style="display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--savi-border-subtle); padding-top: 8px;">
-        <NavLink class="savi-nav-item" href="@(string.IsNullOrEmpty(_currentConvId) ? "chat" : $"chat/{_currentConvId}")" Match="NavLinkMatch.Prefix" @onclick="HandleNavClick">
+        <NavLink class="savi-nav-item" href="@SaviRouteHelper.BuildChatRoute(_currentConvId)" Match="NavLinkMatch.Prefix" @onclick="HandleNavClick">
             <span class="savi-icon">💬</span>
             <span style="flex: 1;">Chat</span>
         </NavLink>
-        <NavLink class="savi-nav-item" href="@(string.IsNullOrEmpty(_currentConvId) ? "voice" : $"voice/{_currentConvId}")" Match="NavLinkMatch.Prefix" @onclick="HandleNavClick">
+        <NavLink class="savi-nav-item" href="@SaviRouteHelper.BuildVoiceRoute(_currentConvId)" Match="NavLinkMatch.Prefix" @onclick="HandleNavClick">
             <span class="savi-icon">🎙️</span>
             <span style="flex: 1;">Voice</span>
             <span class="savi-badge" style="font-size: 0.58rem; padding: 1px 5px; color: #00f0ff;">LIVE</span>
         </NavLink>
-        <NavLink class="savi-nav-item" href="tasks" @onclick="HandleNavClick">
+        <NavLink class="savi-nav-item" href="/tasks" @onclick="HandleNavClick">
             <span class="savi-icon">⚙</span>
             <span style="flex: 1;">Tasks</span>
         </NavLink>
-        <NavLink class="savi-nav-item" href="memory" @onclick="HandleNavClick">
+        <NavLink class="savi-nav-item" href="/memory" @onclick="HandleNavClick">
             <span class="savi-icon">🧠</span>
             <span style="flex: 1;">Memory</span>
         </NavLink>
@@ -87,13 +88,13 @@
             @if (_showMoreMenu)
             {
                 <div style="margin-left: 12px; padding-left: 10px; border-left: 1px solid var(--savi-border-subtle); display: flex; flex-direction: column; gap: 3px; margin-top: 2px;">
-                    <NavLink class="savi-nav-item" href="providers" @onclick="HandleNavClick" style="padding: 6px 10px; font-size: 0.8rem;">
+                    <NavLink class="savi-nav-item" href="/providers" @onclick="HandleNavClick" style="padding: 6px 10px; font-size: 0.8rem;">
                         <span class="savi-icon" style="font-size: 0.85rem;">📡</span> Sources &amp; Providers
                     </NavLink>
-                    <NavLink class="savi-nav-item" href="diagnostics" @onclick="HandleNavClick" style="padding: 6px 10px; font-size: 0.8rem;">
+                    <NavLink class="savi-nav-item" href="/diagnostics" @onclick="HandleNavClick" style="padding: 6px 10px; font-size: 0.8rem;">
                         <span class="savi-icon" style="font-size: 0.85rem;">📊</span> System Diagnostics
                     </NavLink>
-                    <NavLink class="savi-nav-item" href="audit" @onclick="HandleNavClick" style="padding: 6px 10px; font-size: 0.8rem;">
+                    <NavLink class="savi-nav-item" href="/audit" @onclick="HandleNavClick" style="padding: 6px 10px; font-size: 0.8rem;">
                         <span class="savi-icon" style="font-size: 0.85rem;">🛡</span> Security &amp; Audit
                     </NavLink>
                     <button class="savi-nav-item" style="padding: 6px 10px; font-size: 0.8rem; background: transparent; border: none; cursor: pointer; text-align: left; font-family: var(--savi-font);"
@@ -104,7 +105,7 @@
             }
         </div>
 
-        <NavLink class="savi-nav-item" href="settings" @onclick="HandleNavClick">
+        <NavLink class="savi-nav-item" href="/settings" @onclick="HandleNavClick">
             <span class="savi-icon">⚙</span>
             <span style="flex: 1;">Settings</span>
         </NavLink>
@@ -205,15 +206,10 @@
 
     private void ExtractCurrentConvId()
     {
-        var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
-        var parts = relative.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length >= 2 && (parts[0].Equals("chat", StringComparison.OrdinalIgnoreCase) || parts[0].Equals("voice", StringComparison.OrdinalIgnoreCase)))
+        var convId = SaviRouteHelper.ExtractConversationId(Navigation.Uri);
+        if (!string.IsNullOrWhiteSpace(convId))
         {
-            _currentConvId = parts[1];
-        }
-        else if (parts.Length == 1 && parts[0].Equals("chat", StringComparison.OrdinalIgnoreCase))
-        {
-            _currentConvId = null;
+            _currentConvId = convId;
         }
     }
 
@@ -257,8 +253,8 @@
         {
             var newConv = await ConversationService.GetOrCreateAsync(null);
             _currentConvId = newConv.Id;
-            var isVoice = Navigation.Uri.Contains("/voice", StringComparison.OrdinalIgnoreCase);
-            var target = isVoice ? $"/voice/{newConv.Id}" : $"/chat/{newConv.Id}";
+            var isVoice = SaviRouteHelper.IsVoiceRoute(Navigation.Uri);
+            var target = isVoice ? SaviRouteHelper.BuildVoiceRoute(newConv.Id) : SaviRouteHelper.BuildChatRoute(newConv.Id);
             Navigation.NavigateTo(target);
             await LoadConversationsAsync();
             await HandleNavClick();
@@ -272,8 +268,8 @@
     private async Task SelectConversation(string id)
     {
         _currentConvId = id;
-        var isVoice = Navigation.Uri.Contains("/voice", StringComparison.OrdinalIgnoreCase);
-        var target = isVoice ? $"/voice/{id}" : $"/chat/{id}";
+        var isVoice = SaviRouteHelper.IsVoiceRoute(Navigation.Uri);
+        var target = isVoice ? SaviRouteHelper.BuildVoiceRoute(id) : SaviRouteHelper.BuildChatRoute(id);
         Navigation.NavigateTo(target);
         await HandleNavClick();
     }
@@ -286,7 +282,7 @@
             if (_currentConvId == id)
             {
                 _currentConvId = null;
-                var isVoice = Navigation.Uri.Contains("/voice", StringComparison.OrdinalIgnoreCase);
+                var isVoice = SaviRouteHelper.IsVoiceRoute(Navigation.Uri);
                 Navigation.NavigateTo(isVoice ? "/voice" : "/chat");
             }
             await LoadConversationsAsync();

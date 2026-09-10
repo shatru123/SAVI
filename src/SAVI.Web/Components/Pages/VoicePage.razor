@@ -1,6 +1,5 @@
 @page "/voice"
 @page "/voice/{ConversationId?}"
-@rendermode InteractiveServer
 @using SAVI.Core.Enums
 @using SAVI.Application.DTOs
 @using SAVI.Core.Interfaces
@@ -824,26 +823,64 @@
     {
         if (!string.IsNullOrEmpty(ConversationId))
         {
-            _currentConversationId = ConversationId;
-            var conv = await ConversationService.GetByIdAsync(ConversationId);
-            if (conv != null)
-            {
-                _activeTitle = conv.Title;
-                _messages = conv.Messages.ToList();
-                var lastUser = conv.Messages.LastOrDefault(m => m.Role == MessageRole.User);
-                if (lastUser != null) _lastUserUtterance = lastUser.Content;
-                var lastAsst = conv.Messages.LastOrDefault(m => m.Role == MessageRole.Assistant);
-                if (lastAsst != null) _lastAssistantResponse = lastAsst.Content;
-            }
+            await LoadConversationByIdAsync(ConversationId);
         }
         else
         {
-            var newConv = await ConversationService.GetOrCreateAsync(null);
-            _currentConversationId = newConv.Id;
-            _activeTitle = newConv.Title;
-            _messages = newConv.Messages.ToList();
-            Navigation.NavigateTo($"/voice/{_currentConversationId}", replace: true);
+            var summaries = await ConversationService.GetSummariesAsync();
+            var latest = summaries.FirstOrDefault();
+            if (latest != null)
+            {
+                await LoadConversationByIdAsync(latest.Id);
+            }
+            else
+            {
+                var newConv = await ConversationService.GetOrCreateAsync(null);
+                await LoadConversationByIdAsync(newConv.Id);
+            }
         }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(ConversationId) && ConversationId != _currentConversationId)
+        {
+            await LoadConversationByIdAsync(ConversationId);
+        }
+    }
+
+    private async Task LoadConversationByIdAsync(string id)
+    {
+        _currentConversationId = id;
+        var conv = await ConversationService.GetByIdAsync(id);
+        if (conv != null)
+        {
+            _activeTitle = conv.Title;
+            _messages = conv.Messages.ToList();
+            var lastUser = conv.Messages.LastOrDefault(m => m.Role == MessageRole.User);
+            _lastUserUtterance = lastUser?.Content ?? string.Empty;
+            var lastAsst = conv.Messages.LastOrDefault(m => m.Role == MessageRole.Assistant);
+            _lastAssistantResponse = lastAsst?.Content ?? string.Empty;
+        }
+        else
+        {
+            _activeTitle = "Voice Conversation";
+            _messages.Clear();
+            _lastUserUtterance = string.Empty;
+            _lastAssistantResponse = string.Empty;
+        }
+
+        if (_voiceSupported && _dotNetRef != null)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("saviVoice.setConversationId", id);
+            }
+            catch { }
+        }
+
+        await AutoScrollIfNeeded();
+        StateHasChanged();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

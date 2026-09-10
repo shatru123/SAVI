@@ -1,5 +1,8 @@
 @inherits LayoutComponentBase
 @inject NavigationManager Navigation
+@implements IDisposable
+
+@using SAVI.Application.Common
 
 <div class="savi-app-shell">
     <!-- Clean Top Header -->
@@ -18,17 +21,21 @@
 
         <!-- Right Header Actions -->
         <div style="display: flex; align-items: center; gap: 10px;">
-            <!-- Mobile Voice Quick Action if not already on voice -->
+            <!-- Mobile Voice/Chat Quick Action -->
             <div class="savi-mobile-only">
-                <a href="voice" class="savi-btn savi-btn-sm savi-btn-primary" style="text-decoration: none; padding: 4px 10px; font-size: 0.74rem;" title="Open Dedicated Voice Mode">
-                    🎙️ Voice
+                <a href="@SaviRouteHelper.BuildToggleModeRoute(Navigation.Uri, _currentConvId)"
+                   class="savi-btn savi-btn-sm savi-btn-primary" style="text-decoration: none; padding: 4px 10px; font-size: 0.74rem;"
+                   title="@(_isVoiceActive ? "Switch to Text Chat" : "Open Dedicated Voice Mode")">
+                    @(_isVoiceActive ? "💬 Chat" : "🎙️ Voice")
                 </a>
             </div>
 
             <!-- Desktop Clean Info -->
             <div class="savi-desktop-only" style="align-items: center; gap: 12px; font-size: 0.75rem; color: var(--savi-text-dim);">
-                <a href="voice" class="savi-btn savi-btn-sm savi-btn-primary" style="text-decoration: none; padding: 4px 12px; font-size: 0.76rem;" title="Open Dedicated Voice Screen">
-                    🎙️ Voice Screen
+                <a href="@SaviRouteHelper.BuildToggleModeRoute(Navigation.Uri, _currentConvId)"
+                   class="savi-btn savi-btn-sm savi-btn-primary" style="text-decoration: none; padding: 4px 12px; font-size: 0.76rem;"
+                   title="@(_isVoiceActive ? "Switch to Text Chat Screen" : "Open Dedicated Voice Screen")">
+                    @(_isVoiceActive ? "💬 Chat Screen" : "🎙️ Voice Screen")
                 </a>
             </div>
         </div>
@@ -52,17 +59,17 @@
 
     <!-- Pinned Cybernetic Mobile Bottom Navigation Bar (Docked Native App Bar) -->
     <nav class="savi-bottom-nav">
-        <NavLink class="savi-bottom-nav-item" href="chat" Match="NavLinkMatch.Prefix">
+        <NavLink class="savi-bottom-nav-item" href="@SaviRouteHelper.BuildChatRoute(_currentConvId)" Match="NavLinkMatch.Prefix">
             <span class="nav-icon">💬</span>
             <span>Chat</span>
         </NavLink>
-        <NavLink class="savi-bottom-nav-item savi-bottom-voice-item" href="voice" Match="NavLinkMatch.Prefix">
+        <NavLink class="savi-bottom-nav-item savi-bottom-voice-item" href="@SaviRouteHelper.BuildVoiceRoute(_currentConvId)" Match="NavLinkMatch.Prefix">
             <div class="savi-voice-bottom-orb">
                 <span class="nav-icon" style="font-size: 1.25rem;">🎙</span>
             </div>
             <span style="font-weight: 700;">Voice</span>
         </NavLink>
-        <NavLink class="savi-bottom-nav-item" href="tasks" Match="NavLinkMatch.Prefix">
+        <NavLink class="savi-bottom-nav-item" href="/tasks" Match="NavLinkMatch.Prefix">
             <span class="nav-icon">⚙</span>
             <span>Tasks</span>
         </NavLink>
@@ -75,6 +82,30 @@
 
 @code {
     private bool _mainDrawerOpen = false;
+    private string? _currentConvId;
+    private bool _isVoiceActive = false;
+
+    protected override void OnInitialized()
+    {
+        ExtractStateFromUri();
+        Navigation.LocationChanged += HandleLocationChanged;
+    }
+
+    private void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        ExtractStateFromUri();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void ExtractStateFromUri()
+    {
+        _isVoiceActive = SaviRouteHelper.IsVoiceRoute(Navigation.Uri);
+        var convId = SaviRouteHelper.ExtractConversationId(Navigation.Uri);
+        if (!string.IsNullOrWhiteSpace(convId))
+        {
+            _currentConvId = convId;
+        }
+    }
 
     private void ToggleDrawer()
     {
@@ -84,5 +115,10 @@
     private void CloseDrawer()
     {
         _mainDrawerOpen = false;
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= HandleLocationChanged;
     }
 }

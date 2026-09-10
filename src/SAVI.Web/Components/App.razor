@@ -19,11 +19,11 @@
     <link rel="stylesheet" href="@Assets["SAVI.Web.styles.css"]" />
     <ImportMap />
     <link rel="icon" type="image/png" href="favicon.png" />
-    <HeadOutlet />
+    <HeadOutlet @rendermode="new InteractiveServerRenderMode(prerender: false)" />
 </head>
 
 <body>
-    <Routes />
+    <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
     <ReconnectModal />
     <script src="js/savi-browser.js"></script>
     <script src="js/savi-voice.js"></script>
